@@ -1,0 +1,342 @@
+.container {
+  margin: 0;
+  padding-top: 2vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Navigation Tabs */
+.nav-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 10px;
+  background: #1e1e1e;
+  border-radius: 8px;
+}
+
+.nav-tabs button {
+  padding: 10px 20px;
+  border: none;
+  background: #2d2d2d;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.nav-tabs button:hover {
+  background: #3d3d3d;
+}
+
+.nav-tabs button.active {
+  background: #646cff;
+}
+
+.nav-tabs button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Games List */
+.games-section {
+  margin: 20px 0;
+}
+
+.games-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.games-list li {
+  background: #2d2d2d;
+  padding: 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.games-list li:hover {
+  background: #3d3d3d;
+}
+
+.games-list li.selected {
+  background: #646cff;
+  color: white;
+}
+
+/* Game Manager */
+.game-manager {
+  padding: 20px;
+  background: #1e1e1e;
+  border-radius: 8px;
+  margin: 20px 0;
+}
+
+.add-level-form {
+  background: #2d2d2d;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) auto;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: end;
+}
+
+.form-group input {
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: white;
+}
+
+.form-group button {
+  padding: 8px 16px;
+  background: #646cff;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+}
+
+.form-group button:hover {
+  background: #747bff;
+}
+
+.levels-table {
+  margin-top: 20px;
+}
+
+.levels-table table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.levels-table th {
+  background: #2d2d2d;
+  padding: 10px;
+  text-align: left;
+}
+
+.levels-table td {
+  padding: 10px;
+  border-bottom: 1px solid #444;
+}
+
+.levels-table tr:hover {
+  background: #2d2d2d;
+}
+
+/* Account Manager Styles */
+.account-manager {
+  padding: 20px;
+  background: #1e1e1e;
+  border-radius: 8px;
+  margin: 20px 0;
+}
+
+.add-account-form {
+  background: #2d2d2d;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.request-template textarea {
+  width: 100%;
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: white;
+  margin-top: 10px;
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.request-template small {
+  color: #888;
+  display: block;
+  margin-top: 5px;
+}
+
+.accounts-list table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.accounts-list th {
+  background: #2d2d2d;
+  padding: 10px;
+  text-align: left;
+}
+
+.accounts-list td {
+  padding: 10px;
+  border-bottom: 1px solid #444;
+}
+
+.accounts-list tr {
+  cursor: pointer;
+}
+
+.accounts-list tr:hover {
+  background: #2d2d2d;
+}
+
+.accounts-list tr.selected {
+  background: #646cff;
+}
+
+.accounts-list tr.selected td {
+  color: white;
+}
+
+.generate-request {
+  margin-top: 20px;
+  padding: 15px;
+  background: #2d2d2d;
+  border-radius: 8px;
+}
+
+.generated-request {
+  margin-top: 20px;
+  padding: 15px;
+  background: #2d2d2d;
+  border-radius: 8px;
+}
+
+.request-display {
+  position: relative;
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 15px;
+  margin-top: 10px;
+}
+
+.request-display pre {
+  margin: 0;
+  padding: 10px;
+  background: #000;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 11px;
+  line-height: 1.4;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.request-display button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 5px 10px;
+  background: #646cff;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+}
+
+.request-display button:hover {
+  background: #747bff;
+}
+
+/* Progress Information */
+.progress-info {
+  margin-top: 20px;
+  padding: 15px;
+  background: #2d2d2d;
+  border-radius: 8px;
+  border-left: 4px solid #646cff;
+}
+
+.progress-details {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.progress-details p {
+  margin: 5px 0;
+  padding: 8px;
+  background: #3d3d3d;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+/* Generated Request Header */
+.request-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.request-header button {
+  padding: 8px 16px;
+  background: #646cff;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+}
+
+.request-header button:hover {
+  background: #747bff;
+}
+
+/* Form Improvements */
+.form-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.form-group input {
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: white;
+  font-size: 14px;
+}
+
+.form-group button {
+  padding: 10px 20px;
+  background: #646cff;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.form-group button:hover:not(:disabled) {
+  background: #747bff;
+}
+
+.form-group button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
