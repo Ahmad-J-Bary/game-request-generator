@@ -27,6 +27,7 @@
     "dashboard": "Dashboard",
     "games": "Games",
     "accounts": "Accounts",
+    "accountsDetail": "Accounts Detail",
     "levels": "Levels",
     "requests": "Requests",
     "events": "Events",
@@ -74,7 +75,9 @@
     "deleteSuccess": "Account deleted successfully",
     "addSuccess": "Account added successfully",
     "updateSuccess": "Account updated successfully",
-    "noAccounts": "No accounts found. Add your first account!"
+    "noAccounts": "No accounts found. Add your first account!",
+    "detailTitle": "Accounts Detail",
+    "detailSubtitle": "Detailed view of accounts' levels (Vertical / Horizontal)"
   },
   "levels": {
     "title": "Levels",
@@ -94,7 +97,9 @@
     "addSuccess": "Level added successfully",
     "updateSuccess": "Level updated successfully",
     "noLevels": "No levels found. Add your first level!",
-    "levelDate": "Level Date"
+    "levelDate": "Level Date",
+    "viewHorizontal": "Horizontal view",
+    "viewVertical": "Vertical view"
   },
   "requests": {
     "title": "Request Generator",

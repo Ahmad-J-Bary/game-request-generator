@@ -1,5 +1,6 @@
+// src/components/templates/MainLayout.tsx
 import { ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   LayoutDashboard, 
@@ -21,8 +22,9 @@ interface MainLayoutProps {
 const navigation = [
   { name: 'dashboard', href: '/', icon: LayoutDashboard },
   { name: 'games', href: '/games', icon: Gamepad2 },
-  { name: 'accounts', href: '/accounts', icon: Users },
   { name: 'levels', href: '/levels', icon: Trophy },
+  { name: 'accounts', href: '/accounts', icon: Users },
+  { name: 'accountsDetail', href: '/accounts/detail', icon: FileText },
   { name: 'requests', href: '/requests', icon: FileText },
   { name: 'purchaseEvents', href: '/purchase-events', icon: ShoppingCart },
   { name: 'events', href: '/events', icon: Calendar },
@@ -44,25 +46,28 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 space-y-1 p-4">
+          <nav className="flex-1 space-y-1 p-4" role="navigation" aria-label="Main navigation">
             {navigation.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname === item.href;
-              
+
+              // Use NavLink with `end` to require exact match so "/accounts" is NOT active on "/accounts/detail"
               return (
-                <Link
+                <NavLink
                   key={item.name}
                   to={item.href}
-                  className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  )}
+                  end
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                    )
+                  }
                 >
                   <Icon className="h-5 w-5" />
                   {t(`nav.${item.name}`)}
-                </Link>
+                </NavLink>
               );
             })}
           </nav>

@@ -1,7 +1,11 @@
+// src/features/accounts/AccountList.tsx
+
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useGames } from '../../hooks/useGames';
 import { useAccounts } from '../../hooks/useAccounts';
+import { useLevels } from '../../hooks/useLevels';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import {
@@ -21,51 +25,54 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { AccountForm } from './AccountForm';
+import { Plus, Pencil, Trash2, Eye } from 'lucide-react';
 import { Account } from '../../types';
 
 export function AccountList() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { games } = useGames();
   const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
   const { accounts, loading, deleteAccount } = useAccounts(selectedGameId);
-  const [showForm, setShowForm] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const { levels } = useLevels(selectedGameId); // levels for currently selected game
+  const [showDelete, setShowDelete] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
 
   useEffect(() => {
     if (games.length > 0 && !selectedGameId) {
       setSelectedGameId(games[0].id);
     }
-  }, [games]);
+  }, [games, selectedGameId]);
 
-  const handleEdit = (account: Account) => {
-    setEditingAccount(account);
-    setShowForm(true);
+  const handleEditNavigate = (account: Account) => {
+    // navigate to edit page using the new route
+    navigate(`/accounts/edit/${account.id}`, { state: { account } });
   };
 
-  const handleDelete = async () => {
-    if (deletingAccount) {
-      await deleteAccount(deletingAccount.id);
-      setDeletingAccount(null);
+  const handleAddNavigate = () => {
+    // navigate to new account page using the new route and pass gameId as query param
+    if (selectedGameId) {
+      navigate(`/accounts/new?gameId=${selectedGameId}`);
     }
   };
 
-  const handleCloseForm = () => {
-    setShowForm(false);
-    setEditingAccount(null);
+  const handleViewNavigate = (account: Account) => {
+    // navigate to detail page using the new route and pass account + levels in location.state
+    navigate(`/accounts/${account.id}`, { state: { account, levels } });
   };
 
-  if (showForm) {
-    return (
-      <AccountForm
-        account={editingAccount}
-        gameId={selectedGameId}
-        onClose={handleCloseForm}
-      />
-    );
-  }
+  const confirmDelete = (account: Account) => {
+    setDeletingAccount(account);
+    setShowDelete(true);
+  };
+
+  const doDelete = async () => {
+    if (deletingAccount) {
+      await deleteAccount(deletingAccount.id);
+    }
+    setShowDelete(false);
+    setDeletingAccount(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -74,20 +81,21 @@ export function AccountList() {
         <div className="flex items-center gap-2">
           <Select
             value={selectedGameId?.toString()}
-            onValueChange={val => setSelectedGameId(Number(val))}
+            onValueChange={(val) => setSelectedGameId(Number(val))}
           >
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder={t('accounts.selectGame')} />
             </SelectTrigger>
             <SelectContent>
-              {games.map(game => (
+              {games.map((game) => (
                 <SelectItem key={game.id} value={game.id.toString()}>
                   {game.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={() => setShowForm(true)} disabled={!selectedGameId}>
+
+          <Button onClick={handleAddNavigate} disabled={!selectedGameId}>
             <Plus className="mr-2 h-4 w-4" />
             {t('accounts.addAccount')}
           </Button>
@@ -98,19 +106,15 @@ export function AccountList() {
         <div className="text-center py-8">{t('common.loading')}</div>
       ) : !selectedGameId ? (
         <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            {t('games.noGames')}
-          </CardContent>
+          <CardContent className="py-8 text-center text-muted-foreground">{t('games.noGames')}</CardContent>
         </Card>
       ) : accounts.length === 0 ? (
         <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            {t('accounts.noAccounts')}
-          </CardContent>
+          <CardContent className="py-8 text-center text-muted-foreground">{t('accounts.noAccounts')}</CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {accounts.map(account => (
+          {accounts.map((account) => (
             <Card key={account.id}>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
@@ -119,20 +123,31 @@ export function AccountList() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => handleEdit(account)}
+                      onClick={() => handleViewNavigate(account)}
+                      title={t('accounts.viewDetails') ?? 'View details'}
                     >
-                      <Pencil className="h-4 w-4" />
+                      <Eye className="h-4 w-4" />
                     </Button>
+
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => setDeletingAccount(account)}
+                      onClick={() => handleEditNavigate(account)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => confirmDelete(account)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardTitle>
               </CardHeader>
+
               <CardContent className="space-y-2">
                 <p className="text-sm">
                   <span className="font-medium">{t('accounts.startDate')}:</span>{' '}
@@ -148,22 +163,16 @@ export function AccountList() {
         </div>
       )}
 
-      <AlertDialog
-        open={!!deletingAccount}
-        onOpenChange={() => setDeletingAccount(null)}
-      >
+      {/* Delete confirmation */}
+      <AlertDialog open={showDelete} onOpenChange={() => setShowDelete(false)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('accounts.deleteAccount')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('accounts.deleteConfirm')}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t('accounts.deleteConfirm')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>
-              {t('common.delete')}
-            </AlertDialogAction>
+            <AlertDialogCancel onClick={() => setShowDelete(false)}>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={doDelete}>{t('common.delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -12,6 +12,9 @@ import Levels from './pages/Levels';
 import Requests from './pages/Requests';
 import PurchaseEvents from './pages/PurchaseEvents';
 import Events from './pages/Events';
+import AccountDetail from './pages/AccountDetail';
+import AccountFormPage from './pages/AccountFormPage';
+import AccountsDetail from './pages/AccountsDetail';
 import './i18n';
 
 const queryClient = new QueryClient();
@@ -28,6 +31,10 @@ const App = () => (
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/games" element={<Games />} />
                 <Route path="/accounts" element={<Accounts />} />
+                <Route path="/accounts/:id" element={<AccountDetail />} />
+                <Route path="/accounts/new" element={<AccountFormPage />} />
+                <Route path="/accounts/edit/:id" element={<AccountFormPage />} />
+                <Route path="/accounts/detail" element={<AccountsDetail />} />
                 <Route path="/levels" element={<Levels />} />
                 <Route path="/requests" element={<Requests />} />
                 <Route path="/purchase-events" element={<PurchaseEvents />} />

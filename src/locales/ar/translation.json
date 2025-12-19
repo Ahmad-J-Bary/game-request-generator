@@ -27,6 +27,7 @@
     "dashboard": "لوحة التحكم",
     "games": "الألعاب",
     "accounts": "الحسابات",
+    "accountsDetail": "تفاصيل الحسابات",
     "levels": "المستويات",
     "requests": "الطلبات",
     "events": "الأحداث",
@@ -74,7 +75,9 @@
     "deleteSuccess": "تم حذف الحساب بنجاح",
     "addSuccess": "تمت إضافة الحساب بنجاح",
     "updateSuccess": "تم تحديث الحساب بنجاح",
-    "noAccounts": "لا توجد حسابات. أضف حسابك الأول!"
+    "noAccounts": "لا توجد حسابات. أضف حسابك الأول!",
+    "detailTitle": "تفاصيل الحسابات",
+    "detailSubtitle": "عرض تفصيلي لمستويات الحسابات (عمودي / أفقي)"
   },
   "levels": {
     "title": "المستويات",
@@ -94,7 +97,9 @@
     "addSuccess": "تمت إضافة المستوى بنجاح",
     "updateSuccess": "تم تحديث المستوى بنجاح",
     "noLevels": "لا توجد مستويات. أضف مستواك الأول!",
-    "levelDate": "تاريخ المستوى"
+    "levelDate": "تاريخ المستوى",
+    "viewHorizontal": "عرض أفقي",
+    "viewVertical": "عرض عمودي"
   },
   "requests": {
     "title": "مولد الطلبات",

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAccounts } from '../../hooks/useAccounts';
 import { Button } from '../../components/ui/button';
@@ -12,13 +12,14 @@ import { toast } from 'sonner';
 
 interface AccountFormProps {
   account?: Account | null;
+  accountId?: number;
   gameId?: number;
   onClose: () => void;
 }
 
-export function AccountForm({ account, gameId, onClose }: AccountFormProps) {
+export function AccountForm({ account, accountId, gameId, onClose }: AccountFormProps) {
   const { t } = useTranslation();
-  const { addAccount, updateAccount } = useAccounts();
+  const { accounts, addAccount, updateAccount } = useAccounts();
   const [name, setName] = useState(account?.name || '');
   const [startDate, setStartDate] = useState(account?.start_date || '');
   const [startTime, setStartTime] = useState(account?.start_time || '');
@@ -27,11 +28,35 @@ export function AccountForm({ account, gameId, onClose }: AccountFormProps) {
   );
   const [loading, setLoading] = useState(false);
 
+  // Initialize form with account data if available
+  useEffect(() => {
+    if (account) {
+      setName(account.name);
+      setStartDate(account.start_date);
+      setStartTime(account.start_time);
+      setRequestTemplate(account.request_template);
+    }
+  }, [account]);
+  
+  // Fetch account data if accountId is provided but account is not
+  useEffect(() => {
+    if (!account && accountId) {
+      const foundAccount = accounts.find(a => a.id === accountId);
+      if (foundAccount) {
+        setName(foundAccount.name);
+        setStartDate(foundAccount.start_date);
+        setStartTime(foundAccount.start_time);
+        setRequestTemplate(foundAccount.request_template);
+      }
+    }
+  }, [accountId, account, accounts]);
+
 const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // تحقق من المدخلات
-    if (!gameId || !name.trim() || !startDate.trim() || !startTime.trim() || !requestTemplate.trim()) {
+    const currentGameId = account ? account.game_id : gameId;
+    if (!currentGameId || !name.trim() || !startDate.trim() || !startTime.trim() || !requestTemplate.trim()) {
         toast.error("All fields are required");
         return;
     }
@@ -48,7 +73,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             });
         } else {
             await addAccount({
-                game_id: gameId!,
+                game_id: currentGameId,
                 name,
                 start_date: startDate,
                 start_time: startTime,
