@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useGames } from '../../hooks/useGames';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -15,12 +16,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye } from 'lucide-react';
 import { GameForm } from './GameForm';
 import { Game } from '../../types';
 
 export function GameList() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { games, loading, deleteGame } = useGames();
   const [showForm, setShowForm] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
@@ -73,6 +75,16 @@ export function GameList() {
                 <CardTitle className="flex items-center justify-between">
                   <span>{game.name}</span>
                   <div className="flex gap-2">
+                    {/* Eye button --> navigate to game detail page */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => navigate(`/games/${game.id}`)}
+                      title={t('games.viewDetails') ?? 'View details'}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+
                     <Button
                       variant="ghost"
                       size="icon"

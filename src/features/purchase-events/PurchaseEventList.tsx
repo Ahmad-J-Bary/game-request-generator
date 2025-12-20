@@ -1,5 +1,4 @@
 // src/features/purchase-events/PurchaseEventList.tsx
-
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/button';
@@ -14,6 +13,14 @@ import {
 } from '../../components/ui/table';
 import { Pencil, Trash2 } from 'lucide-react';
 import type { PurchaseEvent } from '../../types';
+
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from '../../components/ui/select';
 
 type Layout = 'horizontal' | 'vertical';
 
@@ -31,7 +38,8 @@ export function PurchaseEventList({
   onDelete,
 }: Props) {
   const { t } = useTranslation();
-  const [layout] = useState<Layout>('horizontal');
+  // default to vertical (same as LevelList)
+  const [layout, setLayout] = useState<Layout>('vertical');
 
   if (loading) {
     return <div className="text-center py-8">{t('common.loading')}</div>;
@@ -47,11 +55,26 @@ export function PurchaseEventList({
     );
   }
 
-  // Horizontal layout
+  // Horizontal layout (rows = events) — color entire row per event
   if (layout === 'horizontal') {
     return (
       <Card>
         <CardContent className="p-0">
+          {/* header control — same style as LevelList */}
+          <div className="flex items-center justify-end p-4 gap-2">
+            <div className="text-sm text-muted-foreground">{t('common.view')}</div>
+
+            <Select value={layout} onValueChange={(v) => setLayout(v as Layout)}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="horizontal">{t('levels.viewHorizontal') ?? 'Horizontal'}</SelectItem>
+                <SelectItem value="vertical">{t('levels.viewVertical') ?? 'Vertical'}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <Table>
             <TableHeader>
               <TableRow>
@@ -61,36 +84,32 @@ export function PurchaseEventList({
                 <TableHead className="text-right">{t('common.actions')}</TableHead>
               </TableRow>
             </TableHeader>
+
             <TableBody>
-              {events.map(event => (
-                <TableRow key={event.id}>
-                  <TableCell className="font-mono">
-                    {event.event_token}
-                  </TableCell>
-                  <TableCell>
-                    {event.is_restricted ? t('common.yes') : t('common.no')}
-                  </TableCell>
-                  <TableCell>{event.max_days_offset ?? '-'}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(event)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(event.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {events.map((event) => {
+                // same coloring convention as LevelList:
+                // restricted -> yellow, unrestricted -> gray
+                const rowColor = event.is_restricted ? 'bg-yellow-50' : 'bg-gray-50';
+                return (
+                  <TableRow key={event.id}>
+                    <TableCell className={`font-mono ${rowColor}`}>{event.event_token}</TableCell>
+                    <TableCell className={rowColor}>
+                      {event.is_restricted ? t('common.yes') : t('common.no')}
+                    </TableCell>
+                    <TableCell className={`text-center ${rowColor}`}>{event.max_days_offset ?? '-'}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => onEdit(event)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => onDelete(event.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
@@ -98,16 +117,34 @@ export function PurchaseEventList({
     );
   }
 
-  // Vertical / pivot layout
+  // Vertical / pivot layout (columns = events) — color column cells for each event
   return (
     <Card>
       <CardContent className="p-0 overflow-auto">
+        {/* header control — same style as LevelList */}
+        <div className="flex items-center justify-end p-4 gap-2">
+          <div className="text-sm text-muted-foreground">{t('common.view')}</div>
+
+          <Select value={layout} onValueChange={(v) => setLayout(v as Layout)}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="vertical">{t('levels.viewVertical') ?? 'Vertical'}</SelectItem>
+              <SelectItem value="horizontal">{t('levels.viewHorizontal') ?? 'Horizontal'}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>{t('purchaseEvents.eventToken')}</TableHead>
-              {events.map(ev => (
-                <TableHead key={ev.id} className="text-center font-mono">
+              {events.map((ev) => (
+                <TableHead
+                  key={ev.id}
+                  className={`text-center font-mono ${ev.is_restricted ? 'bg-yellow-50' : 'bg-gray-50'}`}
+                >
                   {ev.event_token}
                 </TableHead>
               ))}
@@ -117,8 +154,11 @@ export function PurchaseEventList({
           <TableBody>
             <TableRow>
               <TableHead>{t('purchaseEvents.isRestricted')}</TableHead>
-              {events.map(ev => (
-                <TableCell key={ev.id} className="text-center">
+              {events.map((ev) => (
+                <TableCell
+                  key={ev.id}
+                  className={`text-center ${ev.is_restricted ? 'bg-yellow-50' : 'bg-gray-50'}`}
+                >
                   {ev.is_restricted ? t('common.yes') : t('common.no')}
                 </TableCell>
               ))}
@@ -126,8 +166,11 @@ export function PurchaseEventList({
 
             <TableRow>
               <TableHead>{t('purchaseEvents.maxDaysOffset')}</TableHead>
-              {events.map(ev => (
-                <TableCell key={ev.id} className="text-center">
+              {events.map((ev) => (
+                <TableCell
+                  key={ev.id}
+                  className={`text-center ${ev.is_restricted ? 'bg-yellow-50' : 'bg-gray-50'}`}
+                >
                   {ev.max_days_offset ?? '-'}
                 </TableCell>
               ))}
@@ -135,21 +178,16 @@ export function PurchaseEventList({
 
             <TableRow>
               <TableHead>{t('common.actions')}</TableHead>
-              {events.map(ev => (
-                <TableCell key={ev.id} className="text-center">
+              {events.map((ev) => (
+                <TableCell
+                  key={ev.id}
+                  className={`text-center ${ev.is_restricted ? 'bg-yellow-50' : 'bg-gray-50'}`}
+                >
                   <div className="flex justify-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onEdit(ev)}
-                    >
+                    <Button variant="ghost" size="icon" onClick={() => onEdit(ev)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDelete(ev.id)}
-                    >
+                    <Button variant="ghost" size="icon" onClick={() => onDelete(ev.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>

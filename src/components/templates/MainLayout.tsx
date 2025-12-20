@@ -23,10 +23,10 @@ const navigation = [
   { name: 'dashboard', href: '/', icon: LayoutDashboard },
   { name: 'games', href: '/games', icon: Gamepad2 },
   { name: 'levels', href: '/levels', icon: Trophy },
+  { name: 'purchaseEvents', href: '/purchase-events', icon: ShoppingCart },
   { name: 'accounts', href: '/accounts', icon: Users },
   { name: 'accountsDetail', href: '/accounts/detail', icon: FileText },
   { name: 'requests', href: '/requests', icon: FileText },
-  { name: 'purchaseEvents', href: '/purchase-events', icon: ShoppingCart },
   { name: 'events', href: '/events', icon: Calendar },
 ];
 

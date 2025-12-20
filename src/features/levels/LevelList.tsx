@@ -41,11 +41,14 @@ export function LevelList() {
   const { t } = useTranslation();
   const { games } = useGames();
   const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
+
+  // default layout is vertical (automatic)
+  const [layout, setLayout] = useState<Layout>('vertical');
+
   const { levels = [], loading, deleteLevel } = useLevels(selectedGameId);
   const [showForm, setShowForm] = useState(false);
   const [editingLevel, setEditingLevel] = useState<Level | null>(null);
   const [deletingLevel, setDeletingLevel] = useState<Level | null>(null);
-  const [layout, setLayout] = useState<Layout>('horizontal');
 
   useEffect(() => {
     if (games.length > 0 && !selectedGameId) {
@@ -143,7 +146,7 @@ export function LevelList() {
           );
         }
 
-        // Horizontal layout (rows = levels)
+        // Horizontal layout (rows = levels) — color entire row per level
         if (layout === 'horizontal') {
           return (
             <Card>
@@ -160,25 +163,30 @@ export function LevelList() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {levels.map((level) => (
-                      <TableRow key={level.id}>
-                        <TableCell className="font-mono">{level.event_token}</TableCell>
-                        <TableCell>{level.level_name}</TableCell>
-                        <TableCell>{level.days_offset}</TableCell>
-                        <TableCell>{level.time_spent}</TableCell>
-                        <TableCell>{level.is_bonus ? (t('levels.bonusYes') ?? 'Yes') : (t('levels.bonusNo') ?? 'No')}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleEdit(level)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => setDeletingLevel(level)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {levels.map((level) => {
+                      const rowColor = level.is_bonus ? 'bg-green-50' : 'bg-blue-50';
+                      return (
+                        <TableRow key={level.id}>
+                          <TableCell className={`font-mono ${rowColor}`}>{level.event_token}</TableCell>
+                          <TableCell className={rowColor}>{level.level_name}</TableCell>
+                          <TableCell className={`text-center ${rowColor}`}>{level.days_offset}</TableCell>
+                          <TableCell className={`text-center ${rowColor}`}>{level.time_spent}</TableCell>
+                          <TableCell className={`text-center ${rowColor}`}>
+                            {level.is_bonus ? (t('levels.bonusYes') ?? 'Yes') : (t('levels.bonusNo') ?? 'No')}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button variant="ghost" size="icon" onClick={() => handleEdit(level)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => setDeletingLevel(level)}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -186,7 +194,7 @@ export function LevelList() {
           );
         }
 
-        // Vertical / pivot layout (columns = levels)
+        // Vertical / pivot layout (columns = levels) — color column cells for each level
         return (
           <Card>
             <CardContent className="p-0 overflow-auto">
@@ -195,7 +203,10 @@ export function LevelList() {
                   <TableRow>
                     <TableHead>{t('levels.eventToken')}</TableHead>
                     {levels.map((level) => (
-                      <TableHead key={level.id} className="text-center font-mono">
+                      <TableHead
+                        key={level.id}
+                        className={`text-center font-mono ${level.is_bonus ? 'bg-green-50' : 'bg-blue-50'}`}
+                      >
                         {level.event_token}
                       </TableHead>
                     ))}
@@ -206,7 +217,10 @@ export function LevelList() {
                   <TableRow>
                     <TableHead>{t('levels.levelName')}</TableHead>
                     {levels.map((level) => (
-                      <TableCell key={level.id} className="text-center">
+                      <TableCell
+                        key={level.id}
+                        className={`text-center ${level.is_bonus ? 'bg-green-50' : 'bg-blue-50'}`}
+                      >
                         {level.level_name}
                       </TableCell>
                     ))}
@@ -215,7 +229,10 @@ export function LevelList() {
                   <TableRow>
                     <TableHead>{t('levels.daysOffset')}</TableHead>
                     {levels.map((level) => (
-                      <TableCell key={level.id} className="text-center">
+                      <TableCell
+                        key={level.id}
+                        className={`text-center ${level.is_bonus ? 'bg-green-50' : 'bg-blue-50'}`}
+                      >
                         {level.days_offset}
                       </TableCell>
                     ))}
@@ -224,7 +241,10 @@ export function LevelList() {
                   <TableRow>
                     <TableHead>{t('levels.timeSpent')}</TableHead>
                     {levels.map((level) => (
-                      <TableCell key={level.id} className="text-center">
+                      <TableCell
+                        key={level.id}
+                        className={`text-center ${level.is_bonus ? 'bg-green-50' : 'bg-blue-50'}`}
+                      >
                         {level.time_spent}
                       </TableCell>
                     ))}
@@ -233,7 +253,10 @@ export function LevelList() {
                   <TableRow>
                     <TableHead>{t('levels.isBonus') ?? 'Bonus'}</TableHead>
                     {levels.map((level) => (
-                      <TableCell key={level.id} className="text-center">
+                      <TableCell
+                        key={level.id}
+                        className={`text-center ${level.is_bonus ? 'bg-green-50' : 'bg-blue-50'}`}
+                      >
                         {level.is_bonus ? (t('levels.bonusYes') ?? 'Yes') : (t('levels.bonusNo') ?? 'No')}
                       </TableCell>
                     ))}

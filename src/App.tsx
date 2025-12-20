@@ -7,6 +7,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { MainLayout } from './components/templates/MainLayout';
 import Dashboard from './pages/Dashboard';
 import Games from './pages/Games';
+import GameDetail from './pages/GameDetail';
 import Accounts from './pages/Accounts';
 import Levels from './pages/Levels';
 import Requests from './pages/Requests';
@@ -31,6 +32,7 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/games" element={<Games />} />
+                <Route path="/games/:id" element={<GameDetail />} />
                 <Route path="/accounts" element={<Accounts />} />
                 <Route path="/accounts/:id" element={<AccountDetail />} />
                 <Route path="/accounts/new" element={<AccountFormPage />} />

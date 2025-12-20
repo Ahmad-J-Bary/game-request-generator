@@ -16,7 +16,13 @@ import type {
   PurchaseEvent,
   CreatePurchaseEventRequest,
   UpdatePurchaseEventRequest,
-  DailyRequestsResponse
+  DailyRequestsResponse,
+  AccountLevelProgress,
+  CreateAccountLevelProgressRequest,
+  UpdateAccountLevelProgressRequest,
+  AccountPurchaseEventProgress,
+  CreateAccountPurchaseEventProgressRequest,
+  UpdateAccountPurchaseEventProgressRequest
 } from '../types';
 
 export class TauriService {
@@ -131,6 +137,33 @@ static async deletePurchaseEvent(id: number): Promise<boolean> {
   static async getLevelDates(accountId: number): Promise<Array<[string, string, string, number]>> {
     return await invoke<Array<[string, string, string, number]>>('get_level_dates', { accountId });
   }
+
+  // ===== Level progress =====
+  static async createLevelProgress(request: CreateAccountLevelProgressRequest): Promise<void> {
+    return await invoke<void>('create_level_progress', { request });
+  }
+
+  static async updateLevelProgress(request: UpdateAccountLevelProgressRequest): Promise<boolean> {
+    return await invoke<boolean>('update_level_progress', { request });
+  }
+
+  static async getAccountLevelProgress(accountId: number): Promise<AccountLevelProgress[]> {
+    return await invoke<AccountLevelProgress[]>('get_account_level_progress', { accountId });
+  }
+
+  // ===== Purchase event progress =====
+  static async createPurchaseEventProgress(request: CreateAccountPurchaseEventProgressRequest): Promise<void> {
+    return await invoke<void>('create_purchase_event_progress', { request });
+  }
+
+  static async updatePurchaseEventProgress(request: UpdateAccountPurchaseEventProgressRequest): Promise<boolean> {
+    return await invoke<boolean>('update_purchase_event_progress', { request });
+  }
+
+  static async getAccountPurchaseEventProgress(accountId: number): Promise<AccountPurchaseEventProgress[]> {
+    return await invoke<AccountPurchaseEventProgress[]>('get_account_purchase_event_progress', { accountId });
+  }
+
 }
 
 export const tauriService = new TauriService();

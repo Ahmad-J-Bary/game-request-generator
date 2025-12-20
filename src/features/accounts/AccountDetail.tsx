@@ -1,5 +1,4 @@
 // src/features/accounts/AccountDetail.tsx
-
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -15,9 +14,13 @@ import {
 } from '../../components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { ArrowLeft } from 'lucide-react';
-import { Level, Account } from '../../types';
+import { Level, Account, PurchaseEvent } from '../../types';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
+import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
+import { AccountLevelProgressList } from '../progress/AccountLevelProgressList';
+import { PurchaseEventProgressList } from '../progress/PurchaseEventProgressList';
+import { cn } from '../../lib/utils';
 
 type Layout = 'horizontal' | 'vertical';
 
@@ -57,7 +60,8 @@ function addDays(date: Date, days: number): Date {
   return r;
 }
 
-function formatDateShort(date: Date): string {
+function formatDateShort(date: Date | null): string {
+  if (!date) return '-';
   const day = date.getDate();
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const mon = months[date.getMonth()];
@@ -70,21 +74,19 @@ export function AccountDetailPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
 
-  // try to get account & levels from location.state (fast path)
+  // fast-path state
   const state = (location.state as any) || {};
   const stateAccount: Account | undefined = state.account;
   const stateLevels: Level[] | undefined = state.levels;
 
-  // Fallback: fetch via hooks (we assume useAccounts/useLevels accept a gameId)
-  // We don't know the gameId yet — so we attempt to find the account by searching accounts across the selected game if possible.
-  // For simplicity, try to fetch accounts with no selected game (may depend on your hook implementation).
-  const { accounts } = useAccounts(undefined as any); // if your hook requires param, adapt accordingly
-  // find account by id if not in state
+  // fetch accounts (fallback)
+  const { accounts } = useAccounts(undefined as any);
   const account = stateAccount ?? accounts?.find((a) => String(a.id) === String(id));
+  const gameIdForLevels = account?.game_id ?? undefined;
 
-  // fetch levels for the account's game if stateLevels not provided
-  const gameIdForLevels = (account && (account.game_id)) || undefined;
+  // levels + purchase events for the game
   const { levels: fetchedLevels = [] } = useLevels(gameIdForLevels);
+  const { events: purchaseEvents = [] } = usePurchaseEvents(gameIdForLevels);
 
   const levels = stateLevels ?? fetchedLevels;
 
@@ -94,7 +96,8 @@ export function AccountDetailPage() {
     return parseDateFlexible(account?.start_date ?? '') || new Date();
   }, [account]);
 
-  const computedDates = useMemo(() => {
+  // computed date for each level (for this account)
+  const computedLevelDates = useMemo(() => {
     return levels.map((l) => {
       const dd = addDays(startDateObj, Number(l.days_offset || 0));
       return formatDateShort(dd);
@@ -114,8 +117,34 @@ export function AccountDetailPage() {
     );
   }
 
+  /**
+   * columns: levels first, then purchase events
+   */
+  const columns = useMemo(() => {
+    const levelCols = levels.map((l) => ({
+      kind: 'level' as const,
+      id: l.id,
+      token: l.event_token,
+      name: l.level_name,
+      daysOffset: l.days_offset,
+      timeSpent: l.time_spent,
+      isBonus: l.is_bonus,
+    }));
+
+    const purchaseCols = purchaseEvents.map((p) => ({
+      kind: 'purchase' as const,
+      id: p.id,
+      token: p.event_token,
+      name: '$$$',
+      isRestricted: p.is_restricted,
+      maxDaysOffset: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : null,
+    }));
+
+    return [...levelCols, ...purchaseCols];
+  }, [levels, purchaseEvents]);
+
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-6">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold">{account.name}</h2>
@@ -141,12 +170,13 @@ export function AccountDetailPage() {
         </div>
       </div>
 
+      {/* Combined table */}
       <Card>
         <CardContent className="overflow-auto">
-          {levels.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">No levels</div>
+          {columns.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">No levels or purchase events</div>
           ) : layout === 'horizontal' ? (
-            // Horizontal: rows = levels; extra column Account Dates
+            // Horizontal: rows = each column (level or purchase event), last column = account date (for levels)
             <Table>
               <TableHeader>
                 <TableRow>
@@ -154,31 +184,56 @@ export function AccountDetailPage() {
                   <TableHead>{t('levels.levelName') ?? 'Level Name'}</TableHead>
                   <TableHead>{t('levels.daysOffset') ?? 'Days Offset'}</TableHead>
                   <TableHead>{t('levels.timeSpent') ?? 'Time Spent (seconds)'}</TableHead>
-                  <TableHead>{'Account Dates'}</TableHead>
+                  <TableHead>{'Account Date'}</TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
-                {levels.map((l, idx) => (
-                  <TableRow key={l.id}>
-                    <TableCell className="font-mono">{l.event_token}</TableCell>
-                    <TableCell>{l.level_name}</TableCell>
-                    <TableCell>{l.days_offset}</TableCell>
-                    <TableCell>{l.time_spent}</TableCell>
-                    <TableCell>{computedDates[idx]}</TableCell>
-                  </TableRow>
-                ))}
+                {columns.map((col, idx) => {
+                  const colorClass =
+                    col.kind === 'level'
+                      ? col.isBonus ? 'bg-green-50' : 'bg-blue-50'
+                      : col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50';
+
+                  return (
+                    <TableRow key={`${col.kind}-${col.id}`}>
+                      <TableCell className={cn('font-mono', colorClass)}>{col.token}</TableCell>
+
+                      <TableCell className={colorClass}>
+                        {col.kind === 'level' ? col.name : col.name}
+                      </TableCell>
+
+                      <TableCell className={cn('text-center', colorClass)}>
+                        {col.kind === 'level' ? col.daysOffset : (col.isRestricted ? (col.maxDaysOffset ?? 'less than') : '-')}
+                      </TableCell>
+
+                      <TableCell className={cn('text-center', colorClass)}>
+                        {col.kind === 'level' ? col.timeSpent : '-'}
+                      </TableCell>
+
+                      <TableCell className={cn('text-center', colorClass)}>
+                        {col.kind === 'level' ? computedLevelDates[idx] : '-'}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           ) : (
-            // Vertical / pivot: first column labels, columns = levels
+            // Vertical pivot: labels at first column, columns = tokens
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t('levels.eventToken')}</TableHead>
-                  {levels.map((l) => (
-                    <TableHead key={l.id} className="text-center font-mono">
-                      {l.event_token}
+                  <TableHead>{t('levels.eventToken') ?? 'Event Token'}</TableHead>
+                  {columns.map((col) => (
+                    <TableHead
+                      key={`${col.kind}-${col.id}`}
+                      className={cn('text-center font-mono',
+                        col.kind === 'level' ? (col.isBonus ? 'bg-green-50' : 'bg-blue-50') :
+                        (col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50')
+                      )}
+                    >
+                      {col.token}
                     </TableHead>
                   ))}
                 </TableRow>
@@ -187,36 +242,60 @@ export function AccountDetailPage() {
               <TableBody>
                 <TableRow>
                   <TableHead>{t('levels.levelName')}</TableHead>
-                  {levels.map((l) => (
-                    <TableCell key={l.id} className="text-center">
-                      {l.level_name}
+                  {columns.map((col) => (
+                    <TableCell
+                      key={`name-${col.kind}-${col.id}`}
+                      className={cn('text-center',
+                        col.kind === 'level' ? (col.isBonus ? 'bg-green-50' : 'bg-blue-50') :
+                        (col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50')
+                      )}
+                    >
+                      {col.kind === 'level' ? col.name : col.name}
                     </TableCell>
                   ))}
                 </TableRow>
 
                 <TableRow>
                   <TableHead>{t('levels.daysOffset') ?? 'Days Offset'}</TableHead>
-                  {levels.map((l) => (
-                    <TableCell key={l.id} className="text-center">
-                      {l.days_offset}
+                  {columns.map((col) => (
+                    <TableCell
+                      key={`offset-${col.kind}-${col.id}`}
+                      className={cn('text-center',
+                        col.kind === 'level' ? (col.isBonus ? 'bg-green-50' : 'bg-blue-50') :
+                        (col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50')
+                      )}
+                    >
+                      {col.kind === 'level' ? col.daysOffset : (col.isRestricted ? (col.maxDaysOffset ?? 'less than') : '-')}
                     </TableCell>
                   ))}
                 </TableRow>
 
                 <TableRow>
                   <TableHead>{t('levels.timeSpent') ?? 'Time Spent (seconds)'}</TableHead>
-                  {levels.map((l) => (
-                    <TableCell key={l.id} className="text-center">
-                      {l.time_spent}
+                  {columns.map((col) => (
+                    <TableCell
+                      key={`time-${col.kind}-${col.id}`}
+                      className={cn('text-center',
+                        col.kind === 'level' ? (col.isBonus ? 'bg-green-50' : 'bg-blue-50') :
+                        (col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50')
+                      )}
+                    >
+                      {col.kind === 'level' ? col.timeSpent : '-'}
                     </TableCell>
                   ))}
                 </TableRow>
 
                 <TableRow>
-                  <TableHead>{'Account Dates'}</TableHead>
-                  {computedDates.map((d, idx) => (
-                    <TableCell key={idx} className="text-center">
-                      {d}
+                  <TableHead>{'Account Date'}</TableHead>
+                  {columns.map((col, idx) => (
+                    <TableCell
+                      key={`accdate-${col.kind}-${col.id}`}
+                      className={cn('text-center',
+                        col.kind === 'level' ? (col.isBonus ? 'bg-green-50' : 'bg-blue-50') :
+                        (col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50')
+                      )}
+                    >
+                      {col.kind === 'level' ? computedLevelDates[idx] : '-'}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -225,6 +304,12 @@ export function AccountDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Progress lists */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <AccountLevelProgressList accountId={account.id} levels={levels} />
+        <PurchaseEventProgressList accountId={account.id} purchaseEvents={purchaseEvents as PurchaseEvent[]} />
+      </div>
     </div>
   );
 }
