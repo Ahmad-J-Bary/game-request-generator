@@ -1,115 +1,124 @@
-import { useState, useEffect } from 'react';
+// src/features/purchase-events/PurchaseEventForm.tsx
+
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { ArrowLeft } from 'lucide-react';
 import type { PurchaseEvent, CreatePurchaseEventRequest, UpdatePurchaseEventRequest } from '../../types';
+import { toast } from 'sonner';
 
-interface PurchaseEventFormProps {
-  accountId: number;
-  event?: PurchaseEvent;
-  onSubmit: (request: CreatePurchaseEventRequest | UpdatePurchaseEventRequest) => Promise<void>;
-  onCancel: () => void;
+interface Props {
+  event?: PurchaseEvent | null;
+  gameId: number;
+  onSubmit: (req: CreatePurchaseEventRequest | UpdatePurchaseEventRequest) => Promise<void>;
+  onClose: () => void;
 }
 
-export function PurchaseEventForm({ accountId, event, onSubmit, onCancel }: PurchaseEventFormProps) {
+export function PurchaseEventForm({ event, gameId, onSubmit, onClose }: Props) {
   const { t } = useTranslation();
-  const [formData, setFormData] = useState({
-    event_token: event?.event_token || '',
-    event_name: event?.event_name || '',
-    target_date: event?.target_date || new Date().toISOString().split('T')[0],
-    time_spent: event?.time_spent || 0,
-  });
-  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (event) {
-      setFormData({
-        event_token: event.event_token,
-        event_name: event.event_name,
-        target_date: event.target_date,
-        time_spent: event.time_spent,
-      });
-    }
-  }, [event]);
+  const [eventToken, setEventToken] = useState(event?.event_token ?? '');
+  const [isRestricted, setIsRestricted] = useState<boolean>(!!event?.is_restricted);
+  const [maxDaysOffset, setMaxDaysOffset] = useState(
+    event?.max_days_offset?.toString() ?? ''
+  );
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
 
+    if (!eventToken.trim()) {
+      toast.error(t('purchaseEvents.errors.emptyToken'));
+      return;
+    }
+
+    if (isRestricted && maxDaysOffset === '') {
+      toast.error(t('purchaseEvents.errors.missingMaxDays'));
+      return;
+    }
+
+    setLoading(true);
     try {
       if (event) {
         await onSubmit({
           id: event.id,
-          ...formData,
-        } as UpdatePurchaseEventRequest);
+          event_token: eventToken,
+          is_restricted: isRestricted,
+          max_days_offset: isRestricted ? Number(maxDaysOffset) : null,
+        });
       } else {
         await onSubmit({
-          account_id: accountId,
-          ...formData,
-        } as CreatePurchaseEventRequest);
+          game_id: gameId,
+          event_token: eventToken,
+          is_restricted: isRestricted,
+          max_days_offset: isRestricted ? Number(maxDaysOffset) : null,
+        });
       }
+      onClose();
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="event_token">{t('purchaseEvents.eventToken')}</Label>
-        <Input
-          id="event_token"
-          value={formData.event_token}
-          onChange={(e) => setFormData({ ...formData, event_token: e.target.value })}
-          placeholder={t('purchaseEvents.eventTokenPlaceholder')}
-          required
-        />
-      </div>
+    <div className="space-y-4">
+      <Button variant="ghost" onClick={onClose}>
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        {t('common.back')}
+      </Button>
 
-      <div className="space-y-2">
-        <Label htmlFor="event_name">{t('purchaseEvents.eventName')}</Label>
-        <Input
-          id="event_name"
-          value={formData.event_name}
-          onChange={(e) => setFormData({ ...formData, event_name: e.target.value })}
-          placeholder={t('purchaseEvents.eventNamePlaceholder')}
-          required
-        />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {event ? t('purchaseEvents.editEvent') : t('purchaseEvents.addEvent')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>{t('purchaseEvents.eventToken')}</Label>
+              <Input
+                value={eventToken}
+                onChange={e => setEventToken(e.target.value)}
+                required
+              />
+            </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="target_date">{t('purchaseEvents.targetDate')}</Label>
-        <Input
-          id="target_date"
-          type="date"
-          value={formData.target_date}
-          onChange={(e) => setFormData({ ...formData, target_date: e.target.value })}
-          required
-        />
-      </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isRestricted}
+                onChange={e => setIsRestricted(e.target.checked)}
+              />
+              <Label>{t('purchaseEvents.isRestricted')}</Label>
+            </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="time_spent">{t('purchaseEvents.timeSpent')}</Label>
-        <Input
-          id="time_spent"
-          type="number"
-          value={formData.time_spent}
-          onChange={(e) => setFormData({ ...formData, time_spent: parseInt(e.target.value) || 0 })}
-          placeholder={t('purchaseEvents.timeSpentPlaceholder')}
-          required
-          min="0"
-        />
-      </div>
+            {isRestricted && (
+              <div className="space-y-2">
+                <Label>{t('purchaseEvents.maxDaysOffset')}</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={maxDaysOffset}
+                  onChange={e => setMaxDaysOffset(e.target.value)}
+                />
+              </div>
+            )}
 
-      <div className="flex gap-2 justify-end">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
-          {t('common.cancel')}
-        </Button>
-        <Button type="submit" disabled={submitting}>
-          {submitting ? t('common.saving') : event ? t('common.update') : t('common.add')}
-        </Button>
-      </div>
-    </form>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={loading}>
+                {loading ? t('common.loading') : t('common.save')}
+              </Button>
+              <Button type="button" variant="outline" onClick={onClose}>
+                {t('common.cancel')}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

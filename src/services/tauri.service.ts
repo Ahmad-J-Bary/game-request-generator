@@ -93,21 +93,27 @@ static async addLevel(request: CreateLevelRequest): Promise<number> {
   }
 
   // ========== Purchase Event Commands (NEW) ==========
-  static async addPurchaseEvent(request: CreatePurchaseEventRequest): Promise<number> {
-    return await invoke<number>('add_purchase_event', { request });
-  }
+// GET purchase events for a game
+static async getGamePurchaseEvents(gameId: number): Promise<PurchaseEvent[]> {
+  return await invoke<PurchaseEvent[]>('get_game_purchase_events', { gameId });
+}
 
-  static async getPurchaseEvents(accountId: number): Promise<PurchaseEvent[]> {
-    return await invoke<PurchaseEvent[]>('get_purchase_events', { accountId });
-  }
+// add purchase event
+static async addPurchaseEvent(request: CreatePurchaseEventRequest): Promise<number> {
+  return await invoke<number>('add_purchase_event', { request });
+}
 
-  static async updatePurchaseEvent(request: UpdatePurchaseEventRequest): Promise<boolean> {
-    return await invoke<boolean>('update_purchase_event', { request });
-  }
+static async getPurchaseEventById(id: number): Promise<PurchaseEvent | null> {
+  return await invoke<PurchaseEvent | null>('get_purchase_event_by_id', { id });
+}
 
-  static async deletePurchaseEvent(id: number): Promise<boolean> {
-    return await invoke<boolean>('delete_purchase_event', { id });
-  }
+static async updatePurchaseEvent(request: UpdatePurchaseEventRequest): Promise<boolean> {
+  return await invoke<boolean>('update_purchase_event', { request });
+}
+
+static async deletePurchaseEvent(id: number): Promise<boolean> {
+  return await invoke<boolean>('delete_purchase_event', { id });
+}
 
   // ========== Request Generation Commands (UPDATED) ==========
   static async generateDailyRequest(data: GenerateRequestData): Promise<string> {

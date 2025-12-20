@@ -15,6 +15,7 @@ import Events from './pages/Events';
 import AccountDetail from './pages/AccountDetail';
 import AccountFormPage from './pages/AccountFormPage';
 import AccountsDetail from './pages/AccountsDetail';
+import PurchaseEventDetail from './pages/PurchaseEventDetail';
 import './i18n';
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
                 <Route path="/levels" element={<Levels />} />
                 <Route path="/requests" element={<Requests />} />
                 <Route path="/purchase-events" element={<PurchaseEvents />} />
+                <Route path="/purchase-events/:id" element={<PurchaseEventDetail />} />
                 <Route path="/events" element={<Events />} />
               </Routes>
             </MainLayout>

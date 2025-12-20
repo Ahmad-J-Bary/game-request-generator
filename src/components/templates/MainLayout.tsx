@@ -1,6 +1,6 @@
 // src/components/templates/MainLayout.tsx
 import { ReactNode } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   LayoutDashboard, 
@@ -31,7 +31,6 @@ const navigation = [
 ];
 
 export function MainLayout({ children }: MainLayoutProps) {
-  const location = useLocation();
   const { t } = useTranslation();
 
   return (

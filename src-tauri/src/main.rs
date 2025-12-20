@@ -1,3 +1,5 @@
+// src-tauri/src/main.rs
+
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod db;
@@ -12,14 +14,18 @@ use db::Database;
 use models::game::{Game, CreateGameRequest, UpdateGameRequest};
 use models::level::{Level, CreateLevelRequest, UpdateLevelRequest};
 use models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
+use models::purchase_event::{PurchaseEvent, CreatePurchaseEventRequest, UpdatePurchaseEventRequest};
+use models::progress::*;
 
 use services::game_service::GameService;
 use services::level_service::LevelService;
 use services::account_service::AccountService;
+use services::purchase_event_service::PurchaseEventService;
+use services::progress_service::ProgressService;
 
 // === حالة التطبيق ===
 struct AppState {
-    db: Mutex<Database>, // الآن نخزّن Database بدل Connection
+    db: Mutex<Database>,
 }
 
 fn main() {
@@ -27,9 +33,8 @@ fn main() {
         .setup(|app| {
             let handle = app.handle();
 
-            // إنشاء أو فتح قاعدة البيانات عبر Database wrapper
             let db = Database::new(&handle)?;
-            db.init()?; // ينشئ الجداول إن لم تكن موجودة
+            db.init()?;
 
             app.manage(AppState {
                 db: Mutex::new(db),
@@ -58,12 +63,29 @@ fn main() {
             get_account_by_id,
             update_account,
             delete_account,
+            
+            // أوامر أحداث الشراء
+            add_purchase_event,
+            get_game_purchase_events,
+            get_purchase_event_by_id,
+            update_purchase_event,
+            delete_purchase_event,
+            
+            // أوامر تقدم المستويات
+            create_level_progress,
+            update_level_progress,
+            get_account_level_progress,
+            
+            // أوامر تقدم أحداث الشراء
+            create_purchase_event_progress,
+            update_purchase_event_progress,
+            get_account_purchase_event_progress,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-// === ألعاب ===
+// ==================== أوامر الألعاب ====================
 #[tauri::command]
 fn add_game(state: tauri::State<AppState>, request: CreateGameRequest) -> Result<i64, String> {
     let db_guard = state.db.lock().unwrap();
@@ -104,7 +126,7 @@ fn delete_game(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
     service.delete_game(conn, id)
 }
 
-// === أوامر المستويات ===
+// ==================== أوامر المستويات ====================
 #[tauri::command]
 fn add_level(state: tauri::State<AppState>, request: CreateLevelRequest) -> Result<i64, String> {
     let db_guard = state.db.lock().unwrap();
@@ -145,7 +167,7 @@ fn delete_level(state: tauri::State<AppState>, id: i64) -> Result<bool, String> 
     service.delete_level(conn, id)
 }
 
-// === أوامر الحسابات ===
+// ==================== أوامر الحسابات ====================
 #[tauri::command]
 fn add_account(state: tauri::State<AppState>, request: CreateAccountRequest) -> Result<i64, String> {
     let db_guard = state.db.lock().unwrap();
@@ -184,4 +206,95 @@ fn delete_account(state: tauri::State<AppState>, id: i64) -> Result<bool, String
     let conn = db_guard.get_connection();
     let service = AccountService::new();
     service.delete_account(conn, id)
+}
+
+// ==================== أوامر أحداث الشراء ====================
+#[tauri::command]
+fn add_purchase_event(state: tauri::State<AppState>, request: CreatePurchaseEventRequest) -> Result<i64, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = PurchaseEventService::new();
+    service.create_purchase_event(conn, request)
+}
+
+#[tauri::command]
+fn get_game_purchase_events(state: tauri::State<AppState>, game_id: i64) -> Result<Vec<PurchaseEvent>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = PurchaseEventService::new();
+    service.get_purchase_events_by_game(conn, game_id)
+}
+
+#[tauri::command]
+fn get_purchase_event_by_id(state: tauri::State<AppState>, id: i64) -> Result<Option<PurchaseEvent>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = PurchaseEventService::new();
+    service.get_purchase_event_by_id(conn, id)
+}
+
+#[tauri::command]
+fn update_purchase_event(state: tauri::State<AppState>, request: UpdatePurchaseEventRequest) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = PurchaseEventService::new();
+    service.update_purchase_event(conn, request)
+}
+
+#[tauri::command]
+fn delete_purchase_event(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = PurchaseEventService::new();
+    service.delete_purchase_event(conn, id)
+}
+
+// ==================== أوامر تقدم المستويات ====================
+#[tauri::command]
+fn create_level_progress(state: tauri::State<AppState>, request: CreateAccountLevelProgressRequest) -> Result<(), String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = ProgressService::new();
+    service.create_or_update_level_progress(conn, request)
+}
+
+#[tauri::command]
+fn update_level_progress(state: tauri::State<AppState>, request: UpdateAccountLevelProgressRequest) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = ProgressService::new();
+    service.update_level_progress(conn, request)
+}
+
+#[tauri::command]
+fn get_account_level_progress(state: tauri::State<AppState>, account_id: i64) -> Result<Vec<AccountLevelProgress>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = ProgressService::new();
+    service.get_account_level_progress(conn, account_id)
+}
+
+// ==================== أوامر تقدم أحداث الشراء ====================
+#[tauri::command]
+fn create_purchase_event_progress(state: tauri::State<AppState>, request: CreateAccountPurchaseEventProgressRequest) -> Result<(), String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = ProgressService::new();
+    service.create_or_update_purchase_event_progress(conn, request)
+}
+
+#[tauri::command]
+fn update_purchase_event_progress(state: tauri::State<AppState>, request: UpdateAccountPurchaseEventProgressRequest) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = ProgressService::new();
+    service.update_purchase_event_progress(conn, request)
+}
+
+#[tauri::command]
+fn get_account_purchase_event_progress(state: tauri::State<AppState>, account_id: i64) -> Result<Vec<AccountPurchaseEventProgress>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = ProgressService::new();
+    service.get_account_purchase_event_progress(conn, account_id)
 }

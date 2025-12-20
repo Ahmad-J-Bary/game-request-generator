@@ -27,14 +27,15 @@ impl LevelService {
         }
 
         conn.execute(
-            "INSERT INTO levels (game_id, event_token, level_name, days_offset, time_spent)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO levels (game_id, event_token, level_name, days_offset, time_spent, is_bonus)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 request.game_id,
                 request.event_token,
                 request.level_name,
                 request.days_offset,
                 request.time_spent,
+                if request.is_bonus { 1 } else { 0 },
             ],
         )
         .map_err(|e| format!("Failed to create level: {}", e))?;
@@ -45,7 +46,7 @@ impl LevelService {
     pub fn get_levels_by_game(&self, conn: &Connection, game_id: i64) -> Result<Vec<Level>, String> {
         let mut stmt = conn
             .prepare(
-                "SELECT id, game_id, event_token, level_name, days_offset, time_spent
+                "SELECT id, game_id, event_token, level_name, days_offset, time_spent, is_bonus
                  FROM levels WHERE game_id = ?1 ORDER BY days_offset",
             )
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
@@ -59,6 +60,7 @@ impl LevelService {
                     level_name: row.get(3)?,
                     days_offset: row.get(4)?,
                     time_spent: row.get(5)?,
+                    is_bonus: row.get::<_, i32>(6)? != 0,
                 })
             })
             .map_err(|e| format!("Failed to query levels: {}", e))?;
@@ -73,7 +75,8 @@ impl LevelService {
 
     pub fn get_level_by_id(&self, conn: &Connection, id: i64) -> Result<Option<Level>, String> {
         conn.query_row(
-            "SELECT id, game_id, event_token, level_name, days_offset, time_spent FROM levels WHERE id = ?1",
+            "SELECT id, game_id, event_token, level_name, days_offset, time_spent, is_bonus 
+             FROM levels WHERE id = ?1",
             params![id],
             |row| {
                 Ok(Level {
@@ -83,6 +86,7 @@ impl LevelService {
                     level_name: row.get(3)?,
                     days_offset: row.get(4)?,
                     time_spent: row.get(5)?,
+                    is_bonus: row.get::<_, i32>(6)? != 0,
                 })
             },
         )
@@ -117,6 +121,11 @@ impl LevelService {
         if let Some(time_spent) = request.time_spent {
             updates.push("time_spent = ?");
             values.push(Box::new(time_spent));
+        }
+
+        if let Some(is_bonus) = request.is_bonus {
+            updates.push("is_bonus = ?");
+            values.push(Box::new(if is_bonus { 1 } else { 0 }));
         }
 
         if updates.is_empty() {

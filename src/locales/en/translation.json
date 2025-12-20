@@ -99,7 +99,14 @@
     "noLevels": "No levels found. Add your first level!",
     "levelDate": "Level Date",
     "viewHorizontal": "Horizontal view",
-    "viewVertical": "Vertical view"
+    "viewVertical": "Vertical view",
+    "isBonus": "Bonus",
+    "bonusYes": "Yes",
+    "bonusNo": "No",
+    "errors": {
+      "emptyFields": "Event token and level name cannot be empty",
+      "invalidNumbers": "Days offset and time spent must be numbers"
+    }
   },
   "requests": {
     "title": "Request Generator",
@@ -148,7 +155,13 @@
     "pending": "Pending",
     "noEvents": "No purchase events found. Add your first event!",
     "selectAccount": "Select Account",
-    "selectAccountDescription": "Choose a game and account to manage purchase events"
+    "selectAccountDescription": "Choose a game and account to manage purchase events",
+    "isRestricted": "Restricted",
+    "maxDaysOffset": "Max Days Offset",
+    "errors": {
+      "emptyToken": "Event token is required",
+      "missingMaxDays": "Max days offset required for restricted event"
+    }
   },
   "events": {
     "title": "Special Events",

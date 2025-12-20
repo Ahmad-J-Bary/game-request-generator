@@ -1,3 +1,5 @@
+// src/types/level.types.ts
+
 export interface Level {
   id: number;
   game_id: number;
@@ -5,6 +7,7 @@ export interface Level {
   level_name: string;
   days_offset: number;
   time_spent: number;
+  is_bonus: boolean; // جديد
 }
 
 export interface CreateLevelRequest {
@@ -13,6 +16,7 @@ export interface CreateLevelRequest {
   level_name: string;
   days_offset: number;
   time_spent: number;
+  is_bonus?: boolean; // اختياري عند الإرسال (defaults false backend)
 }
 
 export interface UpdateLevelRequest {
@@ -21,11 +25,5 @@ export interface UpdateLevelRequest {
   level_name?: string;
   days_offset?: number;
   time_spent?: number;
-}
-
-export interface LevelDate {
-  event_token: string;
-  level_name: string;
-  date: string;
-  time_spent: number;
+  is_bonus?: boolean; // جديد
 }

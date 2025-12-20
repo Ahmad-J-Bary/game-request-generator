@@ -1,126 +1,164 @@
+// src/features/purchase-events/PurchaseEventList.tsx
+
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pencil, Trash2, Calendar, Clock } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Badge } from '../../components/ui/badge';
+import { Card, CardContent } from '../../components/ui/card';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../../components/ui/alert-dialog';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/table';
+import { Pencil, Trash2 } from 'lucide-react';
 import type { PurchaseEvent } from '../../types';
 
-interface PurchaseEventListProps {
+type Layout = 'horizontal' | 'vertical';
+
+interface Props {
   events: PurchaseEvent[];
+  loading: boolean;
   onEdit: (event: PurchaseEvent) => void;
-  onDelete: (id: number) => void;
-  loading?: boolean;
+  onDelete: (id: number) => Promise<boolean>;
 }
 
-export function PurchaseEventList({ events, onEdit, onDelete, loading }: PurchaseEventListProps) {
+export function PurchaseEventList({
+  events,
+  loading,
+  onEdit,
+  onDelete,
+}: Props) {
   const { t } = useTranslation();
-  const [deleteId, setDeleteId] = useState<number | null>(null);
-
-  const handleDelete = () => {
-    if (deleteId !== null) {
-      onDelete(deleteId);
-      setDeleteId(null);
-    }
-  };
+  const [layout] = useState<Layout>('horizontal');
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <div className="text-center py-8">{t('common.loading')}</div>;
   }
 
   if (events.length === 0) {
     return (
       <Card>
-        <CardContent className="flex flex-col items-center justify-center p-8 text-center">
-          <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">{t('purchaseEvents.noEvents')}</p>
+        <CardContent className="py-8 text-center text-muted-foreground">
+          {t('purchaseEvents.noEvents')}
         </CardContent>
       </Card>
     );
   }
 
-  return (
-    <>
-      <div className="grid gap-4">
-        {events.map((event) => (
-          <Card key={event.id}>
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <CardTitle className="text-lg">{event.event_name}</CardTitle>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    <span>{event.target_date}</span>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onEdit(event)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setDeleteId(event.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span>{event.time_spent} {t('common.seconds')}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={event.is_completed ? 'default' : 'secondary'}>
-                    {event.is_completed ? t('purchaseEvents.completed') : t('purchaseEvents.pending')}
-                  </Badge>
-                </div>
-              </div>
-              <div className="mt-3 p-2 bg-muted rounded text-xs font-mono break-all">
-                {event.event_token}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+  // Horizontal layout
+  if (layout === 'horizontal') {
+    return (
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('purchaseEvents.eventToken')}</TableHead>
+                <TableHead>{t('purchaseEvents.isRestricted')}</TableHead>
+                <TableHead>{t('purchaseEvents.maxDaysOffset')}</TableHead>
+                <TableHead className="text-right">{t('common.actions')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {events.map(event => (
+                <TableRow key={event.id}>
+                  <TableCell className="font-mono">
+                    {event.event_token}
+                  </TableCell>
+                  <TableCell>
+                    {event.is_restricted ? t('common.yes') : t('common.no')}
+                  </TableCell>
+                  <TableCell>{event.max_days_offset ?? '-'}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onEdit(event)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDelete(event.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    );
+  }
 
-      <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('purchaseEvents.deleteTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('purchaseEvents.deleteDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>
-              {t('common.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+  // Vertical / pivot layout
+  return (
+    <Card>
+      <CardContent className="p-0 overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('purchaseEvents.eventToken')}</TableHead>
+              {events.map(ev => (
+                <TableHead key={ev.id} className="text-center font-mono">
+                  {ev.event_token}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+
+          <TableBody>
+            <TableRow>
+              <TableHead>{t('purchaseEvents.isRestricted')}</TableHead>
+              {events.map(ev => (
+                <TableCell key={ev.id} className="text-center">
+                  {ev.is_restricted ? t('common.yes') : t('common.no')}
+                </TableCell>
+              ))}
+            </TableRow>
+
+            <TableRow>
+              <TableHead>{t('purchaseEvents.maxDaysOffset')}</TableHead>
+              {events.map(ev => (
+                <TableCell key={ev.id} className="text-center">
+                  {ev.max_days_offset ?? '-'}
+                </TableCell>
+              ))}
+            </TableRow>
+
+            <TableRow>
+              <TableHead>{t('common.actions')}</TableHead>
+              {events.map(ev => (
+                <TableCell key={ev.id} className="text-center">
+                  <div className="flex justify-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEdit(ev)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDelete(ev.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }

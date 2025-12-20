@@ -1,10 +1,8 @@
+// src/hooks/usePurchaseEvents.ts
+
 import { useState, useEffect, useCallback } from 'react';
 import { TauriService } from '../services/tauri.service';
-import type {
-  PurchaseEvent,
-  CreatePurchaseEventRequest,
-  UpdatePurchaseEventRequest,
-} from '../types';
+import type { PurchaseEvent, CreatePurchaseEventRequest, UpdatePurchaseEventRequest } from '../types';
 import { toast } from 'sonner';
 
 function extractErrorMessage(err: any): string {
@@ -16,22 +14,21 @@ function extractErrorMessage(err: any): string {
   try { return JSON.stringify(err); } catch { return String(err); }
 }
 
-export const usePurchaseEvents = (accountId?: number) => {
-  const [purchaseEvents, setPurchaseEvents] = useState<PurchaseEvent[]>([]);
+export const usePurchaseEvents = (gameId?: number) => {
+  const [events, setEvents] = useState<PurchaseEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadPurchaseEvents = useCallback(async () => {
-    if (!accountId) {
-      setPurchaseEvents([]);
+  const load = useCallback(async () => {
+    if (!gameId) {
+      setEvents([]);
       return;
     }
-
     setLoading(true);
     setError(null);
     try {
-      const events = await TauriService.getPurchaseEvents(accountId);
-      setPurchaseEvents(events);
+      const data = await TauriService.getGamePurchaseEvents(gameId);
+      setEvents(data);
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
@@ -39,35 +36,27 @@ export const usePurchaseEvents = (accountId?: number) => {
     } finally {
       setLoading(false);
     }
-  }, [accountId]);
+  }, [gameId]);
 
   useEffect(() => {
-    loadPurchaseEvents();
-
+    load();
     const handler = (e: any) => {
-      const detailAccountId = e?.detail?.accountId;
-      if (detailAccountId === undefined || detailAccountId === accountId) {
-        loadPurchaseEvents();
-      }
+      const detailGameId = e?.detail?.gameId;
+      if (detailGameId === undefined || detailGameId === gameId) load();
     };
-
     window.addEventListener('purchase-events-updated', handler);
     return () => window.removeEventListener('purchase-events-updated', handler);
-  }, [loadPurchaseEvents, accountId]);
+  }, [gameId, load]);
 
-  const addPurchaseEvent = async (request: CreatePurchaseEventRequest) => {
+  const add = async (request: CreatePurchaseEventRequest) => {
     setLoading(true);
     setError(null);
     try {
       const id = await TauriService.addPurchaseEvent(request);
-      toast.success('Purchase event added successfully');
-      window.dispatchEvent(
-        new CustomEvent('purchase-events-updated', {
-          detail: { accountId: request.account_id, id },
-        })
-      );
-      await loadPurchaseEvents();
-      return true;
+      toast.success('Purchase event added');
+      window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { gameId: request.game_id, id } }));
+      await load();
+      return id;
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
@@ -78,21 +67,18 @@ export const usePurchaseEvents = (accountId?: number) => {
     }
   };
 
-  const updatePurchaseEvent = async (request: UpdatePurchaseEventRequest) => {
+  const update = async (request: UpdatePurchaseEventRequest & { game_id?: number }) => {
     setLoading(true);
     setError(null);
     try {
-      const success = await TauriService.updatePurchaseEvent(request);
-      if (success) {
-        toast.success('Purchase event updated successfully');
-        window.dispatchEvent(
-          new CustomEvent('purchase-events-updated', {
-            detail: { accountId, id: request.id },
-          })
-        );
-        await loadPurchaseEvents();
+      const ok = await TauriService.updatePurchaseEvent(request);
+      if (ok) {
+        toast.success('Purchase event updated');
+        const detailGameId = request.game_id ?? gameId;
+        window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { gameId: detailGameId, id: request.id } }));
+        await load();
       }
-      return success;
+      return ok;
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
@@ -103,21 +89,17 @@ export const usePurchaseEvents = (accountId?: number) => {
     }
   };
 
-  const deletePurchaseEvent = async (id: number) => {
+  const remove = async (id: number) => {
     setLoading(true);
     setError(null);
     try {
-      const success = await TauriService.deletePurchaseEvent(id);
-      if (success) {
-        toast.success('Purchase event deleted successfully');
-        window.dispatchEvent(
-          new CustomEvent('purchase-events-updated', {
-            detail: { accountId, id },
-          })
-        );
-        await loadPurchaseEvents();
+      const ok = await TauriService.deletePurchaseEvent(id);
+      if (ok) {
+        toast.success('Purchase event deleted');
+        window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { gameId } }));
+        await load();
       }
-      return success;
+      return ok;
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
@@ -129,12 +111,12 @@ export const usePurchaseEvents = (accountId?: number) => {
   };
 
   return {
-    purchaseEvents,
+    events,
     loading,
     error,
-    addPurchaseEvent,
-    updatePurchaseEvent,
-    deletePurchaseEvent,
-    refreshPurchaseEvents: loadPurchaseEvents,
+    addPurchaseEvent: add,
+    updatePurchaseEvent: update,
+    deletePurchaseEvent: remove,
+    refresh: load,
   };
 };

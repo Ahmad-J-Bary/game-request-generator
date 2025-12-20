@@ -99,7 +99,14 @@
     "noLevels": "لا توجد مستويات. أضف مستواك الأول!",
     "levelDate": "تاريخ المستوى",
     "viewHorizontal": "عرض أفقي",
-    "viewVertical": "عرض عمودي"
+    "viewVertical": "عرض عمودي",
+    "isBonus": "مكافأة",
+    "bonusYes": "نعم",
+    "bonusNo": "لا",
+    "errors": {
+      "emptyFields": "لا يمكن أن يكون رمز الحدث واسم المستوى فارغين",
+      "invalidNumbers": "يجب أن يكون كل من إزاحة الأيام والوقت المستغرق أرقامًا"
+    }
   },
   "requests": {
     "title": "مولد الطلبات",
@@ -148,7 +155,13 @@
     "pending": "قيد الانتظار",
     "noEvents": "لا توجد أحداث شراء. أضف حدثك الأول!",
     "selectAccount": "اختر حساب",
-    "selectAccountDescription": "اختر لعبة وحساب لإدارة أحداث الشراء"
+    "selectAccountDescription": "اختر لعبة وحساب لإدارة أحداث الشراء",
+    "isRestricted": "مُقيّد",
+    "maxDaysOffset": "أقصى أيام الإزاحة",
+    "errors": {
+      "emptyToken": "رمز الحدث مطلوب",
+      "missingMaxDays": "أقصى أيام إزاحة مطلوبة للحدث المُقيّد"
+    }
   },
   "events": {
     "title": "الأحداث الخاصة",

@@ -155,6 +155,7 @@ export function LevelList() {
                       <TableHead>{t('levels.levelName')}</TableHead>
                       <TableHead>{t('levels.daysOffset')}</TableHead>
                       <TableHead>{t('levels.timeSpent')}</TableHead>
+                      <TableHead>{t('levels.isBonus') ?? 'Bonus'}</TableHead>
                       <TableHead className="text-right">{t('common.actions')}</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -165,6 +166,7 @@ export function LevelList() {
                         <TableCell>{level.level_name}</TableCell>
                         <TableCell>{level.days_offset}</TableCell>
                         <TableCell>{level.time_spent}</TableCell>
+                        <TableCell>{level.is_bonus ? (t('levels.bonusYes') ?? 'Yes') : (t('levels.bonusNo') ?? 'No')}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button variant="ghost" size="icon" onClick={() => handleEdit(level)}>
@@ -224,6 +226,15 @@ export function LevelList() {
                     {levels.map((level) => (
                       <TableCell key={level.id} className="text-center">
                         {level.time_spent}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+
+                  <TableRow>
+                    <TableHead>{t('levels.isBonus') ?? 'Bonus'}</TableHead>
+                    {levels.map((level) => (
+                      <TableCell key={level.id} className="text-center">
+                        {level.is_bonus ? (t('levels.bonusYes') ?? 'Yes') : (t('levels.bonusNo') ?? 'No')}
                       </TableCell>
                     ))}
                   </TableRow>

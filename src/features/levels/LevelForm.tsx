@@ -24,50 +24,50 @@ export function LevelForm({ level, gameId, onClose }: LevelFormProps) {
   const [levelName, setLevelName] = useState(level?.level_name || '');
   const [daysOffset, setDaysOffset] = useState(level?.days_offset?.toString() || '0');
   const [timeSpent, setTimeSpent] = useState(level?.time_spent?.toString() || '0');
+  const [isBonus, setIsBonus] = useState<boolean>(!!level?.is_bonus);
   const [loading, setLoading] = useState(false);
 
-const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // تحقق من المدخلات
     if (!eventToken.trim() || !levelName.trim()) {
-        toast.error("Event token and level name cannot be empty");
-        return;
+      toast.error(t('levels.errors.emptyFields') ?? 'Event token and level name cannot be empty');
+      return;
     }
 
-    // تحقق من القيم الرقمية
     if (isNaN(Number(daysOffset)) || isNaN(Number(timeSpent))) {
-        toast.error("Days offset and time spent must be numbers");
-        return;
+      toast.error(t('levels.errors.invalidNumbers') ?? 'Days offset and time spent must be numbers');
+      return;
     }
 
     setLoading(true);
     try {
-        if (level) {
-            await updateLevel({
-                id: level.id,
-                event_token: eventToken,
-                level_name: levelName,
-                days_offset: Number(daysOffset),
-                time_spent: Number(timeSpent),
-            });
-        } else {
-            await addLevel({
-                game_id: gameId!,
-                event_token: eventToken,
-                level_name: levelName,
-                days_offset: Number(daysOffset),
-                time_spent: Number(timeSpent),
-            });
-        }
-        onClose();  // Close form after success
+      if (level) {
+        await updateLevel({
+          id: level.id,
+          event_token: eventToken,
+          level_name: levelName,
+          days_offset: Number(daysOffset),
+          time_spent: Number(timeSpent),
+          is_bonus: isBonus,
+        });
+      } else {
+        await addLevel({
+          game_id: gameId!,
+          event_token: eventToken,
+          level_name: levelName,
+          days_offset: Number(daysOffset),
+          time_spent: Number(timeSpent),
+          is_bonus: isBonus,
+        });
+      }
+      onClose();
     } catch (error) {
-        console.error('Failed to save level:', error);
+      console.error('Failed to save level:', error);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
-};
-
+  };
 
   return (
     <div className="space-y-4">
@@ -134,6 +134,18 @@ const handleSubmit = async (e: React.FormEvent) => {
                   min="0"
                 />
               </div>
+            </div>
+
+            {/* Bonus checkbox */}
+            <div className="flex items-center gap-2">
+              <input
+                id="isBonus"
+                type="checkbox"
+                checked={isBonus}
+                onChange={(e) => setIsBonus(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <Label htmlFor="isBonus" className="mb-0">{t('levels.isBonus') ?? 'Bonus level'}</Label>
             </div>
 
             <div className="flex gap-2">
