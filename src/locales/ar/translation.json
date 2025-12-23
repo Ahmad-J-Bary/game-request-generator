@@ -21,7 +21,11 @@
     "noData": "لا توجد بيانات متاحة",
     "selectDate": "اختر التاريخ",
     "actions": "الإجراءات",
-    "seconds": "ثانية"
+    "seconds": "ثانية",
+    "yes": "نعم",
+    "no": "لا",
+    "view": "عرض",
+    "createdAt": "تاريخ الإنشاء"
   },
   "nav": {
     "dashboard": "لوحة التحكم",
@@ -56,7 +60,11 @@
     "addSuccess": "تمت إضافة اللعبة بنجاح",
     "updateSuccess": "تم تحديث اللعبة بنجاح",
     "noGames": "لا توجد ألعاب. أضف لعبتك الأولى!",
-    "selectGame": "اختر لعبة"
+    "selectGame": "اختر لعبة",
+    "viewDetails": "عرض التفاصيل",
+    "detailTitle": "تفاصيل اللعبة",
+    "detailSubtitle": "نظرة عامة على المستويات وأحداث الشراء",
+    "noDetails": "لا توجد مستويات أو أحداث شراء"
   },
   "accounts": {
     "title": "الحسابات",
@@ -77,7 +85,9 @@
     "updateSuccess": "تم تحديث الحساب بنجاح",
     "noAccounts": "لا توجد حسابات. أضف حسابك الأول!",
     "detailTitle": "تفاصيل الحسابات",
-    "detailSubtitle": "عرض تفصيلي لمستويات الحسابات (عمودي / أفقي)"
+    "detailSubtitle": "عرض تفصيلي لمستويات الحسابات (عمودي / أفقي)",
+    "viewDetails": "عرض التفاصيل",
+    "account": "الحساب"
   },
   "levels": {
     "title": "المستويات",
@@ -90,7 +100,7 @@
     "levelNamePlaceholder": "مثال: L30",
     "daysOffset": "عدد الأيام",
     "daysOffsetPlaceholder": "عدد الأيام من البداية",
-    "timeSpent": "الوقت المستغرق (بالثواني)",
+    "timeSpent": "الوقت المستغرق (1000 ثانية)",
     "timeSpentPlaceholder": "مثال: 35971",
     "deleteConfirm": "هل أنت متأكد من حذف هذا المستوى؟",
     "deleteSuccess": "تم حذف المستوى بنجاح",
@@ -98,11 +108,13 @@
     "updateSuccess": "تم تحديث المستوى بنجاح",
     "noLevels": "لا توجد مستويات. أضف مستواك الأول!",
     "levelDate": "تاريخ المستوى",
+    "view": "العرض",
     "viewHorizontal": "عرض أفقي",
     "viewVertical": "عرض عمودي",
     "isBonus": "مكافأة",
     "bonusYes": "نعم",
     "bonusNo": "لا",
+    "accountDate": "تاريخ ووقت الحساب",
     "errors": {
       "emptyFields": "لا يمكن أن يكون رمز الحدث واسم المستوى فارغين",
       "invalidNumbers": "يجب أن يكون كل من إزاحة الأيام والوقت المستغرق أرقامًا"
@@ -142,14 +154,16 @@
     "description": "إدارة أحداث الشراء للحسابات",
     "addEvent": "إضافة حدث شراء",
     "editEvent": "تعديل حدث شراء",
+    "deleteEvent": "حذف حدث الشراء",
     "deleteTitle": "حذف حدث الشراء",
     "deleteDescription": "هل أنت متأكد من حذف حدث الشراء هذا؟ لا يمكن التراجع عن هذا الإجراء.",
+    "deleteConfirm": "هل أنت متأكد من حذف حدث الشراء هذا؟",
     "eventToken": "رمز الحدث",
     "eventTokenPlaceholder": "مثال: purchase_token_123",
     "eventName": "اسم الحدث",
     "eventNamePlaceholder": "مثال: شراء خاص",
     "targetDate": "التاريخ المستهدف",
-    "timeSpent": "الوقت المستغرق (بالثواني)",
+    "timeSpent": "الوقت المستغرق (1000 ثانية)",
     "timeSpentPlaceholder": "مثال: 45000",
     "completed": "مكتمل",
     "pending": "قيد الانتظار",
@@ -158,6 +172,8 @@
     "selectAccountDescription": "اختر لعبة وحساب لإدارة أحداث الشراء",
     "isRestricted": "مُقيّد",
     "maxDaysOffset": "أقصى أيام الإزاحة",
+    "maxDaysOffsetPlaceholder": "مثال: 15",
+    "detail": "تفاصيل حدث الشراء",
     "errors": {
       "emptyToken": "رمز الحدث مطلوب",
       "missingMaxDays": "أقصى أيام إزاحة مطلوبة للحدث المُقيّد"
@@ -197,5 +213,22 @@
     "saveFailed": "فشل في حفظ البيانات",
     "deleteFailed": "فشل في حذف البيانات",
     "generateFailed": "فشل في توليد الطلب"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "reset": "إعادة تعيين إلى الافتراضي",
+    "colors": {
+      "title": "إعدادات الألوان",
+      "description": "تخصيص الألوان للمستويات وأحداث الشراء",
+      "levelBonus": "مستوى مع مكافأة",
+      "levelNormal": "مستوى بدون مكافأة",
+      "purchaseRestricted": "حدث شراء مُقيّد",
+      "purchaseUnrestricted": "حدث شراء غير مُقيّد"
+    }
+  },
+  "progress": {
+    "levelsTitle": "تقدم المستويات",
+    "purchaseTitle": "تقدم أحداث الشراء",
+    "ensure": "تأكيد"
   }
 }

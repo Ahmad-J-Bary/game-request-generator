@@ -1,14 +1,11 @@
-// src/features/games/GameForm.tsx
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useGames } from '../../hooks/useGames';
 import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { ArrowLeft } from 'lucide-react';
-import { Game } from '../../types';
+import { Game, CreateGameRequest, UpdateGameRequest } from '../../types';
 
 interface GameFormProps {
   game?: Game | null;
@@ -21,32 +18,38 @@ export function GameForm({ game, onClose }: GameFormProps) {
   const [name, setName] = useState(game?.name || '');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (game) {
+      setName(game.name);
+    }
+  }, [game]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim()) return;
+
     setLoading(true);
-
-    const success = game
-      ? await updateGame({ id: game.id, name })
-      : await addGame({ name });
-
-    setLoading(false);
-    if (success) {
+    try {
+      if (game) {
+        const request: UpdateGameRequest = { id: game.id, name };
+        await updateGame(request);
+      } else {
+        const request: CreateGameRequest = { name };
+        await addGame(request);
+      }
       onClose();
+    } catch (err) {
+      console.error('Failed to save game', err);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="space-y-4">
-      <Button variant="ghost" onClick={onClose}>
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        {t('common.back')}
-      </Button>
-
       <Card>
         <CardHeader>
-          <CardTitle>
-            {game ? t('games.editGame') : t('games.addGame')}
-          </CardTitle>
+          <CardTitle>{game ? t('games.editGame') : t('games.addGame')}</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -55,18 +58,18 @@ export function GameForm({ game, onClose }: GameFormProps) {
               <Input
                 id="name"
                 value={name}
-                onChange={e => setName(e.target.value)}
+                onChange={(e) => setName(e.target.value)}
                 placeholder={t('games.gameNamePlaceholder')}
                 required
               />
             </div>
 
-            <div className="flex gap-2">
-              <Button type="submit" disabled={loading}>
-                {loading ? t('common.loading') : t('common.save')}
-              </Button>
+            <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={loading || !name.trim()}>
+                {game ? t('common.update') : t('common.add')}
               </Button>
             </div>
           </form>
@@ -75,3 +78,4 @@ export function GameForm({ game, onClose }: GameFormProps) {
     </div>
   );
 }
+

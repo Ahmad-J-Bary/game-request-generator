@@ -1,5 +1,3 @@
-// src/features/games/GameList.tsx
-
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -20,7 +18,7 @@ import { Plus, Pencil, Trash2, Eye } from 'lucide-react';
 import { GameForm } from './GameForm';
 import { Game } from '../../types';
 
-export function GameList() {
+export default function GameListPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { games, loading, deleteGame } = useGames();
@@ -75,7 +73,6 @@ export function GameList() {
                 <CardTitle className="flex items-center justify-between">
                   <span>{game.name}</span>
                   <div className="flex gap-2">
-                    {/* Eye button --> navigate to game detail page */}
                     <Button
                       variant="ghost"
                       size="icon"

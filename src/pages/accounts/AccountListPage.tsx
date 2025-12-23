@@ -1,20 +1,11 @@
-// src/features/accounts/AccountList.tsx
-
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { useGames } from '../../hooks/useGames';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
+import { GameSelector } from '../../components/molecules/GameSelector';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,36 +19,26 @@ import {
 import { Plus, Pencil, Trash2, Eye } from 'lucide-react';
 import { Account } from '../../types';
 
-export function AccountList() {
+export default function AccountListPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { games } = useGames();
   const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
   const { accounts, loading, deleteAccount } = useAccounts(selectedGameId);
-  const { levels } = useLevels(selectedGameId); // levels for currently selected game
+  const { levels } = useLevels(selectedGameId);
   const [showDelete, setShowDelete] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
 
-  useEffect(() => {
-    if (games.length > 0 && !selectedGameId) {
-      setSelectedGameId(games[0].id);
-    }
-  }, [games, selectedGameId]);
-
   const handleEditNavigate = (account: Account) => {
-    // navigate to edit page using the new route
     navigate(`/accounts/edit/${account.id}`, { state: { account } });
   };
 
   const handleAddNavigate = () => {
-    // navigate to new account page using the new route and pass gameId as query param
     if (selectedGameId) {
       navigate(`/accounts/new?gameId=${selectedGameId}`);
     }
   };
 
   const handleViewNavigate = (account: Account) => {
-    // navigate to detail page using the new route and pass account + levels in location.state
     navigate(`/accounts/${account.id}`, { state: { account, levels } });
   };
 
@@ -79,22 +60,7 @@ export function AccountList() {
       <div className="flex items-center justify-between gap-4">
         <h3 className="text-2xl font-bold">{t('accounts.title')}</h3>
         <div className="flex items-center gap-2">
-          <Select
-            value={selectedGameId?.toString()}
-            onValueChange={(val) => setSelectedGameId(Number(val))}
-          >
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder={t('accounts.selectGame')} />
-            </SelectTrigger>
-            <SelectContent>
-              {games.map((game) => (
-                <SelectItem key={game.id} value={game.id.toString()}>
-                  {game.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
+          <GameSelector selectedGameId={selectedGameId} onGameChange={setSelectedGameId} />
           <Button onClick={handleAddNavigate} disabled={!selectedGameId}>
             <Plus className="mr-2 h-4 w-4" />
             {t('accounts.addAccount')}
@@ -163,7 +129,6 @@ export function AccountList() {
         </div>
       )}
 
-      {/* Delete confirmation */}
       <AlertDialog open={showDelete} onOpenChange={() => setShowDelete(false)}>
         <AlertDialogContent>
           <AlertDialogHeader>

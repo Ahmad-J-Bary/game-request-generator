@@ -1,17 +1,13 @@
-// src/pages/PurchaseEventDetail.tsx
-
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { useParams } from 'react-router-dom';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { useTranslation } from 'react-i18next';
-import { TauriService } from '../services/tauri.service';
-import type { PurchaseEvent } from '../types';
-import { Button } from '../components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { TauriService } from '../../services/tauri.service';
+import type { PurchaseEvent } from '../../types';
+import { BackButton } from '../../components/molecules/BackButton';
 
-export default function PurchaseEventDetail() {
+export default function PurchaseEventDetailPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [event, setEvent] = useState<PurchaseEvent | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,9 +28,7 @@ export default function PurchaseEventDetail() {
   return (
     <div className="p-6">
       <div className="mb-4">
-        <Button variant="ghost" onClick={() => navigate(-1)}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> {t('common.back')}
-        </Button>
+        <BackButton />
       </div>
 
       <Card>
@@ -59,3 +53,4 @@ export default function PurchaseEventDetail() {
     </div>
   );
 }
+

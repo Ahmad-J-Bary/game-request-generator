@@ -14,6 +14,8 @@ import {
 import { cn } from '../../lib/utils';
 import { ThemeToggle } from '../molecules/ThemeToggle';
 import { LanguageSelector } from '../molecules/LanguageSelector';
+import { Link } from 'react-router-dom';
+import { Settings } from 'lucide-react';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -71,7 +73,7 @@ export function MainLayout({ children }: MainLayoutProps) {
             })}
           </nav>
 
-          {/* Settings */}
+          {/* Quick Settings */}
           <div className="border-t p-4 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">{t('theme.toggle')}</span>
@@ -80,6 +82,15 @@ export function MainLayout({ children }: MainLayoutProps) {
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">{t('language.select')}</span>
               <LanguageSelector />
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t">
+              <Link
+                to="/settings"
+                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Settings className="h-4 w-4" />
+                {t('settings.title') ?? 'Settings'}
+              </Link>
             </div>
           </div>
         </div>

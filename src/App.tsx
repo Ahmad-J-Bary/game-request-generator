@@ -4,19 +4,28 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { SettingsProvider } from './contexts/SettingsContext';
 import { MainLayout } from './components/templates/MainLayout';
 import Dashboard from './pages/Dashboard';
-import Games from './pages/Games';
-import GameDetail from './pages/GameDetail';
-import Accounts from './pages/Accounts';
-import Levels from './pages/Levels';
-import Requests from './pages/Requests';
-import PurchaseEvents from './pages/PurchaseEvents';
 import Events from './pages/Events';
-import AccountDetail from './pages/AccountDetail';
-import AccountFormPage from './pages/AccountFormPage';
-import AccountsDetail from './pages/AccountsDetail';
-import PurchaseEventDetail from './pages/PurchaseEventDetail';
+// Accounts
+import AccountListPage from './pages/accounts/AccountListPage';
+import AccountDetailPage from './pages/accounts/AccountDetailPage';
+import AccountFormPage from './pages/accounts/AccountFormPage';
+// Games
+import GameListPage from './pages/games/GameListPage';
+import GameDetailPage from './pages/games/GameDetailPage';
+// Levels
+import LevelListPage from './pages/levels/LevelListPage';
+// Progress
+import AccountsDetailPage from './pages/progress/AccountsDetailPage';
+// Purchase Events
+import PurchaseEventListPage from './pages/purchase-events/PurchaseEventListPage';
+import PurchaseEventDetailPage from './pages/purchase-events/PurchaseEventDetailPage';
+// Requests
+import RequestGeneratorPage from './pages/requests/RequestGeneratorPage';
+// Settings
+import SettingsPage from './pages/SettingsPage';
 import './i18n';
 
 const queryClient = new QueryClient();
@@ -25,28 +34,31 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <LanguageProvider>
-        <TooltipProvider>
-          <Toaster />
-          <BrowserRouter>
-            <MainLayout>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/games" element={<Games />} />
-                <Route path="/games/:id" element={<GameDetail />} />
-                <Route path="/accounts" element={<Accounts />} />
-                <Route path="/accounts/:id" element={<AccountDetail />} />
-                <Route path="/accounts/new" element={<AccountFormPage />} />
-                <Route path="/accounts/edit/:id" element={<AccountFormPage />} />
-                <Route path="/accounts/detail" element={<AccountsDetail />} />
-                <Route path="/levels" element={<Levels />} />
-                <Route path="/requests" element={<Requests />} />
-                <Route path="/purchase-events" element={<PurchaseEvents />} />
-                <Route path="/purchase-events/:id" element={<PurchaseEventDetail />} />
-                <Route path="/events" element={<Events />} />
-              </Routes>
-            </MainLayout>
-          </BrowserRouter>
-        </TooltipProvider>
+        <SettingsProvider>
+          <TooltipProvider>
+            <Toaster />
+            <BrowserRouter>
+              <MainLayout>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/games" element={<GameListPage />} />
+                  <Route path="/games/:id" element={<GameDetailPage />} />
+                  <Route path="/accounts" element={<AccountListPage />} />
+                  <Route path="/accounts/:id" element={<AccountDetailPage />} />
+                  <Route path="/accounts/new" element={<AccountFormPage />} />
+                  <Route path="/accounts/edit/:id" element={<AccountFormPage />} />
+                  <Route path="/accounts/detail" element={<AccountsDetailPage />} />
+                  <Route path="/levels" element={<LevelListPage />} />
+                  <Route path="/requests" element={<RequestGeneratorPage />} />
+                  <Route path="/purchase-events" element={<PurchaseEventListPage />} />
+                  <Route path="/purchase-events/:id" element={<PurchaseEventDetailPage />} />
+                  <Route path="/events" element={<Events />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Routes>
+              </MainLayout>
+            </BrowserRouter>
+          </TooltipProvider>
+        </SettingsProvider>
       </LanguageProvider>
     </ThemeProvider>
   </QueryClientProvider>

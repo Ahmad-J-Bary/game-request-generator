@@ -1,12 +1,11 @@
-// src/features/progress/AccountLevelProgressList.tsx
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import type { Level } from '../../types';
 import { useProgress } from '../../hooks/useProgress';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
   accountId: number;
-  levels: Level[]; // levels of the game
+  levels: Level[];
 }
 
 export function AccountLevelProgressList({ accountId, levels }: Props) {
@@ -16,7 +15,6 @@ export function AccountLevelProgressList({ accountId, levels }: Props) {
   const progressMap = new Map(levelsProgress.map(p => [p.level_id, p]));
 
   const toggleComplete = async (levelId: number, currentCompleted: boolean) => {
-    // ensure row exists first (create if missing)
     await createOrEnsureLevelProgress({ account_id: accountId, level_id: levelId });
     await updateLevelProgress({ account_id: accountId, level_id: levelId, is_completed: !currentCompleted });
   };
@@ -61,3 +59,4 @@ export function AccountLevelProgressList({ accountId, levels }: Props) {
     </div>
   );
 }
+

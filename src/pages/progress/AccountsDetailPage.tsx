@@ -1,8 +1,5 @@
-// src/pages/AccountsDetail.tsx
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card, CardContent } from '../components/ui/card';
-import { Button } from '../components/ui/button';
+import { useMemo, useState } from 'react';
+import { Card, CardContent } from '../../components/ui/card';
 import {
   Table,
   TableBody,
@@ -10,63 +7,54 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
-import { ArrowLeft } from 'lucide-react';
+} from '../../components/ui/table';
+import { LayoutToggle, Layout } from '../../components/molecules/LayoutToggle';
+import { GameSelector } from '../../components/molecules/GameSelector';
+import { BackButton } from '../../components/molecules/BackButton';
 
-import { useGames } from '../hooks/useGames';
-import { useAccounts } from '../hooks/useAccounts';
-import { useLevels } from '../hooks/useLevels';
-import { usePurchaseEvents } from '../hooks/usePurchaseEvents';
-import { TauriService } from '../services/tauri.service';
+import { useAccounts } from '../../hooks/useAccounts';
+import { useLevels } from '../../hooks/useLevels';
+import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
+import { TauriService } from '../../services/tauri.service';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useTranslation } from 'react-i18next';
 
-import type { PurchaseEvent } from '../types';
-
-type Layout = 'vertical' | 'horizontal';
+import type { PurchaseEvent } from '../../types';
 
 function parseDate(input?: string): Date | null {
   if (!input) return null;
   const d = new Date(input);
   return Number.isNaN(d.getTime()) ? null : d;
 }
+
 function addDays(date: Date, days: number): Date {
   const r = new Date(date);
   r.setDate(r.getDate() + days);
   return r;
 }
+
 function formatDateShort(date: Date | null): string {
   if (!date) return '-';
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${date.getDate()}-${months[date.getMonth()]}`;
 }
+
 function daysBetween(start: Date, target: Date) {
   const ms = target.getTime() - start.getTime();
   return Math.round(ms / (1000 * 60 * 60 * 24));
 }
 
-export default function AccountsDetail() {
-  const navigate = useNavigate();
+export default function AccountsDetailPage() {
   const [layout, setLayout] = useState<Layout>('vertical');
-
-  const { games } = useGames();
   const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
 
+  const { t } = useTranslation();
   const { accounts = [] } = useAccounts(selectedGameId);
   const { levels = [] } = useLevels(selectedGameId);
   const { events: purchaseEvents = [] } = usePurchaseEvents(selectedGameId);
+  const { colors } = useSettings();
 
-  // local editable state for purchase-event dates per (accountId, purchaseEventId)
   const [peDates, setPeDates] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (games.length && !selectedGameId) setSelectedGameId(games[0].id);
-  }, [games, selectedGameId]);
 
   const columns = useMemo(() => {
     const levelCols = levels.map((l) => ({
@@ -76,7 +64,8 @@ export default function AccountsDetail() {
       name: l.level_name,
       daysOffset: l.days_offset,
       timeSpent: l.time_spent,
-      color: l.is_bonus ? 'bg-green-50' : 'bg-blue-50',
+      isBonus: l.is_bonus,
+      color: l.is_bonus ? colors.levelBonus : colors.levelNormal,
     }));
 
     const peCols = purchaseEvents.map((p: PurchaseEvent) => ({
@@ -86,11 +75,11 @@ export default function AccountsDetail() {
       name: '$$$',
       isRestricted: (p as any).is_restricted ?? false,
       maxDaysOffset: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-',
-      color: (p as any).is_restricted ? 'bg-yellow-50' : 'bg-gray-50',
+      color: (p as any).is_restricted ? colors.purchaseRestricted : colors.purchaseUnrestricted,
     }));
 
     return [...levelCols, ...peCols];
-  }, [levels, purchaseEvents]);
+  }, [levels, purchaseEvents, colors]);
 
   const matrix = useMemo(() => {
     return accounts.map((acc) => {
@@ -116,7 +105,6 @@ export default function AccountsDetail() {
     const daysOffset = daysBetween(start, target);
 
     try {
-      // Save progress (create or update) via Tauri. Cast to any if types not defined.
       await (TauriService as any).createPurchaseEventProgress({
         account_id: accountId,
         purchase_event_id: peId,
@@ -131,40 +119,21 @@ export default function AccountsDetail() {
 
   return (
     <div className="p-6 space-y-4">
-      {/* header */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Accounts Detail</h2>
 
         <div className="flex gap-3">
-          <Select value={layout} onValueChange={(v) => setLayout(v as Layout)}>
-            <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="vertical">Vertical</SelectItem>
-              <SelectItem value="horizontal">Horizontal</SelectItem>
-            </SelectContent>
-          </Select>
+          <LayoutToggle layout={layout} onLayoutChange={setLayout} />
 
-          <Select
-            value={selectedGameId?.toString()}
-            onValueChange={(v) => setSelectedGameId(Number(v))}
-          >
-            <SelectTrigger className="w-[200px]"><SelectValue placeholder="Select Game" /></SelectTrigger>
-            <SelectContent>
-              {games.map((g) => <SelectItem key={g.id} value={g.id.toString()}>{g.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <GameSelector selectedGameId={selectedGameId} onGameChange={setSelectedGameId} />
 
-          <Button variant="ghost" onClick={() => navigate(-1)}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back
-          </Button>
+          <BackButton />
         </div>
       </div>
 
-      {/* table */}
       <Card>
         <CardContent className="overflow-auto">
           {layout === 'vertical' ? (
-            /* VERTICAL */
             <Table>
               <TableHeader>
                 <TableRow>
@@ -189,7 +158,7 @@ export default function AccountsDetail() {
                 </TableRow>
 
                 <TableRow>
-                  <TableHead colSpan={3}>Time Spent (seconds)</TableHead>
+                  <TableHead colSpan={3}>Time Spent (1000 seconds)</TableHead>
                   {columns.map((c) => (
                     <TableHead key={c.id} className={`text-center ${c.color}`}>{c.kind === 'level' ? c.timeSpent : '-'}</TableHead>
                   ))}
@@ -231,21 +200,18 @@ export default function AccountsDetail() {
               </TableBody>
             </Table>
           ) : (
-            /* HORIZONTAL - now with Date & Time header rows under Accounts */
             <Table>
               <TableHeader>
-                {/* main header row: columns + accounts as headers */}
                 <TableRow>
-                  <TableHead>Event Token</TableHead>
-                  <TableHead>Level Name</TableHead>
-                  <TableHead>Days Offset</TableHead>
-                  <TableHead>Time Spent</TableHead>
-                  <TableHead>Account</TableHead>
+                  <TableHead>{t('levels.eventToken')}</TableHead>
+                  <TableHead>{t('levels.levelName')}</TableHead>
+                  <TableHead>{t('levels.daysOffset')}</TableHead>
+                  <TableHead>{t('levels.timeSpent')}</TableHead>
+                  <TableHead>{t('accounts.account')}</TableHead>
 
                   {accounts.map((a) => <TableHead key={a.id} className="text-center">{a.name}</TableHead>)}
                 </TableRow>
 
-                {/* Date row under accounts */}
                 <TableRow>
                   <TableHead />
                   <TableHead />
@@ -260,7 +226,6 @@ export default function AccountsDetail() {
                   ))}
                 </TableRow>
 
-                {/* Time row under accounts */}
                 <TableRow>
                   <TableHead />
                   <TableHead />
@@ -296,12 +261,9 @@ export default function AccountsDetail() {
                               value={peDates[key] ?? ''}
                               onChange={(e) => handlePurchaseDateChange(acc.id, c.id, e.target.value)}
                             />
-                            {/* optional inline time input (comment/uncomment if you want) */}
-                            {/* <input type="time" className="border rounded px-1 text-xs" /> */}
                           </TableCell>
                         );
                       }
-                      // level -> show computed date for this account/column
                       const accIdx = accounts.findIndex(a => a.id === acc.id);
                       return <TableCell key={acc.id} className="text-center">{matrix[accIdx]?.[colIdx]}</TableCell>;
                     })}
@@ -315,3 +277,4 @@ export default function AccountsDetail() {
     </div>
   );
 }
+

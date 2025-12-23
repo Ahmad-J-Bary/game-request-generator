@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAccounts } from '../../hooks/useAccounts';
 import { Button } from '../../components/ui/button';
@@ -6,29 +7,30 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { ArrowLeft } from 'lucide-react';
-import { Account } from '../../types';
+import { BackButton } from '../../components/molecules/BackButton';
+import { CreateAccountRequest, UpdateAccountRequest } from '../../types';
 import { toast } from 'sonner';
 
-interface AccountFormProps {
-  account?: Account | null;
-  accountId?: number;
-  gameId?: number;
-  onClose: () => void;
-}
-
-export function AccountForm({ account, accountId, gameId, onClose }: AccountFormProps) {
+export default function AccountFormPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { id } = useParams<{ id?: string }>();
+  const [searchParams] = useSearchParams();
+  const gameId = searchParams.get('gameId') ? parseInt(searchParams.get('gameId')!, 10) : undefined;
   const { accounts, addAccount, updateAccount } = useAccounts();
+  
+  const stateAccount = (location.state as any)?.account;
+  const isEditMode = location.pathname.includes('/edit/');
+  const accountId = id ? parseInt(id, 10) : undefined;
+  const account = isEditMode && accountId ? (stateAccount || accounts.find(a => a.id === accountId)) : undefined;
+
   const [name, setName] = useState(account?.name || '');
   const [startDate, setStartDate] = useState(account?.start_date || '');
   const [startTime, setStartTime] = useState(account?.start_time || '');
-  const [requestTemplate, setRequestTemplate] = useState(
-    account?.request_template || ''
-  );
+  const [requestTemplate, setRequestTemplate] = useState(account?.request_template || '');
   const [loading, setLoading] = useState(false);
 
-  // Initialize form with account data if available
   useEffect(() => {
     if (account) {
       setName(account.name);
@@ -38,7 +40,6 @@ export function AccountForm({ account, accountId, gameId, onClose }: AccountForm
     }
   }, [account]);
   
-  // Fetch account data if accountId is provided but account is not
   useEffect(() => {
     if (!account && accountId) {
       const foundAccount = accounts.find(a => a.id === accountId);
@@ -51,10 +52,9 @@ export function AccountForm({ account, accountId, gameId, onClose }: AccountForm
     }
   }, [accountId, account, accounts]);
 
-const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // تحقق من المدخلات
     const currentGameId = account ? account.game_id : gameId;
     if (!currentGameId || !name.trim() || !startDate.trim() || !startTime.trim() || !requestTemplate.trim()) {
         toast.error("All fields are required");
@@ -64,37 +64,36 @@ const handleSubmit = async (e: React.FormEvent) => {
     setLoading(true);
     try {
         if (account) {
-            await updateAccount({
+            const request: UpdateAccountRequest = {
                 id: account.id,
                 name,
                 start_date: startDate,
                 start_time: startTime,
                 request_template: requestTemplate,
-            });
+            };
+            await updateAccount(request);
         } else {
-            await addAccount({
+            const request: CreateAccountRequest = {
                 game_id: currentGameId,
                 name,
                 start_date: startDate,
                 start_time: startTime,
                 request_template: requestTemplate,
-            });
+            };
+            await addAccount(request);
         }
-        onClose();  // Close form after success
+        navigate('/accounts');
     } catch (error) {
         console.error('Failed to save account:', error);
         toast.error("An error occurred while saving the account");
     } finally {
         setLoading(false);
     }
-};
+  };
 
   return (
     <div className="space-y-4">
-      <Button variant="ghost" onClick={onClose}>
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        {t('common.back')}
-      </Button>
+      <BackButton />
 
       <Card>
         <CardHeader>
@@ -156,7 +155,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               <Button type="submit" disabled={loading}>
                 {loading ? t('common.loading') : t('common.save')}
               </Button>
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button type="button" variant="outline" onClick={() => navigate('/accounts')}>
                 {t('common.cancel')}
               </Button>
             </div>

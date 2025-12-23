@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { RequestGenerator } from '../features/requests/RequestGenerator';
-import { useGames } from '../hooks/useGames';
-import { useAccounts } from '../hooks/useAccounts';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { useGames } from '../../hooks/useGames';
+import { useAccounts } from '../../hooks/useAccounts';
+import { RequestGenerator } from './RequestGenerator';
 
-export default function Requests() {
+export default function RequestGeneratorPage() {
   const { t } = useTranslation();
   const { games, loading: gamesLoading } = useGames();
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
@@ -17,13 +17,13 @@ export default function Requests() {
     if (games.length > 0 && !selectedGameId) {
       setSelectedGameId(games[0].id);
     }
-  }, [games]);
+  }, [games, selectedGameId]);
 
   useEffect(() => {
     if (accounts.length > 0 && !selectedAccountId) {
       setSelectedAccountId(accounts[0].id);
     }
-  }, [accounts]);
+  }, [accounts, selectedAccountId]);
 
   const selectedAccount = accounts.find(acc => acc.id === selectedAccountId);
 

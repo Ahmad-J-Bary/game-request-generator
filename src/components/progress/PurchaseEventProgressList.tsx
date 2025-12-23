@@ -1,7 +1,6 @@
-// src/features/progress/PurchaseEventProgressList.tsx
 import { useState } from 'react';
-import { Button } from '../../components/ui/button';
-import { Card, CardContent } from '../../components/ui/card';
+import { Button } from '../ui/button';
+import { Card, CardContent } from '../ui/card';
 import type { PurchaseEvent } from '../../types';
 import { useProgress } from '../../hooks/useProgress';
 import { useTranslation } from 'react-i18next';
@@ -19,7 +18,6 @@ export function PurchaseEventProgressList({ accountId, purchaseEvents }: Props) 
   const [local, setLocal] = useState<Record<number, {days_offset: string; time_spent: string}>>({});
 
   const ensureAndOpen = async (ev: PurchaseEvent) => {
-    // ensure progress row exists with default values (0,0)
     await createOrUpdatePurchaseProgress({
       account_id: accountId,
       purchase_event_id: ev.id,
@@ -87,3 +85,4 @@ export function PurchaseEventProgressList({ accountId, purchaseEvents }: Props) 
     </div>
   );
 }
+

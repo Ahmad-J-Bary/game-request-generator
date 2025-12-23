@@ -1,8 +1,8 @@
-// src/features/accounts/AccountDetail.tsx
+// src/pages/accounts/AccountDetailPage.tsx
+
 import { useMemo, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import {
   Table,
@@ -12,24 +12,21 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { ArrowLeft } from 'lucide-react';
+import { LayoutToggle, Layout } from '../../components/molecules/LayoutToggle';
+import { BackButton } from '../../components/molecules/BackButton';
 import { Level, Account, PurchaseEvent } from '../../types';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
 import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
-import { AccountLevelProgressList } from '../progress/AccountLevelProgressList';
-import { PurchaseEventProgressList } from '../progress/PurchaseEventProgressList';
+import { AccountLevelProgressList } from '../../components/progress/AccountLevelProgressList';
+import { PurchaseEventProgressList } from '../../components/progress/PurchaseEventProgressList';
 import { cn } from '../../lib/utils';
-
-type Layout = 'horizontal' | 'vertical';
+import { useColorClass } from '../../contexts/SettingsContext';
 
 function parseDateFlexible(input: string): Date | null {
   if (!input) return null;
-  // try native parse (ISO etc.)
   const d = new Date(input);
   if (!Number.isNaN(d.getTime())) return d;
-  // try D-MMM like "5-Dec"
   const m = input.trim().match(/^(\d{1,2})-([A-Za-z]{3,})$/);
   if (m) {
     const day = parseInt(m[1], 10);
@@ -42,7 +39,6 @@ function parseDateFlexible(input: string): Date | null {
       return new Date(year, monthIndex, day);
     }
   }
-  // try dd/mm/yyyy
   const parts = input.split('/');
   if (parts.length === 3) {
     const day = parseInt(parts[0], 10);
@@ -68,35 +64,31 @@ function formatDateShort(date: Date | null): string {
   return `${day}-${mon}`;
 }
 
-export function AccountDetailPage() {
+export default function AccountDetailPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
 
-  // fast-path state
   const state = (location.state as any) || {};
   const stateAccount: Account | undefined = state.account;
   const stateLevels: Level[] | undefined = state.levels;
 
-  // fetch accounts (fallback)
   const { accounts } = useAccounts(undefined as any);
   const account = stateAccount ?? accounts?.find((a) => String(a.id) === String(id));
   const gameIdForLevels = account?.game_id ?? undefined;
 
-  // levels + purchase events for the game
   const { levels: fetchedLevels = [] } = useLevels(gameIdForLevels);
   const { events: purchaseEvents = [] } = usePurchaseEvents(gameIdForLevels);
 
   const levels = stateLevels ?? fetchedLevels;
 
   const [layout, setLayout] = useState<Layout>('vertical');
+  const getColorClass = useColorClass();
 
   const startDateObj = useMemo(() => {
     return parseDateFlexible(account?.start_date ?? '') || new Date();
   }, [account]);
 
-  // computed date for each level (for this account)
   const computedLevelDates = useMemo(() => {
     return levels.map((l) => {
       const dd = addDays(startDateObj, Number(l.days_offset || 0));
@@ -107,9 +99,9 @@ export function AccountDetailPage() {
   if (!account) {
     return (
       <div className="p-6">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4">
-          <ArrowLeft className="mr-2 h-4 w-4" /> {t('common.back') ?? 'Back'}
-        </Button>
+        <div className="mb-4">
+          <BackButton />
+        </div>
         <Card>
           <CardContent className="p-6 text-center">Account not found</CardContent>
         </Card>
@@ -117,9 +109,6 @@ export function AccountDetailPage() {
     );
   }
 
-  /**
-   * columns: levels first, then purchase events
-   */
   const columns = useMemo(() => {
     const levelCols = levels.map((l) => ({
       kind: 'level' as const,
@@ -154,29 +143,16 @@ export function AccountDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Select value={layout} onValueChange={(v) => setLayout(v as Layout)}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder={t('levels.view') ?? 'View'} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="horizontal">{t('levels.viewHorizontal') ?? 'Horizontal'}</SelectItem>
-              <SelectItem value="vertical">{t('levels.viewVertical') ?? 'Vertical'}</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Button variant="ghost" onClick={() => navigate(-1)}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> {t('common.back') ?? 'Back'}
-          </Button>
+          <LayoutToggle layout={layout} onLayoutChange={setLayout} />
+          <BackButton />
         </div>
       </div>
 
-      {/* Combined table */}
       <Card>
         <CardContent className="overflow-auto">
           {columns.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">No levels or purchase events</div>
           ) : layout === 'horizontal' ? (
-            // Horizontal: rows = each column (level or purchase event), last column = account date (for levels)
             <Table>
               <TableHeader>
                 <TableRow>
@@ -184,33 +160,26 @@ export function AccountDetailPage() {
                   <TableHead>{t('levels.levelName') ?? 'Level Name'}</TableHead>
                   <TableHead>{t('levels.daysOffset') ?? 'Days Offset'}</TableHead>
                   <TableHead>{t('levels.timeSpent') ?? 'Time Spent (seconds)'}</TableHead>
-                  <TableHead>{'Account Date'}</TableHead>
+                  <TableHead>{t('levels.accountDate')}</TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 {columns.map((col, idx) => {
-                  const colorClass =
-                    col.kind === 'level'
-                      ? col.isBonus ? 'bg-green-50' : 'bg-blue-50'
-                      : col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50';
+                  const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
 
                   return (
                     <TableRow key={`${col.kind}-${col.id}`}>
                       <TableCell className={cn('font-mono', colorClass)}>{col.token}</TableCell>
-
                       <TableCell className={colorClass}>
                         {col.kind === 'level' ? col.name : col.name}
                       </TableCell>
-
                       <TableCell className={cn('text-center', colorClass)}>
                         {col.kind === 'level' ? col.daysOffset : (col.isRestricted ? (col.maxDaysOffset ?? 'less than') : '-')}
                       </TableCell>
-
                       <TableCell className={cn('text-center', colorClass)}>
                         {col.kind === 'level' ? col.timeSpent : '-'}
                       </TableCell>
-
                       <TableCell className={cn('text-center', colorClass)}>
                         {col.kind === 'level' ? computedLevelDates[idx] : '-'}
                       </TableCell>
@@ -220,84 +189,83 @@ export function AccountDetailPage() {
               </TableBody>
             </Table>
           ) : (
-            // Vertical pivot: labels at first column, columns = tokens
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>{t('levels.eventToken') ?? 'Event Token'}</TableHead>
-                  {columns.map((col) => (
-                    <TableHead
-                      key={`${col.kind}-${col.id}`}
-                      className={cn('text-center font-mono',
-                        col.kind === 'level' ? (col.isBonus ? 'bg-green-50' : 'bg-blue-50') :
-                        (col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50')
-                      )}
-                    >
-                      {col.token}
-                    </TableHead>
-                  ))}
+                  {columns.map((col) => {
+                    const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
+                    return (
+                      <TableHead
+                        key={`${col.kind}-${col.id}`}
+                        className={cn('text-center font-mono', colorClass)}
+                      >
+                        {col.token}
+                      </TableHead>
+                    );
+                  })}
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 <TableRow>
                   <TableHead>{t('levels.levelName')}</TableHead>
-                  {columns.map((col) => (
-                    <TableCell
-                      key={`name-${col.kind}-${col.id}`}
-                      className={cn('text-center',
-                        col.kind === 'level' ? (col.isBonus ? 'bg-green-50' : 'bg-blue-50') :
-                        (col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50')
-                      )}
-                    >
-                      {col.kind === 'level' ? col.name : col.name}
-                    </TableCell>
-                  ))}
+                  {columns.map((col) => {
+                    const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
+                    return (
+                      <TableCell
+                        key={`name-${col.kind}-${col.id}`}
+                        className={cn('text-center', colorClass)}
+                      >
+                        {col.kind === 'level' ? col.name : col.name}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
 
                 <TableRow>
                   <TableHead>{t('levels.daysOffset') ?? 'Days Offset'}</TableHead>
-                  {columns.map((col) => (
-                    <TableCell
-                      key={`offset-${col.kind}-${col.id}`}
-                      className={cn('text-center',
-                        col.kind === 'level' ? (col.isBonus ? 'bg-green-50' : 'bg-blue-50') :
-                        (col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50')
-                      )}
-                    >
-                      {col.kind === 'level' ? col.daysOffset : (col.isRestricted ? (col.maxDaysOffset ?? 'less than') : '-')}
-                    </TableCell>
-                  ))}
+                  {columns.map((col) => {
+                    const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
+                    return (
+                      <TableCell
+                        key={`offset-${col.kind}-${col.id}`}
+                        className={cn('text-center', colorClass)}
+                      >
+                        {col.kind === 'level' ? col.daysOffset : (col.isRestricted ? (col.maxDaysOffset ?? 'less than') : '-')}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
 
                 <TableRow>
                   <TableHead>{t('levels.timeSpent') ?? 'Time Spent (seconds)'}</TableHead>
-                  {columns.map((col) => (
-                    <TableCell
-                      key={`time-${col.kind}-${col.id}`}
-                      className={cn('text-center',
-                        col.kind === 'level' ? (col.isBonus ? 'bg-green-50' : 'bg-blue-50') :
-                        (col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50')
-                      )}
-                    >
-                      {col.kind === 'level' ? col.timeSpent : '-'}
-                    </TableCell>
-                  ))}
+                  {columns.map((col) => {
+                    const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
+                    return (
+                      <TableCell
+                        key={`time-${col.kind}-${col.id}`}
+                        className={cn('text-center', colorClass)}
+                      >
+                        {col.kind === 'level' ? col.timeSpent : '-'}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
 
                 <TableRow>
-                  <TableHead>{'Account Date'}</TableHead>
-                  {columns.map((col, idx) => (
-                    <TableCell
-                      key={`accdate-${col.kind}-${col.id}`}
-                      className={cn('text-center',
-                        col.kind === 'level' ? (col.isBonus ? 'bg-green-50' : 'bg-blue-50') :
-                        (col.isRestricted ? 'bg-yellow-50' : 'bg-gray-50')
-                      )}
-                    >
-                      {col.kind === 'level' ? computedLevelDates[idx] : '-'}
-                    </TableCell>
-                  ))}
+                  <TableHead>{t('levels.accountDate')}</TableHead>
+                  {columns.map((col, idx) => {
+                    const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
+                    return (
+                      <TableCell
+                        key={`accdate-${col.kind}-${col.id}`}
+                        className={cn('text-center', colorClass)}
+                      >
+                        {col.kind === 'level' ? computedLevelDates[idx] : '-'}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               </TableBody>
             </Table>
@@ -305,7 +273,6 @@ export function AccountDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Progress lists */}
       <div className="grid gap-4 md:grid-cols-2">
         <AccountLevelProgressList accountId={account.id} levels={levels} />
         <PurchaseEventProgressList accountId={account.id} purchaseEvents={purchaseEvents as PurchaseEvent[]} />
