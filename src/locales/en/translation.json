@@ -25,7 +25,9 @@
     "yes": "Yes",
     "no": "No",
     "view": "View",
-    "createdAt": "Created At"
+    "createdAt": "Created At",
+    "all": "All",
+    "eventOnly": "Event Only"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -114,7 +116,7 @@
     "isBonus": "Bonus",
     "bonusYes": "Yes",
     "bonusNo": "No",
-    "accountDate": "Account Date Time",
+    "accountDate": "Account Dates",
     "errors": {
       "emptyFields": "Event token and level name cannot be empty",
       "invalidNumbers": "Days offset and time spent must be numbers"
@@ -173,6 +175,7 @@
     "isRestricted": "Restricted",
     "maxDaysOffset": "Max Days Offset",
     "maxDaysOffsetPlaceholder": "e.g., 15",
+    "lessThan": "Less Than",
     "detail": "Purchase Event Detail",
     "errors": {
       "emptyToken": "Event token is required",
@@ -225,6 +228,22 @@
       "purchaseRestricted": "Restricted Purchase Event",
       "purchaseUnrestricted": "Unrestricted Purchase Event"
     }
+  },
+  "colorSettings": {
+    "title": "Color Customization",
+    "description": "Customize colors for different types of data in the account details table",
+    "tableStructure": "Table Structure Colors",
+    "headerColor": "Header Color (All Headers)",
+    "dataRowColor": "Data Row Color (All Data Cells)",
+    "columnSpecific": "Column-Specific Colors",
+    "levelBonus": "Level - Bonus",
+    "levelNormal": "Level - Normal",
+    "purchaseRestricted": "Purchase - Restricted",
+    "purchaseUnrestricted": "Purchase - Unrestricted",
+    "scheduledEvents": "Scheduled Events",
+    "incompleteScheduled": "Incomplete Scheduled",
+    "completeScheduled": "Complete Scheduled",
+    "resetToDefaults": "Reset to Defaults"
   },
   "progress": {
     "levelsTitle": "Level Progress",

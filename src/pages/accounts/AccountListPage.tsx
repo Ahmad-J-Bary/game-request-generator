@@ -90,7 +90,7 @@ export default function AccountListPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleViewNavigate(account)}
-                      title={t('accounts.viewDetails') ?? 'View details'}
+                      title={t('accounts.viewDetails')}
                     >
                       <Eye className="h-4 w-4" />
                     </Button>

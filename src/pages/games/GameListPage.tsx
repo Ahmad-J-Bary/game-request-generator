@@ -77,7 +77,7 @@ export default function GameListPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => navigate(`/games/${game.id}`)}
-                      title={t('games.viewDetails') ?? 'View details'}
+                      title={t('games.viewDetails')}
                     >
                       <Eye className="h-4 w-4" />
                     </Button>

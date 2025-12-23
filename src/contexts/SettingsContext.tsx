@@ -1,3 +1,5 @@
+// src/contexts/SettingsContext.tsx
+
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { storageService } from '../services/storage.service';
 
@@ -6,19 +8,29 @@ export interface ColorSettings {
   levelNormal: string;       // Levels without bonus
   purchaseRestricted: string; // Restricted purchase events
   purchaseUnrestricted: string; // Unrestricted purchase events
+  headerColor: string;       // Table header rows color
+  dataRowColor: string;      // Table data cells color
+  incompleteScheduledStyle: string;  // Incomplete scheduled events
+  completeScheduledStyle: string;    // Complete scheduled events
 }
 
 const DEFAULT_COLORS: ColorSettings = {
-  levelBonus: 'bg-green-50',
-  levelNormal: 'bg-blue-50',
-  purchaseRestricted: 'bg-yellow-50',
-  purchaseUnrestricted: 'bg-gray-50',
+  levelBonus: 'rgb(220, 252, 231)',
+  levelNormal: 'rgb(219, 234, 254)',
+  purchaseRestricted: 'rgb(254, 249, 195)',
+  purchaseUnrestricted: 'rgb(243, 244, 246)',
+  headerColor: 'rgb(144, 238, 144)',      // Light green for headers
+  dataRowColor: 'rgb(255, 255, 255)',     // White for data rows
+  incompleteScheduledStyle: 'rgb(255, 200, 200)', // Light red for incomplete scheduled
+  completeScheduledStyle: 'rgb(200, 255, 200)',   // Light green for complete scheduled
 };
 
 interface SettingsContextType {
   colors: ColorSettings;
   updateColors: (colors: Partial<ColorSettings>) => void;
   resetColors: () => void;
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -29,9 +41,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return saved || DEFAULT_COLORS;
   });
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    const saved = storageService.get<boolean>('sidebarCollapsed');
+    return saved ?? false;
+  });
+
   useEffect(() => {
     storageService.set('colorSettings', colors);
   }, [colors]);
+
+  useEffect(() => {
+    storageService.set('sidebarCollapsed', sidebarCollapsed);
+  }, [sidebarCollapsed]);
 
   const updateColors = (newColors: Partial<ColorSettings>) => {
     setColors(prev => ({ ...prev, ...newColors }));
@@ -41,8 +62,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setColors(DEFAULT_COLORS);
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => !prev);
+  };
+
   return (
-    <SettingsContext.Provider value={{ colors, updateColors, resetColors }}>
+    <SettingsContext.Provider value={{ colors, updateColors, resetColors, sidebarCollapsed, toggleSidebar }}>
       {children}
     </SettingsContext.Provider>
   );
@@ -56,7 +81,7 @@ export function useSettings() {
   return context;
 }
 
-// Hook to get color class based on type
+// Hook to get color class based on type with proper type guards
 export function useColorClass() {
   const { colors } = useSettings();
   
@@ -69,3 +94,19 @@ export function useColorClass() {
   };
 }
 
+// Hook to get inline style for background color
+export function useColorStyle() {
+  const { colors } = useSettings();
+  
+  return (kind: 'level' | 'purchase', isBonus?: boolean, isRestricted?: boolean): React.CSSProperties => {
+    let backgroundColor: string;
+    
+    if (kind === 'level') {
+      backgroundColor = isBonus ? colors.levelBonus : colors.levelNormal;
+    } else {
+      backgroundColor = isRestricted ? colors.purchaseRestricted : colors.purchaseUnrestricted;
+    }
+    
+    return { backgroundColor };
+  };
+}

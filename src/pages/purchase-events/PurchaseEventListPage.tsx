@@ -5,14 +5,7 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { GameSelector } from '../../components/molecules/GameSelector';
 import { LayoutToggle, Layout } from '../../components/molecules/LayoutToggle';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../../components/ui/table';
+import { PurchaseEventDataTable } from '../../components/tables/PurchaseEventDataTable';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,11 +16,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
-import { Pencil, Trash2 } from 'lucide-react';
 import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
 import type { PurchaseEvent, CreatePurchaseEventRequest, UpdatePurchaseEventRequest } from '../../types';
 import { PurchaseEventForm } from './PurchaseEventForm';
-import { useColorClass } from '../../contexts/SettingsContext';
 
 export default function PurchaseEventListPage() {
   const { t } = useTranslation();
@@ -39,7 +30,6 @@ export default function PurchaseEventListPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<PurchaseEvent | null>(null);
   const [deletingEvent, setDeletingEvent] = useState<PurchaseEvent | null>(null);
-  const getColorClass = useColorClass();
 
   const handleEdit = (event: PurchaseEvent) => {
     setEditingEvent(event);
@@ -97,122 +87,15 @@ export default function PurchaseEventListPage() {
             {t('games.noGames')}
           </CardContent>
         </Card>
-      ) : events.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            {t('purchaseEvents.noEvents')}
-          </CardContent>
-        </Card>
-      ) : layout === 'horizontal' ? (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('purchaseEvents.eventToken')}</TableHead>
-                  <TableHead>{t('purchaseEvents.isRestricted')}</TableHead>
-                  <TableHead>{t('purchaseEvents.maxDaysOffset')}</TableHead>
-                  <TableHead className="text-right">{t('common.actions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {events.map((event) => {
-                  const rowColor = getColorClass('purchase', undefined, event.is_restricted);
-                  return (
-                    <TableRow key={event.id}>
-                      <TableCell className={`font-mono ${rowColor}`}>{event.event_token}</TableCell>
-                      <TableCell className={rowColor}>
-                        {event.is_restricted ? t('common.yes') : t('common.no')}
-                      </TableCell>
-                      <TableCell className={`text-center ${rowColor}`}>
-                        {event.max_days_offset ?? '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(event)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeletingEvent(event)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
       ) : (
         <Card>
-          <CardContent className="p-0 overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('purchaseEvents.eventToken')}</TableHead>
-                  {events.map((ev) => (
-                    <TableHead
-                      key={ev.id}
-                      className={`text-center font-mono ${getColorClass('purchase', undefined, ev.is_restricted)}`}
-                    >
-                      {ev.event_token}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                <TableRow>
-                  <TableHead>{t('purchaseEvents.isRestricted')}</TableHead>
-                  {events.map((ev) => {
-                    const cellColor = getColorClass('purchase', undefined, ev.is_restricted);
-                    return (
-                      <TableCell
-                        key={ev.id}
-                        className={`text-center ${cellColor}`}
-                      >
-                        {ev.is_restricted ? t('common.yes') : t('common.no')}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('purchaseEvents.maxDaysOffset')}</TableHead>
-                  {events.map((ev) => {
-                    const cellColor = getColorClass('purchase', undefined, ev.is_restricted);
-                    return (
-                      <TableCell
-                        key={ev.id}
-                        className={`text-center ${cellColor}`}
-                      >
-                        {ev.max_days_offset ?? '-'}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('common.actions')}</TableHead>
-                  {events.map((ev) => {
-                    const cellColor = getColorClass('purchase', undefined, ev.is_restricted);
-                    return (
-                      <TableCell key={ev.id} className={`text-center ${cellColor}`}>
-                        <div className="flex justify-center gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(ev)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeletingEvent(ev)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              </TableBody>
-            </Table>
+          <CardContent className="p-0">
+            <PurchaseEventDataTable
+              events={events}
+              layout={layout}
+              onEdit={handleEdit}
+              onDelete={setDeletingEvent}
+            />
           </CardContent>
         </Card>
       )}

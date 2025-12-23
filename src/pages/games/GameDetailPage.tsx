@@ -2,17 +2,9 @@ import { useMemo, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '../../components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../../components/ui/table';
 import { LayoutToggle, Layout } from '../../components/molecules/LayoutToggle';
 import { BackButton } from '../../components/molecules/BackButton';
-import { useColorClass } from '../../contexts/SettingsContext';
+import { GameDataTable } from '../../components/tables/GameDataTable';
 
 import { useGames } from '../../hooks/useGames';
 import { useLevels } from '../../hooks/useLevels';
@@ -31,7 +23,6 @@ export default function GameDetailPage() {
 
   const [layout, setLayout] = useState<Layout>('vertical');
   const [mode, setMode] = useState<Mode>('all');
-  const getColorClass = useColorClass();
 
   useEffect(() => {
     setLayout('vertical');
@@ -58,8 +49,8 @@ export default function GameDetailPage() {
       id: p.id,
       token: p.event_token,
       name: '$$$',
-      daysOffsetRaw: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : null,
-      daysOffset: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : null,
+      daysOffsetRaw: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : null,
+      daysOffset: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : null,
       isRestricted: !!p.is_restricted,
       timeSpent: null as number | null,
     }));
@@ -127,10 +118,10 @@ export default function GameDetailPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">
-            {game ? game.name : t('games.detailTitle') ?? 'Game Detail'}
+            {game ? game.name : t('games.detailTitle')}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {t('games.detailSubtitle') ?? 'Levels and purchase events overview'}
+            {t('games.detailSubtitle')}
           </p>
         </div>
 
@@ -145,7 +136,7 @@ export default function GameDetailPage() {
                 checked={mode === 'all'}
                 onChange={() => setMode('all')}
               />
-              <span className="text-sm">Event Only</span>
+              <span className="text-sm">{t('common.eventOnly')}</span>
             </label>
 
             <label className="inline-flex items-center gap-2">
@@ -155,7 +146,7 @@ export default function GameDetailPage() {
                 checked={mode === 'event-only'}
                 onChange={() => setMode('event-only')}
               />
-              <span className="text-sm">All</span>
+              <span className="text-sm">{t('common.all')}</span>
             </label>
           </div>
 
@@ -165,105 +156,10 @@ export default function GameDetailPage() {
 
       <Card>
         <CardContent className="overflow-auto">
-          {columns.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">
-              {t('games.noDetails') ?? 'No levels or purchase events'}
-            </div>
-          ) : layout === 'horizontal' ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('levels.eventToken')}</TableHead>
-                  <TableHead>{t('levels.levelName')}</TableHead>
-                  <TableHead>{t('levels.daysOffset')}</TableHead>
-                  <TableHead>{t('levels.timeSpent')}</TableHead>
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                {columns.map(col => {
-                  const baseBg = getColorClass(col.kind, col.isBonus, col.isRestricted);
-                  const synthClass = col.synthetic ? 'opacity-60 italic' : '';
-
-                  return (
-                    <TableRow key={`${col.kind}-${col.id}`}>
-                      <TableCell className={`font-mono ${baseBg} ${synthClass}`}>{col.token}</TableCell>
-                      <TableCell className={`${baseBg} ${synthClass}`}>
-                        {col.name ?? '-'}
-                      </TableCell>
-                      <TableCell className={`text-center ${baseBg} ${synthClass}`}>
-                        {col.daysOffset != null ? col.daysOffset : (col.daysOffsetRaw ?? '-')}
-                      </TableCell>
-                      <TableCell className={`text-center ${baseBg} ${synthClass}`}>
-                        {col.timeSpent != null ? col.timeSpent : '-'}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('levels.eventToken')}</TableHead>
-                  {columns.map(col => {
-                    const baseBg = getColorClass(col.kind, col.isBonus, col.isRestricted);
-                    const synthClass = col.synthetic ? 'opacity-60 italic' : '';
-                    return (
-                      <TableHead
-                        key={`${col.kind}-${col.id}`}
-                        className={`text-center font-mono ${baseBg} ${synthClass}`}
-                      >
-                        {col.token}
-                      </TableHead>
-                    );
-                  })}
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                <TableRow>
-                  <TableHead>{t('levels.levelName')}</TableHead>
-                  {columns.map(col => {
-                    const baseBg = getColorClass(col.kind, col.isBonus, col.isRestricted);
-                    const synthClass = col.synthetic ? 'opacity-60 italic' : '';
-                    return (
-                      <TableCell key={`name-${col.kind}-${col.id}`} className={`text-center ${baseBg} ${synthClass}`}>
-                        {col.kind === 'level' ? (col.name ?? '-') : (col.name ?? '-')}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('levels.daysOffset')}</TableHead>
-                  {columns.map(col => {
-                    const baseBg = getColorClass(col.kind, col.isBonus, col.isRestricted);
-                    const synthClass = col.synthetic ? 'opacity-60 italic' : '';
-                    return (
-                      <TableCell key={`offset-${col.kind}-${col.id}`} className={`text-center ${baseBg} ${synthClass}`}>
-                        {col.daysOffset != null ? col.daysOffset : (col.daysOffsetRaw ?? '-')}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('levels.timeSpent')}</TableHead>
-                  {columns.map(col => {
-                    const baseBg = getColorClass(col.kind, col.isBonus, col.isRestricted);
-                    const synthClass = col.synthetic ? 'opacity-60 italic' : '';
-                    return (
-                      <TableCell key={`time-${col.kind}-${col.id}`} className={`text-center ${baseBg} ${synthClass}`}>
-                        {col.timeSpent != null ? col.timeSpent : '-'}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              </TableBody>
-            </Table>
-          )}
+          <GameDataTable
+            columns={columns}
+            layout={layout}
+          />
         </CardContent>
       </Card>
     </div>

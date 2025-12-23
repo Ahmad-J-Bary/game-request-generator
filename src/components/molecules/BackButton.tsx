@@ -22,7 +22,7 @@ export function BackButton({ to, variant = 'ghost' }: BackButtonProps) {
 
   return (
     <Button variant={variant} onClick={handleClick}>
-      <ArrowLeft className="mr-2 h-4 w-4" /> {t('common.back') ?? 'Back'}
+      <ArrowLeft className="mr-2 h-4 w-4" /> {t('common.back')}
     </Button>
   );
 }

@@ -40,7 +40,7 @@ export function PurchaseEventProgressList({ accountId, purchaseEvents }: Props) 
 
   return (
     <div>
-      <h4 className="text-lg font-medium mb-2">{t('progress.purchaseTitle') ?? 'Purchase Events Progress'}</h4>
+      <h4 className="text-lg font-medium mb-2">{t('progress.purchaseTitle')}</h4>
       {loading ? <div>{t('common.loading')}</div> : (
         <Card>
           <CardContent>
@@ -69,11 +69,11 @@ export function PurchaseEventProgressList({ accountId, purchaseEvents }: Props) 
                       />
                     </div>
                     <div className="flex gap-2">
-                      <Button onClick={() => ensureAndOpen(ev)} variant="outline">{t('progress.ensure') ?? 'Ensure'}</Button>
+                      <Button onClick={() => ensureAndOpen(ev)} variant="outline">{t('progress.ensure')}</Button>
                       <Button onClick={() => save(ev)}>{t('common.save')}</Button>
                     </div>
                     <div className="ml-auto text-sm text-muted-foreground">
-                      {p?.is_completed ? (t('common.yes') ?? 'Yes') : (t('common.no') ?? 'No')}
+                      {p?.is_completed ? (t('common.yes')) : (t('common.no'))}
                     </div>
                   </div>
                 );

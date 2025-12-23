@@ -25,7 +25,9 @@
     "yes": "نعم",
     "no": "لا",
     "view": "عرض",
-    "createdAt": "تاريخ الإنشاء"
+    "createdAt": "تاريخ الإنشاء",
+    "all": "الكل",
+    "eventOnly": "الأحداث فقط"
   },
   "nav": {
     "dashboard": "لوحة التحكم",
@@ -114,7 +116,7 @@
     "isBonus": "مكافأة",
     "bonusYes": "نعم",
     "bonusNo": "لا",
-    "accountDate": "تاريخ ووقت الحساب",
+    "accountDate": "مواعيد الحساب",
     "errors": {
       "emptyFields": "لا يمكن أن يكون رمز الحدث واسم المستوى فارغين",
       "invalidNumbers": "يجب أن يكون كل من إزاحة الأيام والوقت المستغرق أرقامًا"
@@ -173,6 +175,7 @@
     "isRestricted": "مُقيّد",
     "maxDaysOffset": "أقصى أيام الإزاحة",
     "maxDaysOffsetPlaceholder": "مثال: 15",
+    "lessThan": "أقل من",
     "detail": "تفاصيل حدث الشراء",
     "errors": {
       "emptyToken": "رمز الحدث مطلوب",
@@ -225,6 +228,22 @@
       "purchaseRestricted": "حدث شراء مُقيّد",
       "purchaseUnrestricted": "حدث شراء غير مُقيّد"
     }
+  },
+  "colorSettings": {
+    "title": "تخصيص الألوان",
+    "description": "تخصيص الألوان لأنواع مختلفة من البيانات في جدول تفاصيل الحساب",
+    "tableStructure": "ألوان بنية الجدول",
+    "headerColor": "لون الرأس (جميع العناوين)",
+    "dataRowColor": "لون صف البيانات (جميع خلايا البيانات)",
+    "columnSpecific": "ألوان خاصة بالعمود",
+    "levelBonus": "المستوى - مكافأة",
+    "levelNormal": "المستوى - عادي",
+    "purchaseRestricted": "الشراء - مُقيّد",
+    "purchaseUnrestricted": "الشراء - غير مُقيّد",
+    "scheduledEvents": "الأحداث المجدولة",
+    "incompleteScheduled": "مجدول غير مكتمل",
+    "completeScheduled": "مجدول مكتمل",
+    "resetToDefaults": "إعادة تعيين إلى الافتراضي"
   },
   "progress": {
     "levelsTitle": "تقدم المستويات",

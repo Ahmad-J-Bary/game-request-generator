@@ -21,7 +21,7 @@ export function AccountLevelProgressList({ accountId, levels }: Props) {
 
   return (
     <div>
-      <h4 className="text-lg font-medium mb-2">{t('progress.levelsTitle') ?? 'Level Progress'}</h4>
+      <h4 className="text-lg font-medium mb-2">{t('progress.levelsTitle')}</h4>
       {loading ? <div>{t('common.loading')}</div> : (
         <Table>
           <TableHeader>

@@ -5,14 +5,7 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { GameSelector } from '../../components/molecules/GameSelector';
 import { LayoutToggle, Layout } from '../../components/molecules/LayoutToggle';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../../components/ui/table';
+import { LevelDataTable } from '../../components/tables/LevelDataTable';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,10 +16,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { LevelForm } from './LevelForm';
 import { Level } from '../../types';
-import { useColorClass } from '../../contexts/SettingsContext';
 
 export default function LevelListPage() {
   const { t } = useTranslation();
@@ -36,7 +28,6 @@ export default function LevelListPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingLevel, setEditingLevel] = useState<Level | null>(null);
   const [deletingLevel, setDeletingLevel] = useState<Level | null>(null);
-  const getColorClass = useColorClass();
 
   const handleEdit = (level: Level) => {
     setEditingLevel(level);
@@ -87,151 +78,15 @@ export default function LevelListPage() {
             {t('games.noGames')}
           </CardContent>
         </Card>
-      ) : levels.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            {t('levels.noLevels')}
-          </CardContent>
-        </Card>
-      ) : layout === 'horizontal' ? (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('levels.eventToken')}</TableHead>
-                  <TableHead>{t('levels.levelName')}</TableHead>
-                  <TableHead>{t('levels.daysOffset')}</TableHead>
-                  <TableHead>{t('levels.timeSpent')}</TableHead>
-                  <TableHead>{t('levels.isBonus') ?? 'Bonus'}</TableHead>
-                  <TableHead className="text-right">{t('common.actions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {levels.map((level) => {
-                  const rowColor = getColorClass('level', level.is_bonus);
-                  return (
-                    <TableRow key={level.id}>
-                      <TableCell className={`font-mono ${rowColor}`}>{level.event_token}</TableCell>
-                      <TableCell className={rowColor}>{level.level_name}</TableCell>
-                      <TableCell className={`text-center ${rowColor}`}>{level.days_offset}</TableCell>
-                      <TableCell className={`text-center ${rowColor}`}>{level.time_spent}</TableCell>
-                      <TableCell className={`text-center ${rowColor}`}>
-                        {level.is_bonus ? (t('levels.bonusYes') ?? 'Yes') : (t('levels.bonusNo') ?? 'No')}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(level)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => setDeletingLevel(level)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
       ) : (
         <Card>
-          <CardContent className="p-0 overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('levels.eventToken')}</TableHead>
-                  {levels.map((level) => (
-                    <TableHead
-                      key={level.id}
-                      className={`text-center font-mono ${getColorClass('level', level.is_bonus)}`}
-                    >
-                      {level.event_token}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                <TableRow>
-                  <TableHead>{t('levels.levelName')}</TableHead>
-                  {levels.map((level) => {
-                    const cellColor = getColorClass('level', level.is_bonus);
-                    return (
-                      <TableCell
-                        key={level.id}
-                        className={`text-center ${cellColor}`}
-                      >
-                        {level.level_name}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('levels.daysOffset')}</TableHead>
-                  {levels.map((level) => {
-                    const cellColor = getColorClass('level', level.is_bonus);
-                    return (
-                      <TableCell
-                        key={level.id}
-                        className={`text-center ${cellColor}`}
-                      >
-                        {level.days_offset}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('levels.timeSpent')}</TableHead>
-                  {levels.map((level) => {
-                    const cellColor = getColorClass('level', level.is_bonus);
-                    return (
-                      <TableCell
-                        key={level.id}
-                        className={`text-center ${cellColor}`}
-                      >
-                        {level.time_spent}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('levels.isBonus') ?? 'Bonus'}</TableHead>
-                  {levels.map((level) => {
-                    const cellColor = getColorClass('level', level.is_bonus);
-                    return (
-                      <TableCell
-                        key={level.id}
-                        className={`text-center ${cellColor}`}
-                      >
-                        {level.is_bonus ? (t('levels.bonusYes') ?? 'Yes') : (t('levels.bonusNo') ?? 'No')}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('common.actions')}</TableHead>
-                  {levels.map((level) => (
-                    <TableCell key={level.id} className="text-center">
-                      <div className="flex justify-center gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(level)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeletingLevel(level)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableBody>
-            </Table>
+          <CardContent className="p-0">
+            <LevelDataTable
+              levels={levels}
+              layout={layout}
+              onEdit={handleEdit}
+              onDelete={setDeletingLevel}
+            />
           </CardContent>
         </Card>
       )}

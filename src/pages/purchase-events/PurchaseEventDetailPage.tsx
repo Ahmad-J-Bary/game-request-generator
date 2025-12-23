@@ -1,3 +1,5 @@
+// src/pages/purchase-events/PurchaseEventDetailPage.tsx
+
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -33,7 +35,7 @@ export default function PurchaseEventDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t('purchaseEvents.detail') ?? 'Purchase Event Detail'}</CardTitle>
+          <CardTitle>{t('purchaseEvents.detail')}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (

@@ -4,24 +4,16 @@ import { useMemo, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '../../components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../../components/ui/table';
 import { LayoutToggle, Layout } from '../../components/molecules/LayoutToggle';
 import { BackButton } from '../../components/molecules/BackButton';
 import { Level, Account, PurchaseEvent } from '../../types';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
 import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
+import { useProgress } from '../../hooks/useProgress';
 import { AccountLevelProgressList } from '../../components/progress/AccountLevelProgressList';
 import { PurchaseEventProgressList } from '../../components/progress/PurchaseEventProgressList';
-import { cn } from '../../lib/utils';
-import { useColorClass } from '../../contexts/SettingsContext';
+import { AccountDataTable } from '../../components/tables/AccountDataTable';
 
 function parseDateFlexible(input: string): Date | null {
   if (!input) return null;
@@ -80,10 +72,13 @@ export default function AccountDetailPage() {
   const { levels: fetchedLevels = [] } = useLevels(gameIdForLevels);
   const { events: purchaseEvents = [] } = usePurchaseEvents(gameIdForLevels);
 
+  // الحصول على بيانات التقدم
+  const accountId = parseInt(id || '0', 10);
+  const { levelsProgress, purchaseProgress } = useProgress(accountId);
+
   const levels = stateLevels ?? fetchedLevels;
 
   const [layout, setLayout] = useState<Layout>('vertical');
-  const getColorClass = useColorClass();
 
   const startDateObj = useMemo(() => {
     return parseDateFlexible(account?.start_date ?? '') || new Date();
@@ -126,7 +121,7 @@ export default function AccountDetailPage() {
       token: p.event_token,
       name: '$$$',
       isRestricted: p.is_restricted,
-      maxDaysOffset: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : null,
+      maxDaysOffset: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : null,
     }));
 
     return [...levelCols, ...purchaseCols];
@@ -150,126 +145,13 @@ export default function AccountDetailPage() {
 
       <Card>
         <CardContent className="overflow-auto">
-          {columns.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">No levels or purchase events</div>
-          ) : layout === 'horizontal' ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('levels.eventToken') ?? 'Event Token'}</TableHead>
-                  <TableHead>{t('levels.levelName') ?? 'Level Name'}</TableHead>
-                  <TableHead>{t('levels.daysOffset') ?? 'Days Offset'}</TableHead>
-                  <TableHead>{t('levels.timeSpent') ?? 'Time Spent (seconds)'}</TableHead>
-                  <TableHead>{t('levels.accountDate')}</TableHead>
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                {columns.map((col, idx) => {
-                  const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
-
-                  return (
-                    <TableRow key={`${col.kind}-${col.id}`}>
-                      <TableCell className={cn('font-mono', colorClass)}>{col.token}</TableCell>
-                      <TableCell className={colorClass}>
-                        {col.kind === 'level' ? col.name : col.name}
-                      </TableCell>
-                      <TableCell className={cn('text-center', colorClass)}>
-                        {col.kind === 'level' ? col.daysOffset : (col.isRestricted ? (col.maxDaysOffset ?? 'less than') : '-')}
-                      </TableCell>
-                      <TableCell className={cn('text-center', colorClass)}>
-                        {col.kind === 'level' ? col.timeSpent : '-'}
-                      </TableCell>
-                      <TableCell className={cn('text-center', colorClass)}>
-                        {col.kind === 'level' ? computedLevelDates[idx] : '-'}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('levels.eventToken') ?? 'Event Token'}</TableHead>
-                  {columns.map((col) => {
-                    const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
-                    return (
-                      <TableHead
-                        key={`${col.kind}-${col.id}`}
-                        className={cn('text-center font-mono', colorClass)}
-                      >
-                        {col.token}
-                      </TableHead>
-                    );
-                  })}
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                <TableRow>
-                  <TableHead>{t('levels.levelName')}</TableHead>
-                  {columns.map((col) => {
-                    const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
-                    return (
-                      <TableCell
-                        key={`name-${col.kind}-${col.id}`}
-                        className={cn('text-center', colorClass)}
-                      >
-                        {col.kind === 'level' ? col.name : col.name}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('levels.daysOffset') ?? 'Days Offset'}</TableHead>
-                  {columns.map((col) => {
-                    const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
-                    return (
-                      <TableCell
-                        key={`offset-${col.kind}-${col.id}`}
-                        className={cn('text-center', colorClass)}
-                      >
-                        {col.kind === 'level' ? col.daysOffset : (col.isRestricted ? (col.maxDaysOffset ?? 'less than') : '-')}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('levels.timeSpent') ?? 'Time Spent (seconds)'}</TableHead>
-                  {columns.map((col) => {
-                    const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
-                    return (
-                      <TableCell
-                        key={`time-${col.kind}-${col.id}`}
-                        className={cn('text-center', colorClass)}
-                      >
-                        {col.kind === 'level' ? col.timeSpent : '-'}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-
-                <TableRow>
-                  <TableHead>{t('levels.accountDate')}</TableHead>
-                  {columns.map((col, idx) => {
-                    const colorClass = getColorClass(col.kind, col.isBonus, col.isRestricted);
-                    return (
-                      <TableCell
-                        key={`accdate-${col.kind}-${col.id}`}
-                        className={cn('text-center', colorClass)}
-                      >
-                        {col.kind === 'level' ? computedLevelDates[idx] : '-'}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              </TableBody>
-            </Table>
-          )}
+          <AccountDataTable
+            columns={columns}
+            computedLevelDates={computedLevelDates}
+            layout={layout}
+            levelsProgress={levelsProgress}
+            purchaseProgress={purchaseProgress}
+          />
         </CardContent>
       </Card>
 

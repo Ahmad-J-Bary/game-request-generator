@@ -24,8 +24,8 @@ export function LayoutToggle({ layout, onLayoutChange, className }: LayoutToggle
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="vertical">{t('levels.viewVertical') ?? 'Vertical'}</SelectItem>
-        <SelectItem value="horizontal">{t('levels.viewHorizontal') ?? 'Horizontal'}</SelectItem>
+        <SelectItem value="vertical">{t('levels.viewVertical')}</SelectItem>
+        <SelectItem value="horizontal">{t('levels.viewHorizontal')}</SelectItem>
       </SelectContent>
     </Select>
   );
