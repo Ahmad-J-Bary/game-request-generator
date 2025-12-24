@@ -66,7 +66,12 @@
     "viewDetails": "View Details",
     "detailTitle": "Game Detail",
     "detailSubtitle": "Levels and purchase events overview",
-    "noDetails": "No levels or purchase events"
+    "noDetails": "No levels or purchase events",
+    "quickActions": {
+      "addLevel": "Add Level",
+      "addPurchaseEvent": "Add Purchase Event",
+      "addAccount": "Add Account"
+    }
   },
   "accounts": {
     "title": "Accounts",
@@ -208,15 +213,35 @@
     "quickActions": "Quick Actions",
     "viewAll": "View All"
   },
-  "errors": {
-    "required": "This field is required",
-    "invalidDate": "Invalid date format",
-    "invalidNumber": "Please enter a valid number",
-    "fetchFailed": "Failed to fetch data",
-    "saveFailed": "Failed to save data",
-    "deleteFailed": "Failed to delete data",
-    "generateFailed": "Failed to generate request"
-  },
+      "import": {
+        "title": "Import Data",
+        "description": "Import levels, purchase events, and accounts from an Excel file.",
+        "instructions": "Select an Excel file (.xlsx or .xls) with the following sheets:",
+        "selectFile": "Select File",
+        "confirm": "Import Data",
+        "success": "Successfully imported {{count}} items",
+        "failed": "Import failed",
+        "confirmFailed": "Failed to save imported data"
+      },
+      "export": {
+        "title": "Export Data",
+        "gameDescription": "Export all levels, purchase events, and accounts for this game.",
+        "accountDescription": "Export data for this account.",
+        "allDescription": "Export all accounts from all games.",
+        "format": "Data will be exported as an Excel file (.xlsx) with separate sheets for different data types.",
+        "confirm": "Export",
+        "success": "Data exported successfully",
+        "failed": "Export failed"
+      },
+      "errors": {
+        "required": "This field is required",
+        "invalidDate": "Invalid date format",
+        "invalidNumber": "Please enter a valid number",
+        "fetchFailed": "Failed to fetch data",
+        "saveFailed": "Failed to save data",
+        "deleteFailed": "Failed to delete data",
+        "generateFailed": "Failed to generate request"
+      },
   "settings": {
     "title": "Settings",
     "reset": "Reset to Default",

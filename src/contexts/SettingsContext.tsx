@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { storageService } from '../services/storage.service';
+import { useTheme } from './ThemeContext';
 
 export interface ColorSettings {
   levelBonus: string;        // Levels with bonus
@@ -14,15 +15,31 @@ export interface ColorSettings {
   completeScheduledStyle: string;    // Complete scheduled events
 }
 
-const DEFAULT_COLORS: ColorSettings = {
-  levelBonus: 'rgb(220, 252, 231)',
-  levelNormal: 'rgb(219, 234, 254)',
-  purchaseRestricted: 'rgb(254, 249, 195)',
-  purchaseUnrestricted: 'rgb(243, 244, 246)',
-  headerColor: 'rgb(144, 238, 144)',      // Light green for headers
-  dataRowColor: 'rgb(255, 255, 255)',     // White for data rows
-  incompleteScheduledStyle: 'rgb(255, 200, 200)', // Light red for incomplete scheduled
-  completeScheduledStyle: 'rgb(200, 255, 200)',   // Light green for complete scheduled
+// Theme-aware default colors
+const LIGHT_DEFAULT_COLORS: ColorSettings = {
+  levelBonus: 'rgb(220, 252, 231)',      // Light green for bonus levels
+  levelNormal: 'rgb(219, 234, 254)',     // Light blue for normal levels
+  purchaseRestricted: 'rgb(254, 249, 195)',  // Light yellow for restricted purchases
+  purchaseUnrestricted: 'rgb(243, 244, 246)', // Light gray for unrestricted purchases
+  headerColor: 'rgb(144, 238, 144)',    // Light green for headers
+  dataRowColor: 'rgb(255, 255, 255)',   // White for data rows
+  incompleteScheduledStyle: 'rgb(254, 226, 226)', // Light red for incomplete
+  completeScheduledStyle: 'rgb(220, 252, 231)',   // Light green for complete
+};
+
+const DARK_DEFAULT_COLORS: ColorSettings = {
+  levelBonus: 'rgb(16, 185, 129)',       // Emerald green for bonus levels - good contrast
+  levelNormal: 'rgb(99, 102, 241)',      // Indigo blue for normal levels - vibrant but not harsh
+  purchaseRestricted: 'rgb(245, 101, 101)', // Red-400 for restricted purchases - clear warning
+  purchaseUnrestricted: 'rgb(107, 114, 128)', // Gray-500 for unrestricted purchases - neutral
+  headerColor: 'rgb(55, 65, 81)',        // Gray-700 for headers - subtle contrast
+  dataRowColor: 'rgb(17, 24, 39)',       // Gray-900 for data rows - dark but visible
+  incompleteScheduledStyle: 'rgb(239, 68, 68)', // Red-500 for incomplete - clear error indication
+  completeScheduledStyle: 'rgb(16, 185, 129)', // Emerald-500 for complete - success indication
+};
+
+const getDefaultColors = (theme: 'light' | 'dark'): ColorSettings => {
+  return theme === 'light' ? LIGHT_DEFAULT_COLORS : DARK_DEFAULT_COLORS;
 };
 
 interface SettingsContextType {
@@ -36,15 +53,25 @@ interface SettingsContextType {
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
+  const { theme } = useTheme();
+
   const [colors, setColors] = useState<ColorSettings>(() => {
     const saved = storageService.get<ColorSettings>('colorSettings');
-    return saved || DEFAULT_COLORS;
+    return saved || getDefaultColors(theme);
   });
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     const saved = storageService.get<boolean>('sidebarCollapsed');
     return saved ?? false;
   });
+
+  // Reset colors when theme changes if user hasn't customized them
+  useEffect(() => {
+    const saved = storageService.get<ColorSettings>('colorSettings');
+    if (!saved) {
+      setColors(getDefaultColors(theme));
+    }
+  }, [theme]);
 
   useEffect(() => {
     storageService.set('colorSettings', colors);
@@ -59,7 +86,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   };
 
   const resetColors = () => {
-    setColors(DEFAULT_COLORS);
+    setColors(getDefaultColors(theme));
   };
 
   const toggleSidebar = () => {
@@ -94,19 +121,39 @@ export function useColorClass() {
   };
 }
 
-// Hook to get inline style for background color
+// Hook to get inline style for background color with appropriate text color
 export function useColorStyle() {
   const { colors } = useSettings();
-  
-  return (kind: 'level' | 'purchase', isBonus?: boolean, isRestricted?: boolean): React.CSSProperties => {
+
+  const getTextColor = (backgroundColor: string, theme: 'light' | 'dark'): string => {
+    // Simple brightness calculation to determine if we need light or dark text
+    const rgb = backgroundColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (!rgb) return theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)';
+
+    const r = parseInt(rgb[1]);
+    const g = parseInt(rgb[2]);
+    const b = parseInt(rgb[3]);
+
+    // Calculate relative luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    // Return white text for dark backgrounds, black text for light backgrounds
+    return luminance < 0.5 ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)';
+  };
+
+  return (kind: 'level' | 'purchase', isBonus?: boolean, isRestricted?: boolean, theme?: 'light' | 'dark'): React.CSSProperties => {
     let backgroundColor: string;
-    
+
     if (kind === 'level') {
       backgroundColor = isBonus ? colors.levelBonus : colors.levelNormal;
     } else {
       backgroundColor = isRestricted ? colors.purchaseRestricted : colors.purchaseUnrestricted;
     }
-    
-    return { backgroundColor };
+
+    return {
+      backgroundColor,
+      color: getTextColor(backgroundColor, theme || 'light'),
+      fontWeight: '500' // Make text slightly bolder for better readability
+    };
   };
 }

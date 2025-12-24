@@ -35,12 +35,12 @@ const App = () => (
     <ThemeProvider>
       <LanguageProvider>
         <SettingsProvider>
-          <TooltipProvider>
-            <Toaster />
-            <BrowserRouter>
-              <MainLayout>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
+        <TooltipProvider>
+          <Toaster />
+          <BrowserRouter>
+            <MainLayout>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
                   <Route path="/games" element={<GameListPage />} />
                   <Route path="/games/:id" element={<GameDetailPage />} />
                   <Route path="/accounts" element={<AccountListPage />} />
@@ -52,12 +52,12 @@ const App = () => (
                   <Route path="/requests" element={<RequestGeneratorPage />} />
                   <Route path="/purchase-events" element={<PurchaseEventListPage />} />
                   <Route path="/purchase-events/:id" element={<PurchaseEventDetailPage />} />
-                  <Route path="/events" element={<Events />} />
+                <Route path="/events" element={<Events />} />
                   <Route path="/settings" element={<SettingsPage />} />
-                </Routes>
-              </MainLayout>
-            </BrowserRouter>
-          </TooltipProvider>
+              </Routes>
+            </MainLayout>
+          </BrowserRouter>
+        </TooltipProvider>
         </SettingsProvider>
       </LanguageProvider>
     </ThemeProvider>

@@ -78,16 +78,18 @@ export function PurchaseEventForm({ event, gameId, onSubmit, onClose }: Purchase
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="maxDaysOffset">{t('purchaseEvents.maxDaysOffset')}</Label>
-              <Input
-                id="maxDaysOffset"
-                type="number"
-                value={maxDaysOffset}
-                onChange={(e) => setMaxDaysOffset(e.target.value)}
-                placeholder={t('purchaseEvents.maxDaysOffsetPlaceholder')}
-              />
-            </div>
+            {isRestricted && (
+              <div className="space-y-2">
+                <Label htmlFor="maxDaysOffset">{t('purchaseEvents.maxDaysOffset')}</Label>
+                <Input
+                  id="maxDaysOffset"
+                  type="number"
+                  value={maxDaysOffset}
+                  onChange={(e) => setMaxDaysOffset(e.target.value)}
+                  placeholder={t('purchaseEvents.maxDaysOffsetPlaceholder')}
+                />
+              </div>
+            )}
 
             <div className="flex items-center space-x-2">
               <input

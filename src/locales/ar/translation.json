@@ -66,7 +66,12 @@
     "viewDetails": "عرض التفاصيل",
     "detailTitle": "تفاصيل اللعبة",
     "detailSubtitle": "نظرة عامة على المستويات وأحداث الشراء",
-    "noDetails": "لا توجد مستويات أو أحداث شراء"
+    "noDetails": "لا توجد مستويات أو أحداث شراء",
+    "quickActions": {
+      "addLevel": "إضافة مستوى",
+      "addPurchaseEvent": "إضافة حدث شراء",
+      "addAccount": "إضافة حساب"
+    }
   },
   "accounts": {
     "title": "الحسابات",
@@ -208,15 +213,35 @@
     "quickActions": "إجراءات سريعة",
     "viewAll": "عرض الكل"
   },
-  "errors": {
-    "required": "هذا الحقل مطلوب",
-    "invalidDate": "تنسيق التاريخ غير صحيح",
-    "invalidNumber": "الرجاء إدخال رقم صحيح",
-    "fetchFailed": "فشل في جلب البيانات",
-    "saveFailed": "فشل في حفظ البيانات",
-    "deleteFailed": "فشل في حذف البيانات",
-    "generateFailed": "فشل في توليد الطلب"
-  },
+      "import": {
+        "title": "استيراد البيانات",
+        "description": "استيراد المستويات وأحداث الشراء والحسابات من ملف Excel.",
+        "instructions": "اختر ملف Excel (.xlsx أو .xls) بالأوراق التالية:",
+        "selectFile": "اختر الملف",
+        "confirm": "استيراد البيانات",
+        "success": "تم الاستيراد بنجاح {{count}} عنصر",
+        "failed": "فشل في الاستيراد",
+        "confirmFailed": "فشل في حفظ البيانات المستوردة"
+      },
+      "export": {
+        "title": "تصدير البيانات",
+        "gameDescription": "تصدير جميع المستويات وأحداث الشراء والحسابات لهذه اللعبة.",
+        "accountDescription": "تصدير بيانات هذا الحساب.",
+        "allDescription": "تصدير جميع الحسابات من جميع الألعاب.",
+        "format": "سيتم تصدير البيانات كملف Excel (.xlsx) مع أوراق منفصلة لأنواع البيانات المختلفة.",
+        "confirm": "تصدير",
+        "success": "تم تصدير البيانات بنجاح",
+        "failed": "فشل في التصدير"
+      },
+      "errors": {
+        "required": "هذا الحقل مطلوب",
+        "invalidDate": "تنسيق التاريخ غير صحيح",
+        "invalidNumber": "الرجاء إدخال رقم صحيح",
+        "fetchFailed": "فشل في جلب البيانات",
+        "saveFailed": "فشل في حفظ البيانات",
+        "deleteFailed": "فشل في حذف البيانات",
+        "generateFailed": "فشل في توليد الطلب"
+      },
   "settings": {
     "title": "الإعدادات",
     "reset": "إعادة تعيين إلى الافتراضي",

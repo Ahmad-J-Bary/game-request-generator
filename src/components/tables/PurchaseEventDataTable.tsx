@@ -9,7 +9,8 @@ import {
   TableRow,
 } from '../ui/table';
 import { Button } from '../ui/button';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings, useColorStyle } from '../../contexts/SettingsContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { DataTableCell } from './DataTableCell';
 import { Pencil, Trash2 } from 'lucide-react';
 import type { PurchaseEvent } from '../../types';
@@ -24,15 +25,16 @@ interface PurchaseEventDataTableProps {
 export function PurchaseEventDataTable({ events, layout, onEdit, onDelete }: PurchaseEventDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
+  const { theme } = useTheme();
+  const getColorStyle = useColorStyle();
 
   const getEventStyle = (isRestricted: boolean): React.CSSProperties => {
-    return {
-      backgroundColor: isRestricted ? colors.purchaseRestricted : colors.purchaseUnrestricted,
-    };
+    return getColorStyle('purchase', undefined, isRestricted, theme);
   };
 
   const headerStyle: React.CSSProperties = {
     backgroundColor: colors.headerColor,
+    color: theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)',
     fontWeight: 'bold',
   };
 

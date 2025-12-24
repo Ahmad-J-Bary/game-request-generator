@@ -9,7 +9,8 @@ import {
   TableRow,
 } from '../ui/table';
 import { Button } from '../ui/button';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings, useColorStyle } from '../../contexts/SettingsContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { DataTableCell } from './DataTableCell';
 import { Pencil, Trash2 } from 'lucide-react';
 import { Level } from '../../types';
@@ -24,15 +25,21 @@ interface LevelDataTableProps {
 export function LevelDataTable({ levels, layout, onEdit, onDelete }: LevelDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
+  const { theme } = useTheme();
+  const getColorStyle = useColorStyle();
 
-  const getLevelStyle = (isBonus: boolean): React.CSSProperties => {
+  const getLevelStyle = (isBonus: boolean, isSynthetic?: boolean): React.CSSProperties => {
+    const style = getColorStyle('level', isBonus, undefined, theme);
     return {
-      backgroundColor: isBonus ? colors.levelBonus : colors.levelNormal,
+      ...style,
+      opacity: isSynthetic ? 0.6 : 1,
+      fontStyle: isSynthetic ? 'italic' : 'normal'
     };
   };
 
   const headerStyle: React.CSSProperties = {
     backgroundColor: colors.headerColor,
+    color: theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)',
     fontWeight: 'bold',
   };
 
@@ -59,7 +66,7 @@ export function LevelDataTable({ levels, layout, onEdit, onDelete }: LevelDataTa
         </TableHeader>
         <TableBody>
           {levels.map((level) => {
-            const levelStyle = getLevelStyle(level.is_bonus);
+            const levelStyle = getLevelStyle(level.is_bonus, level.synthetic);
             const combinedStyle = { ...levelStyle };
 
             return (
@@ -80,14 +87,16 @@ export function LevelDataTable({ levels, layout, onEdit, onDelete }: LevelDataTa
                   {level.is_bonus ? (t('levels.bonusYes')) : (t('levels.bonusNo'))}
                 </DataTableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => onEdit(level)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => onDelete(level)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  {level.synthetic ? null : (
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="icon" onClick={() => onEdit(level)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => onDelete(level)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             );
@@ -104,7 +113,7 @@ export function LevelDataTable({ levels, layout, onEdit, onDelete }: LevelDataTa
         <TableRow>
           <TableHead style={headerStyle}>{t('levels.eventToken')}</TableHead>
           {levels.map((level) => {
-            const levelStyle = getLevelStyle(level.is_bonus);
+            const levelStyle = getLevelStyle(level.is_bonus, level.synthetic);
             const combinedStyle = { ...headerStyle, ...levelStyle };
 
             return (
@@ -123,7 +132,7 @@ export function LevelDataTable({ levels, layout, onEdit, onDelete }: LevelDataTa
         <TableRow>
           <TableHead style={headerStyle}>{t('levels.levelName')}</TableHead>
           {levels.map((level) => {
-            const levelStyle = getLevelStyle(level.is_bonus);
+            const levelStyle = getLevelStyle(level.is_bonus, level.synthetic);
             const combinedStyle = { ...levelStyle };
 
             return (
@@ -137,7 +146,7 @@ export function LevelDataTable({ levels, layout, onEdit, onDelete }: LevelDataTa
         <TableRow>
           <TableHead style={headerStyle}>{t('levels.daysOffset')}</TableHead>
           {levels.map((level) => {
-            const levelStyle = getLevelStyle(level.is_bonus);
+            const levelStyle = getLevelStyle(level.is_bonus, level.synthetic);
             const combinedStyle = { ...levelStyle };
 
             return (
@@ -151,7 +160,7 @@ export function LevelDataTable({ levels, layout, onEdit, onDelete }: LevelDataTa
         <TableRow>
           <TableHead style={headerStyle}>{t('levels.timeSpent')}</TableHead>
           {levels.map((level) => {
-            const levelStyle = getLevelStyle(level.is_bonus);
+            const levelStyle = getLevelStyle(level.is_bonus, level.synthetic);
             const combinedStyle = { ...levelStyle };
 
             return (
@@ -165,7 +174,7 @@ export function LevelDataTable({ levels, layout, onEdit, onDelete }: LevelDataTa
         <TableRow>
           <TableHead style={headerStyle}>{t('levels.isBonus')}</TableHead>
           {levels.map((level) => {
-            const levelStyle = getLevelStyle(level.is_bonus);
+            const levelStyle = getLevelStyle(level.is_bonus, level.synthetic);
             const combinedStyle = { ...levelStyle };
 
             return (
@@ -180,14 +189,16 @@ export function LevelDataTable({ levels, layout, onEdit, onDelete }: LevelDataTa
           <TableHead style={headerStyle}>{t('common.actions')}</TableHead>
           {levels.map((level) => (
             <TableCell key={level.id} className="text-center">
-              <div className="flex justify-center gap-2">
-                <Button variant="ghost" size="icon" onClick={() => onEdit(level)}>
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => onDelete(level)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+              {level.synthetic ? null : (
+                <div className="flex justify-center gap-2">
+                  <Button variant="ghost" size="icon" onClick={() => onEdit(level)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => onDelete(level)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </TableCell>
           ))}
         </TableRow>

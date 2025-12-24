@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
 import { Button } from '../../components/ui/button';
@@ -16,17 +16,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
-import { Plus, Pencil, Trash2, Eye } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, Download, Upload } from 'lucide-react';
+import { ImportDialog } from '../../components/molecules/ImportDialog';
+import { ExportDialog } from '../../components/molecules/ExportDialog';
 import { Account } from '../../types';
 
 export default function AccountListPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
+
+  // Handle navigation state for pre-selected game
+  useEffect(() => {
+    const state = location.state as { selectedGameId?: number };
+    if (state?.selectedGameId) {
+      setSelectedGameId(state.selectedGameId);
+    }
+  }, [location.state]);
   const { accounts, loading, deleteAccount } = useAccounts(selectedGameId);
   const { levels } = useLevels(selectedGameId);
   const [showDelete, setShowDelete] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   const handleEditNavigate = (account: Account) => {
     navigate(`/accounts/edit/${account.id}`, { state: { account } });
@@ -61,6 +74,20 @@ export default function AccountListPage() {
         <h3 className="text-2xl font-bold">{t('accounts.title')}</h3>
         <div className="flex items-center gap-2">
           <GameSelector selectedGameId={selectedGameId} onGameChange={setSelectedGameId} />
+
+          {selectedGameId && (
+            <>
+              <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+                <Upload className="mr-2 h-4 w-4" />
+                {t('common.import', 'Import')}
+              </Button>
+              <Button variant="outline" onClick={() => setShowExportDialog(true)}>
+                <Download className="mr-2 h-4 w-4" />
+                {t('common.export', 'Export')}
+              </Button>
+            </>
+          )}
+
           <Button onClick={handleAddNavigate} disabled={!selectedGameId}>
             <Plus className="mr-2 h-4 w-4" />
             {t('accounts.addAccount')}
@@ -141,6 +168,19 @@ export default function AccountListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        gameId={selectedGameId}
+      />
+
+      <ExportDialog
+        open={showExportDialog}
+        onOpenChange={setShowExportDialog}
+        gameId={selectedGameId}
+        exportType="game"
+      />
     </div>
   );
 }

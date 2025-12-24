@@ -8,7 +8,8 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings, useColorStyle } from '../../contexts/SettingsContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { DataTableCell } from './DataTableCell';
 
 type ColumnData = 
@@ -21,11 +22,28 @@ interface AccountDataTableProps {
   layout: 'horizontal' | 'vertical';
   levelsProgress?: { level_id: number; is_completed: boolean }[];
   purchaseProgress?: { purchase_event_id: number; is_completed: boolean }[];
+  isEditMode?: boolean;
+  tempProgress?: {
+    levels: { [key: number]: boolean };
+    purchases: { [key: number]: boolean };
+  };
+  onProgressChange?: (type: 'level' | 'purchase', id: number, completed: boolean) => void;
 }
 
-export function AccountDataTable({ columns, computedLevelDates, layout, levelsProgress = [], purchaseProgress = [] }: AccountDataTableProps) {
+export function AccountDataTable({
+  columns,
+  computedLevelDates,
+  layout,
+  levelsProgress = [],
+  purchaseProgress = [],
+  isEditMode = false,
+  tempProgress = { levels: {}, purchases: {} },
+  onProgressChange
+}: AccountDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
+  const { theme } = useTheme();
+  const getColorStyle = useColorStyle();
 
   const renderCellContent = (col: ColumnData, field: 'token' | 'name' | 'daysOffset' | 'timeSpent' | 'accountDate', idx?: number) => {
     switch (field) {
@@ -48,40 +66,48 @@ export function AccountDataTable({ columns, computedLevelDates, layout, levelsPr
   };
 
   const getColumnSpecificStyle = (col: ColumnData): React.CSSProperties => {
-    let backgroundColor: string;
-    
     if (col.kind === 'level') {
-      backgroundColor = col.isBonus ? colors.levelBonus : colors.levelNormal;
+      return getColorStyle('level', col.isBonus, undefined, theme);
     } else {
-      backgroundColor = col.isRestricted ? colors.purchaseRestricted : colors.purchaseUnrestricted;
+      return getColorStyle('purchase', undefined, col.isRestricted, theme);
     }
-    
-    return { backgroundColor };
   };
 
   const headerStyle: React.CSSProperties = {
     backgroundColor: colors.headerColor,
+    color: theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)',
     fontWeight: 'bold',
   };
 
   const dataRowStyle: React.CSSProperties = {
     backgroundColor: colors.dataRowColor,
+    color: theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)',
   };
 
   const incompleteScheduledStyle: React.CSSProperties = {
     backgroundColor: colors.incompleteScheduledStyle,
+    color: theme === 'dark' ? 'rgb(0, 0, 0)' : 'rgb(0, 0, 0)',
     fontStyle: 'italic',
     opacity: 0.8
   };
 
   const completeScheduledStyle: React.CSSProperties = {
     backgroundColor: colors.completeScheduledStyle,
+    color: theme === 'dark' ? 'rgb(0, 0, 0)' : 'rgb(0, 0, 0)',
     fontStyle: 'italic',
     opacity: 0.8
   };
 
   // التحقق من حالة التقدم
   const isItemCompleted = (col: ColumnData): boolean => {
+    if (isEditMode) {
+      if (col.kind === 'level') {
+        return tempProgress.levels[col.id] ?? false;
+      } else {
+        return tempProgress.purchases[col.id] ?? false;
+      }
+    }
+
     if (col.kind === 'level') {
       const progress = levelsProgress.find(p => p.level_id === col.id);
       return progress ? progress.is_completed : false;
@@ -91,9 +117,12 @@ export function AccountDataTable({ columns, computedLevelDates, layout, levelsPr
     }
   };
 
-  const getDateCellStyle = (col: ColumnData): React.CSSProperties => {
-    return isItemCompleted(col) ? completeScheduledStyle : incompleteScheduledStyle;
+  const handleCheckboxChange = (col: ColumnData, checked: boolean | 'indeterminate') => {
+    if (onProgressChange && checked !== 'indeterminate') {
+      onProgressChange(col.kind, col.id, checked);
+    }
   };
+
 
   if (columns.length === 0) {
     return (
@@ -113,13 +142,14 @@ export function AccountDataTable({ columns, computedLevelDates, layout, levelsPr
             <TableHead style={headerStyle}>{t('levels.daysOffset')}</TableHead>
             <TableHead style={headerStyle}>{t('levels.timeSpent')}</TableHead>
             <TableHead style={headerStyle}>{t('levels.accountDate')}</TableHead>
+            {isEditMode && <TableHead style={headerStyle}>{t('common.edit', 'Edit')}</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {columns.map((col, idx) => {
             const columnStyle = getColumnSpecificStyle(col);
             const combinedStyle = { ...dataRowStyle, ...columnStyle };
-            
+
             return (
               <TableRow key={`${col.kind}-${col.id}`}>
                 <TableCell className="font-mono" style={combinedStyle}>
@@ -134,9 +164,19 @@ export function AccountDataTable({ columns, computedLevelDates, layout, levelsPr
                 <DataTableCell style={combinedStyle}>
                   {renderCellContent(col, 'timeSpent')}
                 </DataTableCell>
-                <DataTableCell style={combinedStyle}>
+                <DataTableCell style={isItemCompleted(col) ? completeScheduledStyle : incompleteScheduledStyle}>
                   {renderCellContent(col, 'accountDate', idx)}
                 </DataTableCell>
+                {isEditMode && (
+                  <DataTableCell style={dataRowStyle}>
+                    <input
+                      type="checkbox"
+                      checked={isItemCompleted(col)}
+                      onChange={(e) => handleCheckboxChange(col, e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                  </DataTableCell>
+                )}
               </TableRow>
             );
           })}
@@ -213,17 +253,34 @@ export function AccountDataTable({ columns, computedLevelDates, layout, levelsPr
         <TableRow>
           <TableHead style={headerStyle}>{t('levels.accountDate')}</TableHead>
           {columns.map((col, idx) => {
-            
             return (
-              <DataTableCell 
-                key={`accdate-${col.kind}-${col.id}`} 
-                style={getDateCellStyle(col)}
+              <DataTableCell
+                key={`accdate-${col.kind}-${col.id}`}
+                style={isItemCompleted(col) ? completeScheduledStyle : incompleteScheduledStyle}
               >
                 {renderCellContent(col, 'accountDate', idx)}
               </DataTableCell>
             );
           })}
         </TableRow>
+
+        {isEditMode && (
+          <TableRow>
+            <TableHead style={headerStyle}>{t('common.edit', 'Edit')}</TableHead>
+            {columns.map((col) => {
+              return (
+                <DataTableCell key={`edit-${col.kind}-${col.id}`} style={dataRowStyle}>
+                  <input
+                    type="checkbox"
+                    checked={isItemCompleted(col)}
+                    onChange={(e) => handleCheckboxChange(col, e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                </DataTableCell>
+              );
+            })}
+          </TableRow>
+        )}
       </TableBody>
     </Table>
   );

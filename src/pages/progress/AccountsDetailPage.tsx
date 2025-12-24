@@ -7,14 +7,23 @@ import { LayoutToggle, Layout } from '../../components/molecules/LayoutToggle';
 import { GameSelector } from '../../components/molecules/GameSelector';
 import { BackButton } from '../../components/molecules/BackButton';
 import { AccountsDataTable } from '../../components/tables/AccountsDataTable';
+import { ImportDialog } from '../../components/molecules/ImportDialog';
+import { ExportDialog } from '../../components/molecules/ExportDialog';
+import { Button } from '../../components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu';
+import { Download, Upload, ChevronDown } from 'lucide-react';
 
 import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
 import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
 import { ProgressProvider } from '../../components/progress/ProgressProvider';
 import { TauriService } from '../../services/tauri.service';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 import type { PurchaseEvent } from '../../types';
+
+type Mode = 'all' | 'event-only';
 
 function parseDate(input?: string): Date | null {
   if (!input) return null;
@@ -41,8 +50,14 @@ function daysBetween(start: Date, target: Date) {
 
 export default function AccountsDetailPage() {
   const { t } = useTranslation();
+  const { colors } = useSettings();
+  const { theme } = useTheme();
   const [layout, setLayout] = useState<Layout>('vertical');
   const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
+  const [mode, setMode] = useState<Mode>('event-only');
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportType, setExportType] = useState<'game' | 'account' | 'all'>('game');
 
   const { accounts = [] } = useAccounts(selectedGameId);
   const { levels = [] } = useLevels(selectedGameId);
@@ -70,8 +85,56 @@ export default function AccountsDetailPage() {
       maxDaysOffset: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : '-',
     }));
 
-    return [...levelCols, ...peCols];
-  }, [levels, purchaseEvents]);
+    // Base columns following GameDetailPage logic
+    const baseLevelCols = [...levelCols];
+    const basePeCols = [...peCols];
+
+    if (mode === 'event-only') {
+      // In event-only mode, show base columns with synthetic: false
+      return [...baseLevelCols.map(c => ({ ...c, synthetic: false })),
+              ...basePeCols.map(c => ({ ...c, synthetic: false }))];
+    }
+
+    // In 'all' mode, implement the same logic as GameDetailPage for creating synthetic entries
+    const numeric = baseLevelCols.filter((c: any) => typeof c.daysOffset === 'number');
+    numeric.sort((a: any, b: any) => a.daysOffset - b.daysOffset);
+
+    const result: any[] = [];
+    for (let i = 0; i < numeric.length; i++) {
+      const left = numeric[i];
+      result.push({ ...left, synthetic: false });
+      const right = numeric[i + 1];
+      if (right && typeof right.daysOffset === 'number' && typeof left.daysOffset === 'number' && right.daysOffset > left.daysOffset + 1) {
+        for (let d = left.daysOffset + 1; d <= right.daysOffset - 1; d++) {
+          let synthesizedTime: number | null = null;
+          if (typeof left.timeSpent === 'number' && typeof right.timeSpent === 'number') {
+            // Interpolate time between left and right levels
+            const ratio = (d - left.daysOffset) / (right.daysOffset - left.daysOffset);
+            synthesizedTime = Math.round(left.timeSpent + ratio * (right.timeSpent - left.timeSpent));
+          }
+          const synth = {
+            kind: 'level' as const,
+            id: `synth-${left.id}-${d}`,
+            token: right.token,
+            name: '-',
+            daysOffset: d,
+            timeSpent: synthesizedTime,
+            isBonus: false,
+            synthetic: true,
+          };
+          result.push(synth);
+        }
+      }
+    }
+
+    const numericIds = new Set(numeric.map((c: any) => c.id));
+    const nonNumeric = baseLevelCols.filter((c: any) => !numericIds.has(c.id));
+    nonNumeric.forEach(c => result.push({ ...c, synthetic: false }));
+
+    const finalPeCols = basePeCols.map(c => ({ ...c, synthetic: false }));
+
+    return [...result, ...finalPeCols];
+  }, [levels, purchaseEvents, mode]);
 
   const matrix = useMemo(() => {
     return accounts.map((acc) => {
@@ -115,9 +178,69 @@ export default function AccountsDetailPage() {
         <h2 className="text-xl font-semibold">Accounts Detail</h2>
 
         <div className="flex gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowImportDialog(true)}
+            className="flex items-center gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            {t('common.import', 'Import')}
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="flex items-center gap-2">
+                <Download className="h-4 w-4" />
+                {t('common.export', 'Export')}
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem
+                onClick={() => {
+                  setExportType('game');
+                  setShowExportDialog(true);
+                }}
+              >
+                {t('export.gameAccounts', 'Export Game Accounts')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setExportType('all');
+                  setShowExportDialog(true);
+                }}
+              >
+                {t('export.allGames', 'Export All Games')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <LayoutToggle layout={layout} onLayoutChange={setLayout} />
 
           <GameSelector selectedGameId={selectedGameId} onGameChange={setSelectedGameId} />
+
+          <div className="flex items-center gap-2 px-2 py-1 border rounded">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="accounts-mode"
+                checked={mode === 'event-only'}
+                onChange={() => setMode('event-only')}
+              />
+              <span className="text-sm">{t('common.eventOnly')}</span>
+            </label>
+
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="accounts-mode"
+                checked={mode === 'all'}
+                onChange={() => setMode('all')}
+              />
+              <span className="text-sm">{t('common.all')}</span>
+            </label>
+          </div>
 
           <BackButton />
         </div>
@@ -141,6 +264,23 @@ export default function AccountsDetailPage() {
           </ProgressProvider>
         </CardContent>
       </Card>
+
+      <ImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        gameId={selectedGameId}
+      />
+
+      <ExportDialog
+        open={showExportDialog}
+        onOpenChange={setShowExportDialog}
+        gameId={selectedGameId}
+        exportType={exportType}
+        layout={layout}
+        colorSettings={colors}
+        theme={theme}
+        source="accounts-detail"
+      />
     </div>
   );
 }

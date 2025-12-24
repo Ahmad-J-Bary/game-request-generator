@@ -1,6 +1,7 @@
 // src/components/molecules/ColorSettingsPanel.tsx
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { ColorPicker } from '../ui/color-picker';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -8,18 +9,44 @@ import { Separator } from '../ui/separator';
 
 export function ColorSettingsPanel() {
   const { t } = useTranslation();
+  const { theme } = useTheme();
   const { colors, updateColors, resetColors } = useSettings();
   
-  // Ensure all colors are defined and valid
+  // Ensure all colors are defined and valid, using theme-aware defaults
+  const getThemeDefault = (colorKey: keyof typeof colors) => {
+    const defaults = theme === 'light'
+      ? {
+          levelBonus: 'rgb(220, 252, 231)',
+          levelNormal: 'rgb(219, 234, 254)',
+          purchaseRestricted: 'rgb(254, 249, 195)',
+          purchaseUnrestricted: 'rgb(243, 244, 246)',
+          headerColor: 'rgb(144, 238, 144)',
+          dataRowColor: 'rgb(255, 255, 255)',
+          incompleteScheduledStyle: 'rgb(254, 226, 226)',
+          completeScheduledStyle: 'rgb(220, 252, 231)'
+        }
+      : {
+          levelBonus: 'rgb(34, 197, 94)',
+          levelNormal: 'rgb(59, 130, 246)',
+          purchaseRestricted: 'rgb(245, 158, 11)',
+          purchaseUnrestricted: 'rgb(75, 85, 99)',
+          headerColor: 'rgb(34, 197, 94)',
+          dataRowColor: 'rgb(31, 41, 55)',
+          incompleteScheduledStyle: 'rgb(239, 68, 68)',
+          completeScheduledStyle: 'rgb(34, 197, 94)'
+        };
+    return defaults[colorKey];
+  };
+
   const safeColors = {
-    headerColor: colors.headerColor || 'rgb(144, 238, 144)',
-    dataRowColor: colors.dataRowColor || 'rgb(255, 255, 255)',
-    levelBonus: colors.levelBonus || 'rgb(220, 252, 231)',
-    levelNormal: colors.levelNormal || 'rgb(219, 234, 254)',
-    purchaseRestricted: colors.purchaseRestricted || 'rgb(254, 249, 195)',
-    purchaseUnrestricted: colors.purchaseUnrestricted || 'rgb(243, 244, 246)',
-    incompleteScheduledStyle: colors.incompleteScheduledStyle || 'rgb(255, 200, 200)',
-    completeScheduledStyle: colors.completeScheduledStyle || 'rgb(200, 255, 200)'
+    headerColor: colors.headerColor || getThemeDefault('headerColor'),
+    dataRowColor: colors.dataRowColor || getThemeDefault('dataRowColor'),
+    levelBonus: colors.levelBonus || getThemeDefault('levelBonus'),
+    levelNormal: colors.levelNormal || getThemeDefault('levelNormal'),
+    purchaseRestricted: colors.purchaseRestricted || getThemeDefault('purchaseRestricted'),
+    purchaseUnrestricted: colors.purchaseUnrestricted || getThemeDefault('purchaseUnrestricted'),
+    incompleteScheduledStyle: colors.incompleteScheduledStyle || getThemeDefault('incompleteScheduledStyle'),
+    completeScheduledStyle: colors.completeScheduledStyle || getThemeDefault('completeScheduledStyle')
   };
 
   return (

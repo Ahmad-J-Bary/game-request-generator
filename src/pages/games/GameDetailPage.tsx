@@ -1,32 +1,45 @@
+// src/pages/games/GameDetailPage.tsx
+
 import { useMemo, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '../../components/ui/card';
 import { LayoutToggle, Layout } from '../../components/molecules/LayoutToggle';
 import { BackButton } from '../../components/molecules/BackButton';
 import { GameDataTable } from '../../components/tables/GameDataTable';
+import { ImportDialog } from '../../components/molecules/ImportDialog';
+import { ExportDialog } from '../../components/molecules/ExportDialog';
+import { Button } from '../../components/ui/button';
+import { Download, Upload, Plus } from 'lucide-react';
 
 import { useGames } from '../../hooks/useGames';
 import { useLevels } from '../../hooks/useLevels';
 import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 type Mode = 'all' | 'event-only';
 
 export default function GameDetailPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { id } = useParams<{ id?: string }>();
   const gameId = id ? parseInt(id, 10) : undefined;
+  const { colors } = useSettings();
+  const { theme } = useTheme();
 
   const { games } = useGames();
   const { levels = [] } = useLevels(gameId);
   const { events: purchaseEvents = [] } = usePurchaseEvents(gameId);
 
   const [layout, setLayout] = useState<Layout>('vertical');
-  const [mode, setMode] = useState<Mode>('all');
+  const [mode, setMode] = useState<Mode>('event-only');
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   useEffect(() => {
     setLayout('vertical');
-    setMode('all');
+    setMode('event-only');
   }, [gameId]);
 
   const game = games.find(g => String(g.id) === String(id));
@@ -65,7 +78,7 @@ export default function GameDetailPage() {
   }
 
   const columns = useMemo(() => {
-    if (mode === 'all') {
+    if (mode === 'event-only') {
       return baseColumns.map((c: any) => ({
         ...c,
         synthetic: false,
@@ -126,6 +139,26 @@ export default function GameDetailPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowImportDialog(true)}
+            className="flex items-center gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            {t('common.import', 'Import')}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowExportDialog(true)}
+            className="flex items-center gap-2"
+          >
+            <Download className="h-4 w-4" />
+            {t('common.export', 'Export')}
+          </Button>
+
           <LayoutToggle layout={layout} onLayoutChange={setLayout} />
 
           <div className="flex items-center gap-2 px-2 py-1 border rounded">
@@ -133,18 +166,18 @@ export default function GameDetailPage() {
               <input
                 type="radio"
                 name="game-detail-mode"
-                checked={mode === 'all'}
-                onChange={() => setMode('all')}
+                checked={mode === 'event-only'}
+                onChange={() => setMode('event-only')}
               />
               <span className="text-sm">{t('common.eventOnly')}</span>
             </label>
-
+            
             <label className="inline-flex items-center gap-2">
               <input
                 type="radio"
                 name="game-detail-mode"
-                checked={mode === 'event-only'}
-                onChange={() => setMode('event-only')}
+                checked={mode === 'all'}
+                onChange={() => setMode('all')}
               />
               <span className="text-sm">{t('common.all')}</span>
             </label>
@@ -162,6 +195,49 @@ export default function GameDetailPage() {
           />
         </CardContent>
       </Card>
+
+      <div className="flex flex-wrap gap-4 mt-6">
+        <Button
+          onClick={() => navigate('/levels', { state: { selectedGameId: gameId } })}
+          className="flex items-center gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          {t('games.quickActions.addLevel')}
+        </Button>
+
+        <Button
+          onClick={() => navigate('/purchase-events', { state: { selectedGameId: gameId } })}
+          className="flex items-center gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          {t('games.quickActions.addPurchaseEvent')}
+        </Button>
+
+        <Button
+          onClick={() => navigate(`/accounts/new?gameId=${gameId}`)}
+          className="flex items-center gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          {t('games.quickActions.addAccount')}
+        </Button>
+      </div>
+
+      <ImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        gameId={gameId}
+      />
+
+      <ExportDialog
+        open={showExportDialog}
+        onOpenChange={setShowExportDialog}
+        gameId={gameId}
+        exportType="game"
+        layout={layout}
+        colorSettings={colors}
+        theme={theme}
+        source="game-detail"
+      />
     </div>
   );
 }

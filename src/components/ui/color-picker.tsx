@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Button } from './button';
 import { Input } from './input';
 import { Label } from './label';
+import { useTheme } from '../../contexts/ThemeContext';
 import {
   Popover,
   PopoverContent,
@@ -15,7 +16,7 @@ interface ColorPickerProps {
   label?: string;
 }
 
-const PRESET_COLORS = [
+const LIGHT_PRESET_COLORS = [
   { name: 'Light Blue', value: 'rgb(219, 234, 254)' },
   { name: 'Light Green', value: 'rgb(220, 252, 231)' },
   { name: 'Light Yellow', value: 'rgb(254, 249, 195)' },
@@ -30,9 +31,26 @@ const PRESET_COLORS = [
   { name: 'Light Amber', value: 'rgb(254, 243, 199)' },
 ];
 
+const DARK_PRESET_COLORS = [
+  { name: 'Emerald', value: 'rgb(16, 185, 129)' },
+  { name: 'Indigo', value: 'rgb(99, 102, 241)' },
+  { name: 'Red', value: 'rgb(245, 101, 101)' },
+  { name: 'Gray', value: 'rgb(107, 114, 128)' },
+  { name: 'Dark Gray', value: 'rgb(55, 65, 81)' },
+  { name: 'Darker Gray', value: 'rgb(17, 24, 39)' },
+  { name: 'Purple', value: 'rgb(147, 51, 234)' },
+  { name: 'Pink', value: 'rgb(236, 72, 153)' },
+  { name: 'Cyan', value: 'rgb(6, 182, 212)' },
+  { name: 'Orange', value: 'rgb(249, 115, 22)' },
+  { name: 'Teal', value: 'rgb(20, 184, 166)' },
+  { name: 'Rose', value: 'rgb(244, 63, 94)' },
+];
+
 export function ColorPicker({ color, onChange, label }: ColorPickerProps) {
+  const { theme } = useTheme();
+
   // Ensure color is defined
-  const safeColor = color || 'rgb(255, 255, 255)';
+  const safeColor = color || (theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(31, 41, 55)');
   const [r, g, b] = parseRgb(safeColor);
   const [localR, setLocalR] = useState(r);
   const [localG, setLocalG] = useState(g);
@@ -80,7 +98,7 @@ export function ColorPicker({ color, onChange, label }: ColorPickerProps) {
             <div>
               <h4 className="font-medium mb-3">Preset Colors</h4>
               <div className="grid grid-cols-4 gap-2">
-                {PRESET_COLORS.map((preset) => (
+                {(theme === 'light' ? LIGHT_PRESET_COLORS : DARK_PRESET_COLORS).map((preset) => (
                   <button
                     key={preset.name}
                     onClick={() => handlePresetClick(preset.value)}

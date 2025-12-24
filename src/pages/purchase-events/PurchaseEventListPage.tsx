@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
@@ -22,7 +23,16 @@ import { PurchaseEventForm } from './PurchaseEventForm';
 
 export default function PurchaseEventListPage() {
   const { t } = useTranslation();
+  const location = useLocation();
   const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
+
+  // Handle navigation state for pre-selected game
+  useEffect(() => {
+    const state = location.state as { selectedGameId?: number };
+    if (state?.selectedGameId) {
+      setSelectedGameId(state.selectedGameId);
+    }
+  }, [location.state]);
   const [layout, setLayout] = useState<Layout>('vertical');
   const { events, loading, addPurchaseEvent, updatePurchaseEvent, deletePurchaseEvent } =
     usePurchaseEvents(selectedGameId);

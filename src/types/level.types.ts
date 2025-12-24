@@ -8,6 +8,7 @@ export interface Level {
   days_offset: number;
   time_spent: number;
   is_bonus: boolean; // جديد
+  synthetic?: boolean; // For interpolated levels
 }
 
 export interface CreateLevelRequest {

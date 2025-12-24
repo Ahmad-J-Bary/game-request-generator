@@ -8,12 +8,13 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings, useColorStyle } from '../../contexts/SettingsContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { DataTableCell } from './DataTableCell';
 
 type ColumnData =
-  | { kind: 'level'; id: number; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean }
-  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; maxDaysOffset: string | null };
+  | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean }
+  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; maxDaysOffset: string | null; synthetic?: boolean };
 
 interface Account {
   id: number;
@@ -45,6 +46,8 @@ export function AccountsDataTable({
 }: AccountsDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
+  const { theme } = useTheme();
+  const getColorStyle = useColorStyle();
 
   const renderCellContent = (col: ColumnData, field: 'token' | 'name' | 'daysOffset' | 'timeSpent' | 'accountDate') => {
     switch (field) {
@@ -65,34 +68,41 @@ export function AccountsDataTable({
   };
 
   const getColumnSpecificStyle = (col: ColumnData): React.CSSProperties => {
-    let backgroundColor: string;
-
+    let style: React.CSSProperties;
     if (col.kind === 'level') {
-      backgroundColor = col.isBonus ? colors.levelBonus : colors.levelNormal;
+      style = getColorStyle('level', col.isBonus, undefined, theme);
     } else {
-      backgroundColor = col.isRestricted ? colors.purchaseRestricted : colors.purchaseUnrestricted;
+      style = getColorStyle('purchase', undefined, col.isRestricted, theme);
     }
 
-    return { backgroundColor };
+    return {
+      ...style,
+      opacity: col.synthetic ? 0.6 : 1,
+      fontStyle: col.synthetic ? 'italic' : 'normal'
+    };
   };
 
   const headerStyle: React.CSSProperties = {
     backgroundColor: colors.headerColor,
+    color: theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)',
     fontWeight: 'bold',
   };
 
   const dataRowStyle: React.CSSProperties = {
     backgroundColor: colors.dataRowColor,
+    color: theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)',
   };
 
   const incompleteScheduledStyle: React.CSSProperties = {
     backgroundColor: colors.incompleteScheduledStyle,
+    color: theme === 'dark' ? 'rgb(0, 0, 0)' : 'rgb(0, 0, 0)',
     fontStyle: 'italic',
     opacity: 0.8
   };
 
   const completeScheduledStyle: React.CSSProperties = {
     backgroundColor: colors.completeScheduledStyle,
+    color: theme === 'dark' ? 'rgb(0, 0, 0)' : 'rgb(0, 0, 0)',
     fontStyle: 'italic',
     opacity: 0.8
   };
