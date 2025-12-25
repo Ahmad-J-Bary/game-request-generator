@@ -20,6 +20,8 @@ import { ProgressProvider } from '../../components/progress/ProgressProvider';
 import { TauriService } from '../../services/tauri.service';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { toast } from 'sonner';
+import { ExcelService } from '../../services/excel.service';
 
 import type { PurchaseEvent } from '../../types';
 
@@ -39,7 +41,7 @@ function addDays(date: Date, days: number): Date {
 
 function formatDateShort(date: Date | null): string {
   if (!date) return '-';
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${date.getDate()}-${months[date.getMonth()]}`;
 }
 
@@ -69,11 +71,12 @@ export default function AccountsDetailPage() {
     const levelCols = levels.map((l) => ({
       kind: 'level' as const,
       id: l.id,
-      token: l.event_token,
+      token: l.event_token.split('_day')[0],
       name: l.level_name,
       daysOffset: l.days_offset,
       timeSpent: l.time_spent,
       isBonus: l.is_bonus,
+      synthetic: l.level_name === '-',
     }));
 
     const peCols = purchaseEvents.map((p: PurchaseEvent) => ({
@@ -90,9 +93,8 @@ export default function AccountsDetailPage() {
     const basePeCols = [...peCols];
 
     if (mode === 'event-only') {
-      // In event-only mode, show base columns with synthetic: false
-      return [...baseLevelCols.map(c => ({ ...c, synthetic: false })),
-              ...basePeCols.map(c => ({ ...c, synthetic: false }))];
+      // In event-only mode, filter out session levels (name '-')
+      return [...baseLevelCols.filter(c => c.name !== '-'), ...basePeCols];
     }
 
     // In 'all' mode, implement the same logic as GameDetailPage for creating synthetic entries
@@ -102,7 +104,7 @@ export default function AccountsDetailPage() {
     const result: any[] = [];
     for (let i = 0; i < numeric.length; i++) {
       const left = numeric[i];
-      result.push({ ...left, synthetic: false });
+      result.push(left);
       const right = numeric[i + 1];
       if (right && typeof right.daysOffset === 'number' && typeof left.daysOffset === 'number' && right.daysOffset > left.daysOffset + 1) {
         for (let d = left.daysOffset + 1; d <= right.daysOffset - 1; d++) {
@@ -129,9 +131,9 @@ export default function AccountsDetailPage() {
 
     const numericIds = new Set(numeric.map((c: any) => c.id));
     const nonNumeric = baseLevelCols.filter((c: any) => !numericIds.has(c.id));
-    nonNumeric.forEach(c => result.push({ ...c, synthetic: false }));
+    nonNumeric.forEach(c => result.push(c));
 
-    const finalPeCols = basePeCols.map(c => ({ ...c, synthetic: false }));
+    const finalPeCols = basePeCols;
 
     return [...result, ...finalPeCols];
   }, [levels, purchaseEvents, mode]);
@@ -216,6 +218,21 @@ export default function AccountsDetailPage() {
             </DropdownMenuContent>
           </DropdownMenu>
 
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              const success = await ExcelService.testExport();
+              if (success) {
+                toast.success('Test export successful!');
+              } else {
+                toast.error('Test export failed.');
+              }
+            }}
+          >
+            Test Export
+          </Button>
+
           <LayoutToggle layout={layout} onLayoutChange={setLayout} />
 
           <GameSelector selectedGameId={selectedGameId} onGameChange={setSelectedGameId} />
@@ -250,16 +267,31 @@ export default function AccountsDetailPage() {
         <CardContent className="overflow-auto">
           <ProgressProvider accounts={accounts}>
             {({ levelsProgress, purchaseProgress }) => (
-              <AccountsDataTable
-                accounts={accounts}
-                columns={columns}
-                matrix={matrix}
-                layout={layout}
-                peDates={peDates}
-                onPurchaseDateChange={handlePurchaseDateChange}
-                levelsProgress={levelsProgress}
-                purchaseProgress={purchaseProgress}
-              />
+              <>
+                <AccountsDataTable
+                  accounts={accounts}
+                  columns={columns}
+                  matrix={matrix}
+                  layout={layout}
+                  peDates={peDates}
+                  onPurchaseDateChange={handlePurchaseDateChange}
+                  levelsProgress={levelsProgress}
+                  purchaseProgress={purchaseProgress}
+                />
+                <ExportDialog
+                  open={showExportDialog}
+                  onOpenChange={setShowExportDialog}
+                  gameId={selectedGameId}
+                  exportType={exportType}
+                  layout={layout}
+                  colorSettings={colors}
+                  theme={theme}
+                  source="accounts-detail"
+                  data={columns}
+                  levelsProgress={levelsProgress}
+                  purchaseProgress={purchaseProgress}
+                />
+              </>
             )}
           </ProgressProvider>
         </CardContent>
@@ -269,17 +301,6 @@ export default function AccountsDetailPage() {
         open={showImportDialog}
         onOpenChange={setShowImportDialog}
         gameId={selectedGameId}
-      />
-
-      <ExportDialog
-        open={showExportDialog}
-        onOpenChange={setShowExportDialog}
-        gameId={selectedGameId}
-        exportType={exportType}
-        layout={layout}
-        colorSettings={colors}
-        theme={theme}
-        source="accounts-detail"
       />
     </div>
   );

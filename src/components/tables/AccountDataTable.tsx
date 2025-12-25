@@ -12,9 +12,9 @@ import { useSettings, useColorStyle } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { DataTableCell } from './DataTableCell';
 
-type ColumnData = 
-  | { kind: 'level'; id: number; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean }
-  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; maxDaysOffset: string | null };
+type ColumnData =
+  | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean }
+  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; maxDaysOffset: string | null; synthetic?: boolean };
 
 interface AccountDataTableProps {
   columns: ColumnData[];
@@ -27,7 +27,8 @@ interface AccountDataTableProps {
     levels: { [key: number]: boolean };
     purchases: { [key: number]: boolean };
   };
-  onProgressChange?: (type: 'level' | 'purchase', id: number, completed: boolean) => void;
+  onProgressChange?: (type: 'level' | 'purchase', id: number | string, completed: boolean) => void;
+  levels?: any[];
 }
 
 export function AccountDataTable({
@@ -38,7 +39,8 @@ export function AccountDataTable({
   purchaseProgress = [],
   isEditMode = false,
   tempProgress = { levels: {}, purchases: {} },
-  onProgressChange
+  onProgressChange,
+  levels = []
 }: AccountDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
@@ -66,11 +68,19 @@ export function AccountDataTable({
   };
 
   const getColumnSpecificStyle = (col: ColumnData): React.CSSProperties => {
+    let style: React.CSSProperties;
+
     if (col.kind === 'level') {
-      return getColorStyle('level', col.isBonus, undefined, theme);
+      style = getColorStyle('level', col.isBonus, undefined, theme);
     } else {
-      return getColorStyle('purchase', undefined, col.isRestricted, theme);
+      style = getColorStyle('purchase', undefined, col.isRestricted, theme);
     }
+
+    return {
+      ...style,
+      opacity: col.synthetic ? 0.6 : 1,
+      fontStyle: col.synthetic ? 'italic' : 'normal'
+    };
   };
 
   const headerStyle: React.CSSProperties = {
@@ -102,13 +112,31 @@ export function AccountDataTable({
   const isItemCompleted = (col: ColumnData): boolean => {
     if (isEditMode) {
       if (col.kind === 'level') {
-        return tempProgress.levels[col.id] ?? false;
+        return tempProgress.levels[col.id as keyof typeof tempProgress.levels] ?? false;
       } else {
-        return tempProgress.purchases[col.id] ?? false;
+        return tempProgress.purchases[col.id as keyof typeof tempProgress.purchases] ?? false;
       }
     }
 
     if (col.kind === 'level') {
+      // For session levels, check if there's a real level at the same position that has progress
+      if (col.synthetic && typeof col.id === 'string' && col.id.startsWith('synth-')) {
+        // Extract days offset from session level ID
+        const parts = col.id.split('-');
+        if (parts.length >= 3) {
+          const daysOffset = parseInt(parts[2]);
+          // Find if there's a real level at this days offset with progress
+          const realLevelWithProgress = levelsProgress.find(p => {
+            // We need to find the level that has this days offset
+            const level = levels.find(l => l.id === p.level_id);
+            return level && level.days_offset === daysOffset;
+          });
+          if (realLevelWithProgress) {
+            return realLevelWithProgress.is_completed;
+          }
+        }
+      }
+
       const progress = levelsProgress.find(p => p.level_id === col.id);
       return progress ? progress.is_completed : false;
     } else {

@@ -1,8 +1,8 @@
 // src/services/excel.service.ts
 
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readFile, writeFile, mkdir } from '@tauri-apps/plugin-fs';
+import { readFile, writeFile, mkdir, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { TauriService } from './tauri.service';
 import type { Game, Account, Level, PurchaseEvent } from '../types';
 import type { ColorSettings } from '../contexts/SettingsContext';
@@ -21,14 +21,57 @@ interface ExportData {
 }
 
 export class ExcelService {
+
   /**
-   * Get the home directory path
+   * Helper to save file with filesystem attempt and browser fallback
    */
-  private static async getHomeDir(): Promise<string> {
-    // For Linux systems, construct the home directory path
-    // This avoids using the path plugin which has permission issues
-    // Use a simple fallback for the typical Linux home directory
-    return '/home/dell';
+  private static async saveFile(filename: string, buffer: any): Promise<boolean> {
+    const uint8Array = new Uint8Array(buffer);
+    const appDir = 'GameRequestGenerator';
+
+    try {
+      // Try saving to filesystem using BaseDirectory.Home (Tauri 2.0 way)
+      // This is more robust than raw absolute paths for security reasons
+      await mkdir(appDir, { recursive: true, baseDir: BaseDirectory.Home });
+      const filePath = `${appDir}/${filename}`;
+      await writeFile(filePath, uint8Array, { baseDir: BaseDirectory.Home });
+      console.log(`File saved to: ${appDir}/${filename} in Home directory`);
+      return true;
+    } catch (error) {
+      console.error('Failed to save file to filesystem, trying fallback:', error);
+
+      try {
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return true;
+      } catch (fallbackError) {
+        console.error('Browser download fallback failed:', fallbackError);
+        return false;
+      }
+    }
+  }
+
+  /**
+   * Simple test export to verify filesystem access
+   */
+  static async testExport(): Promise<boolean> {
+    try {
+      const workbook = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([['Test', 'Export'], ['Success', 'Yes']]);
+      XLSX.utils.book_append_sheet(workbook, ws, 'Test');
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      return await this.saveFile('Test_Export.xlsx', buffer);
+    } catch (error) {
+      console.error('Test export failed:', error);
+      return false;
+    }
   }
   /**
    * Parse Excel file and extract data based on sheet structure
@@ -129,8 +172,8 @@ export class ExcelService {
 
       if (isBonusIndex >= 0 && row[isBonusIndex] !== undefined) {
         level.is_bonus = row[isBonusIndex]?.toString().toLowerCase() === 'yes' ||
-                        row[isBonusIndex]?.toString().toLowerCase() === 'true' ||
-                        row[isBonusIndex] === 1;
+          row[isBonusIndex]?.toString().toLowerCase() === 'true' ||
+          row[isBonusIndex] === 1;
       }
 
       // Only add if we have at least event_token and level_name
@@ -168,8 +211,8 @@ export class ExcelService {
 
       if (isRestrictedIndex >= 0 && row[isRestrictedIndex] !== undefined) {
         event.is_restricted = row[isRestrictedIndex]?.toString().toLowerCase() === 'yes' ||
-                             row[isRestrictedIndex]?.toString().toLowerCase() === 'true' ||
-                             row[isRestrictedIndex] === 1;
+          row[isRestrictedIndex]?.toString().toLowerCase() === 'true' ||
+          row[isRestrictedIndex] === 1;
       }
 
       if (maxDaysOffsetIndex >= 0 && row[maxDaysOffsetIndex] !== undefined) {
@@ -321,38 +364,9 @@ export class ExcelService {
         XLSX.utils.book_append_sheet(workbook, accountSheet, 'Accounts');
       }
 
-      // Save file to application directory in user's home
+      // Save file
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      const uint8Array = new Uint8Array(buffer);
-
-      try {
-        // Get user's home directory
-        const homeDirPath = await this.getHomeDir();
-
-        // Create application-specific directory
-        const appDir = `${homeDirPath}/GameRequestGenerator`;
-        await mkdir(appDir, { recursive: true });
-
-        // Save file to application directory
-        const filePath = `${appDir}/${filename}`;
-        await writeFile(filePath, uint8Array);
-
-        console.log(`File saved to: ${filePath}`);
-        return true;
-      } catch (error) {
-        console.error('Failed to save file to filesystem:', error);
-        // Fallback to browser download
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        return true;
-      }
+      return await this.saveFile(filename, buffer);
     } catch (error) {
       console.error('Export error:', error);
       return false;
@@ -381,7 +395,10 @@ export class ExcelService {
   /**
    * Export game detail data (only levels and purchase events) from GameDetailPage
    */
-  static async exportGameDetailData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark'): Promise<boolean> {
+  /**
+   * Export game detail data (only levels and purchase events) from GameDetailPage
+   */
+  static async exportGameDetailData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[]): Promise<boolean> {
     try {
       const [levels, purchaseEvents] = await Promise.all([
         TauriService.getGameLevels(gameId),
@@ -391,7 +408,7 @@ export class ExcelService {
       const game = await TauriService.getGameById(gameId);
       const gameName = game?.name || 'Game';
 
-      return await this.exportGameDetailToExcel(levels, purchaseEvents, gameName, layout, colorSettings, theme);
+      return await this.exportGameDetailToExcel(levels, purchaseEvents, gameName, layout, colorSettings, theme, columns);
     } catch (error) {
       console.error('Export game detail data error:', error);
       return false;
@@ -401,7 +418,18 @@ export class ExcelService {
   /**
    * Export account detail data from AccountDetailPage
    */
-  static async exportAccountDetailData(accountId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark'): Promise<boolean> {
+  /**
+   * Export account detail data from AccountDetailPage
+   */
+  static async exportAccountDetailData(
+    accountId: number,
+    layout: 'horizontal' | 'vertical',
+    colorSettings: ColorSettings,
+    theme: 'light' | 'dark',
+    columns?: any[],
+    levelsProgress?: any[],
+    purchaseProgress?: any[]
+  ): Promise<boolean> {
     try {
       const account = await TauriService.getAccountById(accountId);
       if (!account) return false;
@@ -411,7 +439,7 @@ export class ExcelService {
         TauriService.getGamePurchaseEvents(account.game_id)
       ]);
 
-      return await this.exportAccountDetailToExcel(account, levels, purchaseEvents, layout, colorSettings, theme);
+      return await this.exportAccountDetailToExcel(account, levels, purchaseEvents, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress);
     } catch (error) {
       console.error('Export account detail data error:', error);
       return false;
@@ -428,73 +456,35 @@ export class ExcelService {
     gameName: string,
     layout: 'horizontal' | 'vertical',
     colorSettings: ColorSettings,
-    theme: 'light' | 'dark'
+    theme: 'light' | 'dark',
+    columnsData?: any[],
+    levelsProgress?: any[],
+    purchaseProgress?: any[]
   ): Promise<boolean> {
-    // Use layout, colorSettings, theme parameters for styling
     try {
       const workbook = XLSX.utils.book_new();
 
-      // Helper function to parse RGB and get hex for Excel
-      const rgbToHex = (rgb: string): string => {
-        const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-        if (!match) return 'FFFFFF';
-        const toHex = (c: number) => `0${c.toString(16)}`.slice(-2);
-        return `${toHex(Number(match[1]))}${toHex(Number(match[2]))}${toHex(Number(match[3]))}`;
-      };
+      const getCellStyle = (backgroundColor: string, isHeader: boolean = false, isSynthetic: boolean = false) =>
+        this.getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
 
-      // Helper function to get text color based on background
-      const getTextColor = (backgroundColor: string): string => {
-        const rgb = backgroundColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-        if (!rgb) return theme === 'dark' ? 'FFFFFF' : '000000';
-
-        const r = parseInt(rgb[1]);
-        const g = parseInt(rgb[2]);
-        const b = parseInt(rgb[3]);
-
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        return luminance < 0.5 ? 'FFFFFF' : '000000';
-      };
-
-      // Helper function to get cell style for Excel
-      const getCellStyle = (backgroundColor: string, isHeader: boolean = false, isSynthetic: boolean = false) => {
-        return {
-          fill: { fgColor: { rgb: rgbToHex(backgroundColor) } },
-          font: {
-            color: { rgb: getTextColor(backgroundColor) },
-            bold: isHeader,
-            italic: isSynthetic,
-          },
-          border: {
-            top: { style: 'thin', color: { auto: 1 } },
-            bottom: { style: 'thin', color: { auto: 1 } },
-            left: { style: 'thin', color: { auto: 1 } },
-            right: { style: 'thin', color: { auto: 1 } },
-          }
-        };
-      };
-
-      // Helper function to get column-specific style
-      const getColumnStyle = (kind: 'level' | 'purchase', isBonus?: boolean, isRestricted?: boolean, isSynthetic?: boolean): any => {
+      const getColumnStyle = (kind: 'level' | 'purchase', isBonus?: boolean, isRestricted?: boolean, isSynthetic?: boolean, isHeader: boolean = false): any => {
         let backgroundColor: string;
         if (kind === 'level') {
           backgroundColor = isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
         } else {
           backgroundColor = isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
         }
-
-        return getCellStyle(backgroundColor, false, isSynthetic);
+        return getCellStyle(backgroundColor, isHeader, isSynthetic);
       };
 
-      // Helper function to format date short
       const formatDateShort = (dateStr?: string): string => {
         if (!dateStr) return '-';
         const d = new Date(dateStr);
         if (Number.isNaN(d.getTime())) return '-';
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         return `${d.getDate()}-${months[d.getMonth()]}`;
       };
 
-      // Helper function to parse date and add days
       const parseDate = (input?: string): Date | null => {
         if (!input) return null;
         const d = new Date(input);
@@ -508,169 +498,182 @@ export class ExcelService {
       };
 
       // Create columns array (similar to AccountsDetailPage)
-      const levelCols = levels.map((l) => ({
-        kind: 'level' as const,
-        id: l.id,
-        token: l.event_token,
-        name: l.level_name,
-        daysOffset: l.days_offset,
-        timeSpent: l.time_spent,
-        isBonus: l.is_bonus,
-        synthetic: false,
-      }));
+      let columns: any[] = [];
+      if (columnsData && columnsData.length > 0) {
+        columns = columnsData;
+      } else {
+        const levelCols = levels.map((l) => ({
+          kind: 'level' as const,
+          id: l.id,
+          token: l.event_token,
+          name: l.level_name,
+          daysOffset: l.days_offset,
+          timeSpent: l.time_spent,
+          isBonus: l.is_bonus,
+          synthetic: false,
+        }));
 
-      const peCols = purchaseEvents.map((p: PurchaseEvent) => ({
-        kind: 'purchase' as const,
-        id: p.id,
-        token: p.event_token,
-        name: '$$$',
-        isRestricted: (p as any).is_restricted ?? false,
-        maxDaysOffset: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-',
-        synthetic: false,
-      }));
+        const peCols = purchaseEvents.map((p: PurchaseEvent) => ({
+          kind: 'purchase' as const,
+          id: p.id,
+          token: p.event_token,
+          name: '$$$',
+          isRestricted: (p as any).is_restricted ?? false,
+          maxDaysOffset: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-',
+          synthetic: false,
+        }));
 
-      const columns = [...levelCols, ...peCols];
+        columns = [...levelCols, ...peCols];
+      }
 
       // Create matrix for date calculations
       const matrix = accounts.map((acc) => {
         const start = parseDate(acc.start_date);
         return columns.map((c) => {
           if (c.kind === 'level' && start) {
-            return formatDateShort(addDays(start, Number(c.daysOffset || 0)).toISOString().split('T')[0]);
+            const offset = c.daysOffset !== null && c.daysOffset !== undefined ? Number(c.daysOffset) : 0;
+            return formatDateShort(addDays(start, offset).toISOString().split('T')[0]);
           }
           return '-';
         });
       });
 
-      // Create worksheet data
       const wsData: any[][] = [];
 
       if (layout === 'vertical') {
-        // Vertical layout matching the user's example
-        // Header rows
-        const headerRow1 = ['Event Token'];
-        const headerRow2 = ['Level Name'];
-        const headerRow3 = ['Days Offset'];
-        const headerRow4 = ['Time Spent (1000 seconds)'];
+        // Vertical layout: Accounts as rows, Levels as columns
+        const headerRow1 = ['Event Token', '', ''];
+        const headerRow2 = ['Level Name', '', ''];
+        const headerRow3 = ['Days Offset', '', ''];
+        const headerRow4 = ['Time Spent (1000 seconds)', '', ''];
         const headerRow5 = ['Account', 'Start Date', 'Start Time'];
 
-    // Add column headers
-    columns.forEach((col) => {
-      headerRow1.push(col.token);
-      headerRow2.push(col.name);
-      headerRow3.push(col.kind === 'level' ? col.daysOffset?.toString() || '-' : col.maxDaysOffset || '-');
-      headerRow4.push(col.kind === 'level' ? col.timeSpent?.toString() || '-' : '-');
-      headerRow5.push(''); // Empty for the last header row
-    });
+        columns.forEach((col) => {
+          headerRow1.push(col.token);
+          headerRow2.push(col.name);
+          headerRow3.push(col.kind === 'level' ? (col.daysOffset !== null && col.daysOffset !== undefined ? col.daysOffset.toString() : '-') : col.maxDaysOffset || '-');
+          headerRow4.push(col.kind === 'level' ? (col.timeSpent !== null && col.timeSpent !== undefined ? col.timeSpent.toString() : '-') : '-');
+          headerRow5.push('');
+        });
 
         wsData.push(headerRow1, headerRow2, headerRow3, headerRow4, headerRow5);
 
-        // Add account rows
         accounts.forEach((acc, accIdx) => {
           const row = [acc.name, formatDateShort(acc.start_date), acc.start_time];
-          columns.forEach(() => row.push('')); // Add empty cells for column data
+          matrix[accIdx].forEach(date => row.push(date));
           wsData.push(row);
-
-          // Add the date matrix row for this account
-          const dateRow = ['', '', ''];
-          matrix[accIdx].forEach(date => dateRow.push(date));
-          wsData.push(dateRow);
         });
+
+        const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+
+        // Apply merging
+        (worksheet as any)['!merges'] = [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+          { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
+          { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } },
+          { s: { r: 3, c: 0 }, e: { r: 3, c: 2 } },
+        ];
+
+        // Apply styling
+        const headerStyle = getCellStyle(colorSettings.headerColor, true);
+        const dataRowStyle = getCellStyle(colorSettings.dataRowColor);
+
+        for (let r = 0; r < wsData.length; r++) {
+          for (let c = 0; c < wsData[r].length; c++) {
+            const cellAddress = XLSX.utils.encode_cell({ r, c });
+            const cell = (worksheet as any)[cellAddress];
+            if (!cell) continue;
+
+            if (r < 5) {
+              if (c < 3) {
+                cell.s = headerStyle;
+              } else {
+                const col = columns[c - 3];
+                cell.s = getColumnStyle(col.kind, col.isBonus, col.isRestricted, col.synthetic, true);
+              }
+            } else {
+              if (c < 3) {
+                cell.s = dataRowStyle;
+              } else {
+                const col = columns[c - 3];
+                const acc = accounts[r - 5];
+                const progressKey = `${acc.id}_${col.id}`;
+                const progress = col.kind === 'level' ? levelsProgress?.[progressKey] : purchaseProgress?.[progressKey];
+                const isCompleted = progress?.is_completed ?? false;
+                const bgColor = isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
+                cell.s = getCellStyle(bgColor, false, col.synthetic);
+              }
+            }
+          }
+        }
+
+        (worksheet as any)['!cols'] = [
+          { wch: 20 }, { wch: 12 }, { wch: 10 },
+          ...columns.map(() => ({ wch: 12 }))
+        ];
+
+        XLSX.utils.book_append_sheet(workbook, worksheet, gameName.substring(0, 31));
       } else {
-        // Horizontal layout
-        // First row: headers
-        const headerRow = ['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)', 'Account', 'Start Date', 'Start Time'];
-        columns.forEach(() => headerRow.push('')); // Add empty headers for matrix columns
+        // Horizontal layout: Levels as rows, Accounts as columns
+        const headerRow = ['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)'];
+        accounts.forEach(acc => {
+          headerRow.push(`${acc.name} (${formatDateShort(acc.start_date)})`);
+        });
         wsData.push(headerRow);
 
-        // Data rows
         columns.forEach((col, colIdx) => {
           const row = [
             col.token,
             col.name,
-            col.kind === 'level' ? col.daysOffset?.toString() || '-' : col.maxDaysOffset || '-',
-            col.kind === 'level' ? col.timeSpent?.toString() || '-' : '-',
-            '', '', '' // Account info columns
+            col.kind === 'level' ? (col.daysOffset !== null && col.daysOffset !== undefined ? col.daysOffset.toString() : '-') : col.maxDaysOffset || '-',
+            col.kind === 'level' ? (col.timeSpent !== null && col.timeSpent !== undefined ? col.timeSpent.toString() : '-') : '-',
           ];
 
           accounts.forEach((_acc, accIdx) => {
             row.push(matrix[accIdx][colIdx]);
           });
-
           wsData.push(row);
         });
 
-        // Account info rows
-        accounts.forEach((acc) => {
-          const row = ['', '', '', '', acc.name, formatDateShort(acc.start_date), acc.start_time];
-          columns.forEach(() => row.push(''));
-          wsData.push(row);
-        });
-      }
+        const worksheet = XLSX.utils.aoa_to_sheet(wsData);
 
-      // Create worksheet
-      const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+        const headerStyle = getCellStyle(colorSettings.headerColor, true);
 
-      // Apply styles to worksheet
-      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+        for (let r = 0; r < wsData.length; r++) {
+          for (let c = 0; c < wsData[r].length; c++) {
+            const cellAddress = XLSX.utils.encode_cell({ r, c });
+            const cell = (worksheet as any)[cellAddress];
+            if (!cell) continue;
 
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-          const cell = worksheet[cellAddress];
-          if (!cell) continue;
-
-          // Apply styles based on position and content
-          if (R < 5) { // Header rows
-            cell.s = getCellStyle(colorSettings.headerColor, true);
-          } else if (layout === 'vertical' && R >= 5) {
-            // In vertical layout, account rows have data row color
-            cell.s = getCellStyle(colorSettings.dataRowColor);
-          } else {
-            // Column-specific styling for data cells
-            const colIdx = C - (layout === 'vertical' ? 3 : 7); // Adjust for header columns
-            if (colIdx >= 0 && colIdx < columns.length) {
-              const col = columns[colIdx];
-              cell.s = getColumnStyle(col.kind,
-                col.kind === 'level' ? col.isBonus : undefined,
-                col.kind === 'purchase' ? col.isRestricted : undefined,
-                col.synthetic);
+            if (r === 0) {
+              cell.s = headerStyle;
             } else {
-              cell.s = getCellStyle(colorSettings.dataRowColor);
+              if (c < 4) {
+                const col = columns[r - 1];
+                cell.s = getColumnStyle(col.kind, col.isBonus, col.isRestricted, col.synthetic, false);
+              } else {
+                const acc = accounts[c - 4];
+                const col = columns[r - 1];
+                const progressKey = `${acc.id}_${col.id}`;
+                const progress = col.kind === 'level' ? levelsProgress?.[progressKey] : purchaseProgress?.[progressKey];
+                const isCompleted = progress?.is_completed ?? false;
+                const bgColor = isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
+                cell.s = getCellStyle(bgColor, false, col.synthetic);
+              }
             }
           }
         }
+
+        (worksheet as any)['!cols'] = [
+          { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 25 },
+          ...accounts.map(() => ({ wch: 15 }))
+        ];
+
+        XLSX.utils.book_append_sheet(workbook, worksheet, gameName.substring(0, 31));
       }
 
-      // Set column widths
-      worksheet['!cols'] = [
-        { wch: 15 }, // Event Token/Level Name
-        { wch: 12 }, // Level Name
-        { wch: 12 }, // Days Offset
-        { wch: 20 }, // Time Spent
-        { wch: 20 }, // Account
-        { wch: 12 }, // Start Date
-        { wch: 12 }, // Start Time
-        ...columns.map(() => ({ wch: 12 })) // Date columns
-      ];
-
-      // Add worksheet to workbook
-      XLSX.utils.book_append_sheet(workbook, worksheet, gameName);
-
-      // Save file
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      const uint8Array = new Uint8Array(buffer);
-
-      const homeDirPath = await this.getHomeDir();
-      const appDir = `${homeDirPath}/GameRequestGenerator`;
-      await mkdir(appDir, { recursive: true });
-
-      const filename = `${gameName}.xlsx`;
-      const filePath = `${appDir}/${filename}`;
-      await writeFile(filePath, uint8Array);
-
-      console.log(`File saved to: ${filePath}`);
-      return true;
+      return await this.saveFile(`${gameName}.xlsx`, buffer);
     } catch (error) {
       console.error('Export matrix error:', error);
       return false;
@@ -680,7 +683,7 @@ export class ExcelService {
   /**
    * Export game data with matrix layout
    */
-  static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark'): Promise<boolean> {
+  static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any[], purchaseProgress?: any[]): Promise<boolean> {
     try {
       const [levels, purchaseEvents, accounts] = await Promise.all([
         TauriService.getGameLevels(gameId),
@@ -691,7 +694,7 @@ export class ExcelService {
       const game = await TauriService.getGameById(gameId);
       const gameName = game?.name || 'Game';
 
-      return await this.exportToExcelMatrix(levels, purchaseEvents, accounts, gameName, layout, colorSettings, theme);
+      return await this.exportToExcelMatrix(levels, purchaseEvents, accounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress);
     } catch (error) {
       console.error('Export game data error:', error);
       return false;
@@ -738,18 +741,7 @@ export class ExcelService {
 
       // Save file
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      const uint8Array = new Uint8Array(buffer);
-
-      const homeDirPath = await this.getHomeDir();
-      const appDir = `${homeDirPath}/GameRequestGenerator`;
-      await mkdir(appDir, { recursive: true });
-
-      const filename = 'Games.xlsx';
-      const filePath = `${appDir}/${filename}`;
-      await writeFile(filePath, uint8Array);
-
-      console.log(`File saved to: ${filePath}`);
-      return true;
+      return await this.saveFile('Games.xlsx', buffer);
     } catch (error) {
       console.error('Export all games data error:', error);
       return false;
@@ -806,6 +798,10 @@ export class ExcelService {
           bottom: { style: 'thin', color: { auto: 1 } },
           left: { style: 'thin', color: { auto: 1 } },
           right: { style: 'thin', color: { auto: 1 } },
+        },
+        alignment: {
+          horizontal: 'center',
+          vertical: 'center'
         }
       };
     };
@@ -815,7 +811,7 @@ export class ExcelService {
       if (!dateStr) return '-';
       const d = new Date(dateStr);
       if (Number.isNaN(d.getTime())) return '-';
-      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       return `${d.getDate()}-${months[d.getMonth()]}`;
     };
 
@@ -861,7 +857,8 @@ export class ExcelService {
       const start = parseDate(acc.start_date);
       return columns.map((c) => {
         if (c.kind === 'level' && start) {
-          return formatDateShort(addDays(start, Number(c.daysOffset || 0)).toISOString().split('T')[0]);
+          const offset = c.daysOffset !== null && c.daysOffset !== undefined ? Number(c.daysOffset) : 0;
+          return formatDateShort(addDays(start, offset).toISOString().split('T')[0]);
         }
         return '-';
       });
@@ -881,8 +878,8 @@ export class ExcelService {
     columns.forEach((col) => {
       headerRow1.push(col.token);
       headerRow2.push(col.name);
-      headerRow3.push(col.kind === 'level' ? col.daysOffset?.toString() || '-' : col.maxDaysOffset || '-');
-      headerRow4.push(col.kind === 'level' ? col.timeSpent?.toString() || '-' : '-');
+      headerRow3.push(col.kind === 'level' ? (col.daysOffset !== null && col.daysOffset !== undefined ? col.daysOffset.toString() : '-') : col.maxDaysOffset || '-');
+      headerRow4.push(col.kind === 'level' ? (col.timeSpent !== null && col.timeSpent !== undefined ? col.timeSpent.toString() : '-') : '-');
       headerRow5.push('');
     });
 
@@ -912,7 +909,27 @@ export class ExcelService {
         const cell = worksheet[cellAddress];
         if (!cell) continue;
 
-        if (R < 5) { // Header rows
+        if (R < 4) { // Header rows (Token, Name, Offset, Time)
+          if (C === 0) {
+            cell.s = getCellStyle(colorSettings.headerColor, true);
+          } else {
+            const colIdx = C - 1;
+            if (colIdx >= 0 && colIdx < columns.length) {
+              const col = columns[colIdx];
+              // Use manual column style logic here since getColumnStyle isn't defined in this scope
+              // Or duplicate the logic
+              let backgroundColor: string;
+              if (col.kind === 'level') {
+                backgroundColor = col.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
+              } else {
+                backgroundColor = (col as any).isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
+              }
+              cell.s = getCellStyle(backgroundColor, true, col.synthetic);
+            } else {
+              cell.s = getCellStyle(colorSettings.headerColor, true);
+            }
+          }
+        } else if (R === 4) { // Account Header Row
           cell.s = getCellStyle(colorSettings.headerColor, true);
         } else {
           cell.s = getCellStyle(colorSettings.dataRowColor);
@@ -945,84 +962,55 @@ export class ExcelService {
     gameName: string,
     layout: 'horizontal' | 'vertical',
     colorSettings: ColorSettings,
-    theme: 'light' | 'dark'
+    theme: 'light' | 'dark',
+    columns?: any[]
   ): Promise<boolean> {
     try {
       const workbook = XLSX.utils.book_new();
 
-      // Helper function to get cell style for Excel
-      const getCellStyle = (backgroundColor: string, isHeader: boolean = false) => {
-        const rgbToHex = (rgb: string): string => {
-          const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-          if (!match) return 'FFFFFF';
-          const toHex = (c: number) => `0${c.toString(16)}`.slice(-2);
-          return `${toHex(Number(match[1]))}${toHex(Number(match[2]))}${toHex(Number(match[3]))}`;
-        };
+      const getCellStyle = (backgroundColor: string, isHeader: boolean = false, isSynthetic: boolean = false) =>
+        this.getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
 
-        const getTextColor = (backgroundColor: string): string => {
-          const rgb = backgroundColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-          if (!rgb) return theme === 'dark' ? 'FFFFFF' : '000000';
-          const r = parseInt(rgb[1]);
-          const g = parseInt(rgb[2]);
-          const b = parseInt(rgb[3]);
-          const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-          return luminance < 0.5 ? 'FFFFFF' : '000000';
-        };
+      // Prepare data
+      let allItems: any[] = [];
 
-        return {
-          fill: { fgColor: { rgb: rgbToHex(backgroundColor) } },
-          font: {
-            color: { rgb: getTextColor(backgroundColor) },
-            bold: isHeader,
-          },
-          border: {
-            top: { style: 'thin', color: { auto: 1 } },
-            bottom: { style: 'thin', color: { auto: 1 } },
-            left: { style: 'thin', color: { auto: 1 } },
-            right: { style: 'thin', color: { auto: 1 } },
-          }
-        };
-      };
+      if (columns && columns.length > 0) {
+        allItems = columns;
+      } else {
+        // Fallback to raw data
+        allItems = [
+          ...levels.map(l => ({ kind: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, isBonus: l.is_bonus })),
+          ...purchaseEvents.map(p => ({ kind: 'purchase', token: p.event_token, name: '$$$', daysOffset: p.max_days_offset ? `Less Than ${p.max_days_offset}` : '-', timeSpent: '-', isRestricted: p.is_restricted }))
+        ];
+      }
 
       // Create worksheet data
       const wsData: any[][] = [];
 
       if (layout === 'vertical') {
         // Headers
-        wsData.push(['Event Token']);
-        wsData.push(['Level Name']);
-        wsData.push(['Days Offset']);
-        wsData.push(['Time Spent (1000 seconds)']);
+        const row1 = ['Event Token'];
+        const row2 = ['Level Name'];
+        const row3 = ['Days Offset'];
+        const row4 = ['Time Spent (1000 seconds)'];
 
-        // Add data for each level/purchase event
-        const allItems = [
-          ...levels.map(l => ({ type: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent })),
-          ...purchaseEvents.map(p => ({ type: 'purchase', token: p.event_token, name: '$$$', daysOffset: p.max_days_offset ? `Less Than ${p.max_days_offset}` : '-', timeSpent: '-' }))
-        ];
-
-        // Create columns for each item
         allItems.forEach(item => {
-          wsData[0].push(item.token);
-          wsData[1].push(item.name);
-          wsData[2].push(item.daysOffset || '-');
-          wsData[3].push(item.timeSpent || '-');
+          row1.push(item.token);
+          row2.push(item.name);
+          row3.push(item.daysOffset !== null && item.daysOffset !== undefined ? item.daysOffset.toString() : '-');
+          row4.push(item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-');
         });
+        wsData.push(row1, row2, row3, row4);
       } else {
         // Horizontal layout
         wsData.push(['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)']);
-
-        // Add rows for each level/purchase event
-        const allItems = [
-          ...levels.map(l => ({ type: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent })),
-          ...purchaseEvents.map(p => ({ type: 'purchase', token: p.event_token, name: '$$$', daysOffset: p.max_days_offset ? `Less Than ${p.max_days_offset}` : '-', timeSpent: '-' }))
-        ];
 
         allItems.forEach(item => {
           wsData.push([
             item.token,
             item.name,
-            item.daysOffset || '-',
-            item.timeSpent || '-'
+            item.daysOffset !== null && item.daysOffset !== undefined ? item.daysOffset.toString() : '-',
+            item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-'
           ]);
         });
       }
@@ -1038,12 +1026,45 @@ export class ExcelService {
           const cell = worksheet[cellAddress];
           if (!cell) continue;
 
-          if (R < 4 && layout === 'vertical') { // Header rows in vertical layout
-            cell.s = getCellStyle(colorSettings.headerColor, true);
-          } else if (R === 0 && layout === 'horizontal') { // Header row in horizontal layout
-            cell.s = getCellStyle(colorSettings.headerColor, true);
+          if (layout === 'vertical') {
+            if (R < 4) {
+              if (C === 0) {
+                cell.s = getCellStyle(colorSettings.headerColor, true);
+              } else {
+                const itemIdx = C - 1;
+                if (itemIdx >= 0 && itemIdx < allItems.length) {
+                  const item = allItems[itemIdx];
+                  let backgroundColor: string;
+                  if (item.kind === 'level') {
+                    backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
+                  } else {
+                    backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
+                  }
+                  cell.s = getCellStyle(backgroundColor, true, item.synthetic);
+                } else {
+                  cell.s = getCellStyle(colorSettings.headerColor, true);
+                }
+              }
+            }
           } else {
-            cell.s = getCellStyle(colorSettings.dataRowColor);
+            // Horizontal
+            if (R === 0) {
+              cell.s = getCellStyle(colorSettings.headerColor, true);
+            } else {
+              const itemIdx = R - 1;
+              if (itemIdx >= 0 && itemIdx < allItems.length) {
+                const item = allItems[itemIdx];
+                let backgroundColor: string;
+                if (item.kind === 'level') {
+                  backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
+                } else {
+                  backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
+                }
+                cell.s = getCellStyle(backgroundColor, false, item.synthetic);
+              } else {
+                cell.s = getCellStyle(colorSettings.dataRowColor);
+              }
+            }
           }
         }
       }
@@ -1054,7 +1075,7 @@ export class ExcelService {
         { wch: 12 }, // Level Name
         { wch: 12 }, // Days Offset
         { wch: 20 }, // Time Spent
-        ...Array(Math.max(0, (layout === 'vertical' ? wsData[0].length - 4 : 0))).fill({ wch: 12 }) // Additional columns
+        ...Array(Math.max(0, (layout === 'vertical' ? wsData[0].length - 4 : 0))).fill({ wch: 12 })
       ];
 
       // Add worksheet to workbook
@@ -1062,18 +1083,7 @@ export class ExcelService {
 
       // Save file
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      const uint8Array = new Uint8Array(buffer);
-
-      const homeDirPath = await this.getHomeDir();
-      const appDir = `${homeDirPath}/GameRequestGenerator`;
-      await mkdir(appDir, { recursive: true });
-
-      const filename = `${gameName}_Details.xlsx`;
-      const filePath = `${appDir}/${filename}`;
-      await writeFile(filePath, uint8Array);
-
-      console.log(`File saved to: ${filePath}`);
-      return true;
+      return await this.saveFile(`${gameName}_Details.xlsx`, buffer);
     } catch (error) {
       console.error('Export game detail error:', error);
       return false;
@@ -1089,53 +1099,16 @@ export class ExcelService {
     purchaseEvents: PurchaseEvent[],
     layout: 'horizontal' | 'vertical',
     colorSettings: ColorSettings,
-    theme: 'light' | 'dark'
+    theme: 'light' | 'dark',
+    columns?: any[],
+    levelsProgress?: any[],
+    purchaseProgress?: any[]
   ): Promise<boolean> {
     try {
       const workbook = XLSX.utils.book_new();
 
-      // Helper functions (same as above)
-      const rgbToHex = (rgb: string): string => {
-        const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-        if (!match) return 'FFFFFF';
-        const toHex = (c: number) => `0${c.toString(16)}`.slice(-2);
-        return `${toHex(Number(match[1]))}${toHex(Number(match[2]))}${toHex(Number(match[3]))}`;
-      };
-
-      const getTextColor = (backgroundColor: string): string => {
-        const rgb = backgroundColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-        if (!rgb) return theme === 'dark' ? 'FFFFFF' : '000000';
-        const r = parseInt(rgb[1]);
-        const g = parseInt(rgb[2]);
-        const b = parseInt(rgb[3]);
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        return luminance < 0.5 ? 'FFFFFF' : '000000';
-      };
-
-      const getCellStyle = (backgroundColor: string, isHeader: boolean = false) => {
-        return {
-          fill: { fgColor: { rgb: rgbToHex(backgroundColor) } },
-          font: {
-            color: { rgb: getTextColor(backgroundColor) },
-            bold: isHeader,
-          },
-          border: {
-            top: { style: 'thin', color: { auto: 1 } },
-            bottom: { style: 'thin', color: { auto: 1 } },
-            left: { style: 'thin', color: { auto: 1 } },
-            right: { style: 'thin', color: { auto: 1 } },
-          }
-        };
-      };
-
-      // Helper function to format date short
-      const formatDateShort = (dateStr?: string): string => {
-        if (!dateStr) return '-';
-        const d = new Date(dateStr);
-        if (Number.isNaN(d.getTime())) return '-';
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        return `${d.getDate()}-${months[d.getMonth()]}`;
-      };
+      const getCellStyle = (backgroundColor: string, isHeader: boolean = false, isSynthetic: boolean = false) =>
+        this.getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
 
       // Helper function to parse date and add days
       const parseDate = (input?: string): Date | null => {
@@ -1150,94 +1123,84 @@ export class ExcelService {
         return r;
       };
 
+      const formatDateShort = (date: Date | null): string => {
+        if (!date) return '-';
+        const day = date.getDate();
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${day}-${months[date.getMonth()]}`;
+      };
+
+      const startDateObj = parseDate(account.start_date) || new Date();
+
+      // Prepare data
+      let allItems: any[] = [];
+
+      if (columns && columns.length > 0) {
+        allItems = columns.map(col => {
+          const dd = addDays(startDateObj, Number(col.daysOffset || 0));
+          const dateStr = formatDateShort(dd);
+
+          let isCompleted = false;
+          if (col.kind === 'level') {
+            const prog = levelsProgress?.find(p => p.level_id === col.id);
+            isCompleted = prog ? prog.is_completed : false;
+          } else {
+            const prog = purchaseProgress?.find(p => p.purchase_event_id === col.id);
+            isCompleted = prog ? prog.is_completed : false;
+          }
+
+          return {
+            ...col,
+            dateStr,
+            isCompleted
+          };
+        });
+      } else {
+        // Fallback
+        allItems = [
+          ...levels.map(l => {
+            const dd = addDays(startDateObj, l.days_offset);
+            const prog = levelsProgress?.find(p => p.level_id === l.id);
+            return { kind: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, dateStr: formatDateShort(dd), isCompleted: prog ? prog.is_completed : false, isBonus: l.is_bonus };
+          }),
+          ...purchaseEvents.map(p => {
+            const prog = purchaseProgress?.find(p => p.purchase_event_id === p.id);
+            return { kind: 'purchase', token: p.event_token, name: '$$$', daysOffset: p.max_days_offset, timeSpent: null, dateStr: '-', isCompleted: prog ? prog.is_completed : false, isRestricted: p.is_restricted };
+          })
+        ];
+      }
+
       // Create worksheet data
       const wsData: any[][] = [];
 
       if (layout === 'vertical') {
-        // Headers
-        wsData.push(['Event Token']);
-        wsData.push(['Level Name']);
-        wsData.push(['Days Offset']);
-        wsData.push(['Time Spent (1000 seconds)']);
-        wsData.push(['Account Dates']);
+        const row1 = ['Event Token'];
+        const row2 = ['Level Name'];
+        const row3 = ['Days Offset'];
+        const row4 = ['Time Spent (1000 seconds)'];
+        const row5 = ['Date'];
 
-        // Calculate dates for this account
-        const startDate = parseDate(account.start_date);
-        const accountDates = startDate ? levels.map(level =>
-          level.days_offset !== null && level.days_offset !== undefined ?
-            formatDateShort(addDays(startDate, level.days_offset).toISOString().split('T')[0]) : '-'
-        ) : [];
-
-        // Add purchase event dates (empty for now, could be enhanced later)
-        const peDates = purchaseEvents.map((_p, _idx) => '-');
-
-        // Combine all items
-        const allItems = [
-          ...levels.map((l, idx) => ({
-            token: l.event_token,
-            name: l.level_name,
-            daysOffset: l.days_offset,
-            timeSpent: l.time_spent,
-            accountDate: accountDates[idx] || '-'
-          })),
-          ...purchaseEvents.map((p, _idx) => ({
-            token: p.event_token,
-            name: '$$$',
-            daysOffset: p.max_days_offset ? `Less Than ${p.max_days_offset}` : '-',
-            timeSpent: '-',
-            accountDate: peDates[_idx] || '-'
-          }))
-        ];
-
-        // Create columns for each item
         allItems.forEach(item => {
-          wsData[0].push(item.token);
-          wsData[1].push(item.name);
-          wsData[2].push(item.daysOffset || '-');
-          wsData[3].push(item.timeSpent || '-');
-          wsData[4].push(item.accountDate);
+          row1.push(item.token);
+          row2.push(item.name);
+          row3.push(item.daysOffset !== null && item.daysOffset !== undefined ? item.daysOffset.toString() : '-');
+          row4.push(item.kind === 'level' && item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-');
+          row5.push(item.dateStr);
         });
+        wsData.push(row1, row2, row3, row4, row5);
       } else {
-        // Horizontal layout
-        wsData.push(['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)', 'Account Dates']);
-
-        // Calculate dates for this account
-        const startDate = parseDate(account.start_date);
-        const accountDates = startDate ? levels.map(level =>
-          level.days_offset !== null && level.days_offset !== undefined ?
-            formatDateShort(addDays(startDate, level.days_offset).toISOString().split('T')[0]) : '-'
-        ) : [];
-
-        // Add rows for each level/purchase event
-        const allItems = [
-          ...levels.map((l, idx) => ({
-            token: l.event_token,
-            name: l.level_name,
-            daysOffset: l.days_offset,
-            timeSpent: l.time_spent,
-            accountDate: accountDates[idx] || '-'
-          })),
-          ...purchaseEvents.map((_p, _idx) => ({
-            token: _p.event_token,
-            name: '$$$',
-            daysOffset: _p.max_days_offset ? `Less Than ${_p.max_days_offset}` : '-',
-            timeSpent: '-',
-            accountDate: '-' // Could be enhanced to show actual purchase dates
-          }))
-        ];
-
+        wsData.push(['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)', 'Date']);
         allItems.forEach(item => {
           wsData.push([
             item.token,
             item.name,
-            item.daysOffset || '-',
-            item.timeSpent || '-',
-            item.accountDate
+            item.daysOffset !== null && item.daysOffset !== undefined ? item.daysOffset.toString() : '-',
+            item.kind === 'level' && item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-',
+            item.dateStr
           ]);
         });
       }
 
-      // Create worksheet
       const worksheet = XLSX.utils.aoa_to_sheet(wsData);
 
       // Apply styles
@@ -1248,44 +1211,129 @@ export class ExcelService {
           const cell = worksheet[cellAddress];
           if (!cell) continue;
 
-          if ((layout === 'vertical' && R < 5) || (layout === 'horizontal' && R === 0)) { // Header rows
-            cell.s = getCellStyle(colorSettings.headerColor, true);
+          if (layout === 'vertical') {
+            if (R < 5) {
+              if (C === 0) {
+                cell.s = getCellStyle(colorSettings.headerColor, true);
+              } else {
+                const itemIdx = C - 1;
+                if (itemIdx >= 0 && itemIdx < allItems.length) {
+                  const item = allItems[itemIdx];
+                  let backgroundColor: string;
+                  if (item.kind === 'level') {
+                    backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
+                  } else {
+                    backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
+                  }
+                  cell.s = getCellStyle(backgroundColor, true, item.synthetic);
+                } else {
+                  cell.s = getCellStyle(colorSettings.headerColor, true);
+                }
+              }
+            } else {
+              // Data row (Date) - now at row 5
+              const itemIdx = C - 1;
+              if (itemIdx >= 0 && itemIdx < allItems.length) {
+                const item = allItems[itemIdx];
+                const backgroundColor = item.isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
+                cell.s = getCellStyle(backgroundColor, false, item.synthetic);
+              } else {
+                cell.s = getCellStyle(colorSettings.dataRowColor);
+              }
+            }
           } else {
-            cell.s = getCellStyle(colorSettings.dataRowColor);
+            // Horizontal
+            if (R === 0) {
+              cell.s = getCellStyle(colorSettings.headerColor, true);
+            } else {
+              const itemIdx = R - 1;
+              if (itemIdx >= 0 && itemIdx < allItems.length) {
+                const item = allItems[itemIdx];
+                let backgroundColor: string;
+                if (C < 4) {
+                  // Header-like columns (Event Token, Level Name, Days Offset, Time Spent)
+                  if (item.kind === 'level') {
+                    backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
+                  } else {
+                    backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
+                  }
+                } else {
+                  // Date column (column 4)
+                  backgroundColor = item.isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
+                }
+                cell.s = getCellStyle(backgroundColor, false, item.synthetic);
+              } else {
+                cell.s = getCellStyle(colorSettings.dataRowColor);
+              }
+            }
           }
         }
       }
 
-      // Set column widths
       worksheet['!cols'] = [
         { wch: 15 }, // Event Token
         { wch: 12 }, // Level Name
         { wch: 12 }, // Days Offset
-        { wch: 20 }, // Time Spent
-        { wch: 15 }, // Account Dates
-        ...Array(Math.max(0, (layout === 'vertical' ? wsData[0].length - 5 : 0))).fill({ wch: 12 }) // Additional columns
+        { wch: 25 }, // Time Spent (1000 seconds)
+        { wch: 15 }, // Date
+        ...Array(Math.max(0, (layout === 'vertical' ? wsData[0].length - 5 : 0))).fill({ wch: 12 })
       ];
 
-      // Add worksheet to workbook
       XLSX.utils.book_append_sheet(workbook, worksheet, account.name);
 
-      // Save file
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      const uint8Array = new Uint8Array(buffer);
-
-      const homeDirPath = await this.getHomeDir();
-      const appDir = `${homeDirPath}/GameRequestGenerator`;
-      await mkdir(appDir, { recursive: true });
-
-      const filename = `${account.name}.xlsx`;
-      const filePath = `${appDir}/${filename}`;
-      await writeFile(filePath, uint8Array);
-
-      console.log(`File saved to: ${filePath}`);
-      return true;
+      return await this.saveFile(`${account.name}.xlsx`, buffer);
     } catch (error) {
       console.error('Export account detail error:', error);
       return false;
     }
+  }
+  /**
+   * Helper function to parse RGB and get hex for Excel
+   */
+  private static rgbToHex(rgb: string): string {
+    const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (!match) return 'FFFFFF';
+    const toHex = (c: number) => `0${c.toString(16)}`.slice(-2);
+    return `${toHex(Number(match[1]))}${toHex(Number(match[2]))}${toHex(Number(match[3]))}`;
+  }
+
+  /**
+   * Helper function to get text color based on background
+   */
+  private static getTextColor(backgroundColor: string, theme: 'light' | 'dark'): string {
+    const rgb = backgroundColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (!rgb) return theme === 'dark' ? 'FFFFFF' : '000000';
+
+    const r = parseInt(rgb[1]);
+    const g = parseInt(rgb[2]);
+    const b = parseInt(rgb[3]);
+
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance < 0.5 ? 'FFFFFF' : '000000';
+  }
+
+  /**
+   * Helper function to get cell style for Excel
+   */
+  private static getCellStyle(backgroundColor: string, theme: 'light' | 'dark', isHeader: boolean = false, isSynthetic: boolean = false) {
+    return {
+      fill: { fgColor: { rgb: this.rgbToHex(backgroundColor) } },
+      font: {
+        color: { rgb: this.getTextColor(backgroundColor, theme) },
+        bold: isHeader,
+        italic: isSynthetic,
+      },
+      border: {
+        top: { style: 'thin', color: { auto: 1 } },
+        bottom: { style: 'thin', color: { auto: 1 } },
+        left: { style: 'thin', color: { auto: 1 } },
+        right: { style: 'thin', color: { auto: 1 } },
+      },
+      alignment: {
+        horizontal: 'center',
+        vertical: 'center'
+      }
+    };
   }
 }

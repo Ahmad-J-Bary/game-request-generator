@@ -17,7 +17,7 @@ export const ROUTES = {
   GAMES: '/games',
   ACCOUNTS: '/accounts',
   LEVELS: '/levels',
-  REQUESTS: '/requests',
+  DAILY_TASKS: '/daily-tasks',
   EVENTS: '/events',
 } as const;
 

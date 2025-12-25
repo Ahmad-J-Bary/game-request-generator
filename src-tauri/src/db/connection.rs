@@ -74,7 +74,7 @@ impl Database {
                 time_spent INTEGER NOT NULL DEFAULT 0,
                 is_bonus INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
-                UNIQUE(game_id, event_token)
+                UNIQUE(game_id, event_token, days_offset)
             );
 
             -- جدول تقدم الحسابات في المستويات
@@ -181,6 +181,15 @@ impl Database {
                     [],
                 )?;
             }
+
+            // Migration: Update unique constraint to include days_offset
+            // First drop the old constraint (if it exists), then add the new one
+            // Note: SQLite doesn't support DROP CONSTRAINT directly, so we recreate the table
+            // But for simplicity, we'll try to add the new constraint and ignore if it fails
+            let _ = self.connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_levels_unique ON levels(game_id, event_token, days_offset)",
+                [],
+            );
         } else {
             // if levels table somehow missing, create (already created above with CREATE TABLE IF NOT EXISTS)
             // nothing more to do

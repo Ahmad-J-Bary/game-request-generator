@@ -20,6 +20,8 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { AccountDataTable } from '../../components/tables/AccountDataTable';
 
+type Mode = 'all' | 'event-only';
+
 function parseDateFlexible(input: string): Date | null {
   if (!input) return null;
   const d = new Date(input);
@@ -28,7 +30,7 @@ function parseDateFlexible(input: string): Date | null {
   if (m) {
     const day = parseInt(m[1], 10);
     const monStr = m[2].toLowerCase();
-    const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
     const monthIndex = months.indexOf(monStr);
     if (monthIndex >= 0) {
       const now = new Date();
@@ -56,7 +58,7 @@ function addDays(date: Date, days: number): Date {
 function formatDateShort(date: Date | null): string {
   if (!date) return '-';
   const day = date.getDate();
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const mon = months[date.getMonth()];
   return `${day}-${mon}`;
 }
@@ -86,47 +88,23 @@ export default function AccountDetailPage() {
   const levels = stateLevels ?? fetchedLevels;
 
   const [layout, setLayout] = useState<Layout>('vertical');
+  const [mode, setMode] = useState<Mode>('event-only');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [tempProgress, setTempProgress] = useState<{
-    levels: { [key: number]: boolean };
+    levels: { [key: number | string]: boolean };
     purchases: { [key: number]: boolean };
   }>({
     levels: {},
     purchases: {},
   });
 
-  // Initialize temp progress when entering edit mode
-  useMemo(() => {
-    if (isEditMode) {
-      const levelProgress: { [key: number]: boolean } = {};
-      const purchaseProgressMap: { [key: number]: boolean } = {};
-
-      // Initialize ALL levels with their current progress status (defaulting to false if no progress exists)
-      levels.forEach(level => {
-        const existingProgress = levelsProgress.find(p => p.level_id === level.id);
-        levelProgress[level.id] = existingProgress ? existingProgress.is_completed : false;
-      });
-
-      // Initialize ALL purchase events with their current progress status (defaulting to false if no progress exists)
-      purchaseEvents.forEach(purchase => {
-        const existingProgress = purchaseProgress.find(p => p.purchase_event_id === purchase.id);
-        purchaseProgressMap[purchase.id] = existingProgress ? existingProgress.is_completed : false;
-      });
-
-      setTempProgress({
-        levels: levelProgress,
-        purchases: purchaseProgressMap,
-      });
-    }
-  }, [isEditMode, levels, purchaseEvents, levelsProgress, purchaseProgress]);
-
   const handleEditToggle = () => {
     setIsEditMode(!isEditMode);
   };
 
-  const handleProgressChange = (type: 'level' | 'purchase', id: number, completed: boolean) => {
+  const handleProgressChange = (type: 'level' | 'purchase', id: number | string, completed: boolean) => {
     setTempProgress(prev => ({
       ...prev,
       [type === 'level' ? 'levels' : 'purchases']: {
@@ -140,7 +118,50 @@ export default function AccountDetailPage() {
     try {
       // Save level progress - create records for all levels that have been modified
       for (const [levelId, isCompleted] of Object.entries(tempProgress.levels)) {
-        const levelIdNum = parseInt(levelId);
+        let actualLevelId = levelId;
+
+        // Handle synthetic levels by creating real levels with the synthetic level's properties
+        if (levelId.startsWith('synth-')) {
+          // Find the synthetic level in the current columns to get its properties
+          const syntheticLevel = columns.find(col =>
+            col.kind === 'level' &&
+            typeof col.id === 'string' &&
+            col.id === levelId
+          );
+
+          if (syntheticLevel) {
+            // Create a real level with the synthetic level's properties
+            const newLevel = {
+              game_id: account!.game_id,
+              level_name: syntheticLevel.name, // Use the synthetic level's name (e.g., "-")
+              // Append _day suffix to ensure uniqueness in DB (constraint is game_id + event_token)
+              event_token: `${syntheticLevel.token}_day${syntheticLevel.daysOffset}`,
+              days_offset: syntheticLevel.daysOffset,
+              time_spent: syntheticLevel.timeSpent,
+              is_bonus: syntheticLevel.isBonus
+            };
+
+            // Check if this level already exists (to avoid duplicates)
+            const existingLevels = await TauriService.getGameLevels(account!.game_id);
+            const existingLevel = existingLevels.find(l =>
+              l.days_offset === newLevel.days_offset &&
+              l.event_token === newLevel.event_token
+            );
+
+            if (existingLevel) {
+              // Use the existing level
+              actualLevelId = existingLevel.id.toString();
+            } else {
+              // Create new level
+              const createdLevelId = await TauriService.addLevel(newLevel);
+              actualLevelId = createdLevelId.toString();
+            }
+          } else {
+            continue; // Skip if synthetic level not found
+          }
+        }
+
+        const levelIdNum = parseInt(actualLevelId);
         const existingProgress = levelsProgress.find(p => p.level_id === levelIdNum);
 
         if (existingProgress) {
@@ -211,6 +232,7 @@ export default function AccountDetailPage() {
       window.location.reload();
     } catch (error) {
       console.error('Error saving progress:', error);
+      alert(`Error saving progress: ${error}`);
     }
   };
 
@@ -221,13 +243,6 @@ export default function AccountDetailPage() {
   const startDateObj = useMemo(() => {
     return parseDateFlexible(account?.start_date ?? '') || new Date();
   }, [account]);
-
-  const computedLevelDates = useMemo(() => {
-    return levels.map((l) => {
-      const dd = addDays(startDateObj, Number(l.days_offset || 0));
-      return formatDateShort(dd);
-    });
-  }, [levels, startDateObj]);
 
   if (!account) {
     return (
@@ -246,11 +261,13 @@ export default function AccountDetailPage() {
     const levelCols = levels.map((l) => ({
       kind: 'level' as const,
       id: l.id,
-      token: l.event_token,
+      token: l.event_token.split('_day')[0], // Strip _day suffix for display/logic
       name: l.level_name,
       daysOffset: l.days_offset,
       timeSpent: l.time_spent,
       isBonus: l.is_bonus,
+      // Mark as synthetic if name is '-' so it keeps the session style even if it's a real DB record
+      synthetic: l.level_name === '-',
     }));
 
     const purchaseCols = purchaseEvents.map((p) => ({
@@ -262,8 +279,101 @@ export default function AccountDetailPage() {
       maxDaysOffset: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : null,
     }));
 
-    return [...levelCols, ...purchaseCols];
-  }, [levels, purchaseEvents]);
+    if (mode === 'event-only') {
+      // In event-only mode, show only manually added levels (excluding session levels which have name '-')
+      // and purchase events
+      const realLevels = levelCols.filter(l => l.name !== '-');
+      return [...realLevels, ...purchaseCols];
+    }
+
+    // In 'all' mode, show all manually added plus synthetic levels calculated for days without events
+    const numeric = levelCols.filter((c: any) => typeof c.daysOffset === 'number');
+    numeric.sort((a: any, b: any) => a.daysOffset - b.daysOffset);
+
+    const result: any[] = [];
+
+    // Add levels with synthetic ones
+    for (let i = 0; i < numeric.length; i++) {
+      const left = numeric[i];
+      result.push(left);
+      const right = numeric[i + 1];
+      if (right && typeof right.daysOffset === 'number' && typeof left.daysOffset === 'number' && right.daysOffset > left.daysOffset + 1) {
+        for (let d = left.daysOffset + 1; d <= right.daysOffset - 1; d++) {
+          let synthesizedTime: number | null = null;
+          if (typeof left.timeSpent === 'number' && typeof right.timeSpent === 'number') {
+            const ratio = (d - left.daysOffset) / (right.daysOffset - left.daysOffset);
+            synthesizedTime = Math.round(left.timeSpent + ratio * (right.timeSpent - left.timeSpent));
+          }
+
+          // Check if we already have a "real" session level for this day (it would be in numeric list)
+          // But since we iterate through numeric list, if it was there, it would be 'left' or 'right'.
+          // However, we might have gaps.
+
+          const synth = {
+            kind: 'level' as const,
+            id: `synth-${left.id}-${d}`,
+            token: right.token,
+            name: '-',
+            daysOffset: d,
+            timeSpent: synthesizedTime,
+            isBonus: false,
+            synthetic: true,
+          };
+          result.push(synth);
+        }
+      }
+    }
+
+    // Add any non-numeric levels
+    const numericIds = new Set(numeric.map((c: any) => c.id));
+    const nonNumeric = levelCols.filter((c: any) => !numericIds.has(c.id));
+    nonNumeric.forEach(c => result.push(c));
+
+    // Add purchase events last
+    result.push(...purchaseCols);
+
+    return result;
+  }, [levels, purchaseEvents, mode, t]);
+
+  // Initialize temp progress when entering edit mode
+  useMemo(() => {
+    if (isEditMode) {
+      const levelProgress: { [key: number | string]: boolean } = {};
+      const purchaseProgressMap: { [key: number]: boolean } = {};
+
+      // Initialize ALL level columns (including synthetic ones) with their current progress status
+      columns.filter(col => col.kind === 'level').forEach(col => {
+        if (typeof col.id === 'string' && col.id.startsWith('synth-')) {
+          // Synthetic levels don't have database progress, default to false
+          levelProgress[col.id] = false;
+        } else {
+          // Real levels get their progress from the database
+          const existingProgress = levelsProgress.find(p => p.level_id === col.id);
+          levelProgress[col.id] = existingProgress ? existingProgress.is_completed : false;
+        }
+      });
+
+      // Initialize ALL purchase events with their current progress status (defaulting to false if no progress exists)
+      purchaseEvents.forEach(purchase => {
+        const existingProgress = purchaseProgress.find(p => p.purchase_event_id === purchase.id);
+        purchaseProgressMap[purchase.id] = existingProgress ? existingProgress.is_completed : false;
+      });
+
+      setTempProgress({
+        levels: levelProgress,
+        purchases: purchaseProgressMap,
+      });
+    }
+  }, [isEditMode, columns, purchaseEvents, levelsProgress, purchaseProgress]);
+
+  const computedLevelDates = useMemo(() => {
+    // Get all level columns from the final result and calculate their dates
+    const levelColumns = columns.filter(col => col.kind === 'level');
+    return levelColumns.map((col) => {
+      const dd = addDays(startDateObj, Number(col.daysOffset || 0));
+      return formatDateShort(dd);
+    });
+  }, [columns, startDateObj]);
 
   return (
     <div className="p-6 space-y-6">
@@ -329,6 +439,28 @@ export default function AccountDetailPage() {
             </Button>
           )}
 
+          <div className="flex items-center gap-2 px-2 py-1 border rounded">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="account-detail-mode"
+                checked={mode === 'event-only'}
+                onChange={() => setMode('event-only')}
+              />
+              <span className="text-sm">{t('common.eventOnly')}</span>
+            </label>
+
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="account-detail-mode"
+                checked={mode === 'all'}
+                onChange={() => setMode('all')}
+              />
+              <span className="text-sm">{t('common.all')}</span>
+            </label>
+          </div>
+
           <LayoutToggle layout={layout} onLayoutChange={setLayout} />
           <BackButton />
         </div>
@@ -345,6 +477,7 @@ export default function AccountDetailPage() {
             isEditMode={isEditMode}
             tempProgress={tempProgress}
             onProgressChange={handleProgressChange}
+            levels={levels}
           />
         </CardContent>
       </Card>
@@ -365,6 +498,9 @@ export default function AccountDetailPage() {
         colorSettings={colors}
         theme={theme}
         source="account-detail"
+        data={columns}
+        levelsProgress={levelsProgress}
+        purchaseProgress={purchaseProgress}
       />
     </div>
   );

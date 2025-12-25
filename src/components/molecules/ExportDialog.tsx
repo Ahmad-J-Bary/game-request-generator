@@ -24,9 +24,12 @@ interface ExportDialogProps {
   colorSettings?: any;
   theme?: 'light' | 'dark';
   source?: 'game-detail' | 'account-detail' | 'accounts-detail';
+  data?: any[];
+  levelsProgress?: any;
+  purchaseProgress?: any;
 }
 
-export function ExportDialog({ open, onOpenChange, gameId, accountId, exportType, layout = 'vertical', colorSettings, theme = 'light', source }: ExportDialogProps) {
+export function ExportDialog({ open, onOpenChange, gameId, accountId, exportType, layout = 'vertical', colorSettings, theme = 'light', source, data, levelsProgress, purchaseProgress }: ExportDialogProps) {
   const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
 
@@ -65,19 +68,19 @@ export function ExportDialog({ open, onOpenChange, gameId, accountId, exportType
       switch (source) {
         case 'game-detail':
           if (gameId) {
-            success = await ExcelService.exportGameDetailData(gameId, layout, colorSettings, theme);
+            success = await ExcelService.exportGameDetailData(gameId, layout, colorSettings, theme, data);
           }
           break;
         case 'account-detail':
           if (accountId) {
-            success = await ExcelService.exportAccountDetailData(accountId, layout, colorSettings, theme);
+            success = await ExcelService.exportAccountDetailData(accountId, layout, colorSettings, theme, data, levelsProgress, purchaseProgress);
           }
           break;
         case 'accounts-detail':
           switch (exportType) {
             case 'game':
               if (gameId) {
-                success = await ExcelService.exportGameData(gameId, layout, colorSettings, theme);
+                success = await ExcelService.exportGameData(gameId, layout, colorSettings, theme, data, levelsProgress, purchaseProgress);
               }
               break;
             case 'all':

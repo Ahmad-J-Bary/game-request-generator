@@ -32,7 +32,7 @@ const navigation = [
   { name: 'purchaseEvents', href: '/purchase-events', icon: ShoppingCart },
   { name: 'accounts', href: '/accounts', icon: Users },
   { name: 'accountsDetail', href: '/accounts/detail', icon: FileText },
-  { name: 'requests', href: '/requests', icon: FileText },
+  { name: 'dailyTasks', href: '/daily-tasks', icon: FileText },
   { name: 'events', href: '/events', icon: Calendar },
 ];
 

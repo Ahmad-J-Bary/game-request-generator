@@ -1,0 +1,98 @@
+{
+    "identifier": "default",
+    "description": "Default capabilities for the app",
+    "local": true,
+    "windows": [
+        "*"
+    ],
+    "permissions": [
+        "core:default",
+        "dialog:default",
+        "fs:default",
+        {
+            "identifier": "fs:allow-read",
+            "allow": [
+                {
+                    "path": "$HOME/**"
+                },
+                {
+                    "path": "$HOME/GameRequestGenerator"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator/**"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator"
+                }
+            ]
+        },
+        {
+            "identifier": "fs:allow-write",
+            "allow": [
+                {
+                    "path": "$HOME/**"
+                },
+                {
+                    "path": "$HOME/GameRequestGenerator"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator/**"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator"
+                }
+            ]
+        },
+        {
+            "identifier": "fs:allow-mkdir",
+            "allow": [
+                {
+                    "path": "$HOME/**"
+                },
+                {
+                    "path": "$HOME/GameRequestGenerator"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator/**"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator"
+                }
+            ]
+        },
+        {
+            "identifier": "fs:allow-exists",
+            "allow": [
+                {
+                    "path": "$HOME/**"
+                },
+                {
+                    "path": "$HOME/GameRequestGenerator"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator/**"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator"
+                }
+            ]
+        },
+        {
+            "identifier": "fs:allow-stat",
+            "allow": [
+                {
+                    "path": "$HOME/**"
+                },
+                {
+                    "path": "$HOME/GameRequestGenerator"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator/**"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator"
+                }
+            ]
+        }
+    ]
+}

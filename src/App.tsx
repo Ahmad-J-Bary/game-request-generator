@@ -22,8 +22,8 @@ import AccountsDetailPage from './pages/progress/AccountsDetailPage';
 // Purchase Events
 import PurchaseEventListPage from './pages/purchase-events/PurchaseEventListPage';
 import PurchaseEventDetailPage from './pages/purchase-events/PurchaseEventDetailPage';
-// Requests
-import RequestGeneratorPage from './pages/requests/RequestGeneratorPage';
+// Daily Tasks
+import DailyTasksPage from './pages/daily-tasks/DailyTasksPage';
 // Settings
 import SettingsPage from './pages/SettingsPage';
 import './i18n';
@@ -49,7 +49,7 @@ const App = () => (
                   <Route path="/accounts/edit/:id" element={<AccountFormPage />} />
                   <Route path="/accounts/detail" element={<AccountsDetailPage />} />
                   <Route path="/levels" element={<LevelListPage />} />
-                  <Route path="/requests" element={<RequestGeneratorPage />} />
+                  <Route path="/daily-tasks" element={<DailyTasksPage />} />
                   <Route path="/purchase-events" element={<PurchaseEventListPage />} />
                   <Route path="/purchase-events/:id" element={<PurchaseEventDetailPage />} />
                 <Route path="/events" element={<Events />} />

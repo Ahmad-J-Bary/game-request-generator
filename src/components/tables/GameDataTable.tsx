@@ -8,9 +8,12 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { useSettings, useColorStyle } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { DataTableCell } from './DataTableCell';
+import { Trash2 } from 'lucide-react';
 
 type ColumnData =
   | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number | string | null; timeSpent: number | null; isBonus: boolean; synthetic?: boolean }
@@ -19,15 +22,73 @@ type ColumnData =
 interface GameDataTableProps {
   columns: ColumnData[];
   layout: 'horizontal' | 'vertical';
+  isEditMode?: boolean;
+  onDeleteLevel?: (levelId: number) => void;
+  onDeletePurchaseEvent?: (eventId: number) => void;
+  onUpdateLevel?: (levelId: number, field: string, value: any) => void;
+  onUpdatePurchaseEvent?: (eventId: number, field: string, value: any) => void;
 }
 
-export function GameDataTable({ columns, layout }: GameDataTableProps) {
+export function GameDataTable({
+  columns,
+  layout,
+  isEditMode = false,
+  onDeleteLevel,
+  onDeletePurchaseEvent,
+  onUpdateLevel,
+  onUpdatePurchaseEvent
+}: GameDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
   const { theme } = useTheme();
   const getColorStyle = useColorStyle();
 
   const renderCellContent = (col: ColumnData, field: 'token' | 'name' | 'daysOffset' | 'timeSpent') => {
+    if (isEditMode && !col.synthetic) {
+      const value = (() => {
+        switch (field) {
+          case 'token':
+            return col.token;
+          case 'name':
+            return col.name;
+          case 'daysOffset':
+            if (col.kind === 'level') {
+              return col.daysOffset != null ? String(col.daysOffset) : '';
+            }
+            return col.daysOffset || '';
+          case 'timeSpent':
+            return col.kind === 'level' ? (col.timeSpent != null ? String(col.timeSpent) : '') : '';
+          default:
+            return '';
+        }
+      })();
+
+      const handleChange = (newValue: string) => {
+        if (col.kind === 'level' && onUpdateLevel) {
+          let processedValue: any = newValue;
+          if (field === 'daysOffset' || field === 'timeSpent') {
+            processedValue = newValue === '' ? null : Number(newValue);
+          }
+          onUpdateLevel(col.id as number, field === 'daysOffset' ? 'days_offset' : field === 'timeSpent' ? 'time_spent' : field, processedValue);
+        } else if (col.kind === 'purchase' && onUpdatePurchaseEvent) {
+          let processedValue: any = newValue;
+          if (field === 'daysOffset') {
+            processedValue = newValue === '' ? null : Number(newValue);
+          }
+          onUpdatePurchaseEvent(col.id as number, field === 'daysOffset' ? 'max_days_offset' : field, processedValue);
+        }
+      };
+
+      return (
+        <Input
+          value={value}
+          onChange={(e) => handleChange(e.target.value)}
+          className="h-8 text-xs"
+          disabled={field === 'timeSpent' && col.kind === 'purchase'}
+        />
+      );
+    }
+
     switch (field) {
       case 'token':
         return col.token;
@@ -89,6 +150,9 @@ export function GameDataTable({ columns, layout }: GameDataTableProps) {
             <TableHead style={headerStyle}>{t('levels.levelName')}</TableHead>
             <TableHead style={headerStyle}>{t('levels.daysOffset')}</TableHead>
             <TableHead style={headerStyle}>{t('levels.timeSpent')}</TableHead>
+            {isEditMode && columns.some(col => !col.synthetic) && (
+              <TableHead style={headerStyle} className="w-16">{t('common.actions', 'Actions')}</TableHead>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -110,6 +174,24 @@ export function GameDataTable({ columns, layout }: GameDataTableProps) {
                 <DataTableCell style={combinedStyle}>
                   {renderCellContent(col, 'timeSpent')}
                 </DataTableCell>
+                {isEditMode && !col.synthetic && (
+                  <TableCell style={combinedStyle} className="text-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (col.kind === 'level' && onDeleteLevel) {
+                          onDeleteLevel(col.id as number);
+                        } else if (col.kind === 'purchase' && onDeletePurchaseEvent) {
+                          onDeletePurchaseEvent(col.id as number);
+                        }
+                      }}
+                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                )}
               </TableRow>
             );
           })}
@@ -182,6 +264,39 @@ export function GameDataTable({ columns, layout }: GameDataTableProps) {
             );
           })}
         </TableRow>
+
+        {isEditMode && columns.some(col => !col.synthetic) && (
+          <TableRow>
+            <TableHead style={headerStyle}>{t('common.actions', 'Actions')}</TableHead>
+            {columns.map((col) => {
+              const columnStyle = getColumnSpecificStyle(col);
+              const combinedStyle = { ...dataRowStyle, ...columnStyle };
+
+              return (
+                <TableCell key={`actions-${col.kind}-${col.id}`} style={combinedStyle} className="text-center">
+                  {!col.synthetic ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (col.kind === 'level' && onDeleteLevel) {
+                          onDeleteLevel(col.id as number);
+                        } else if (col.kind === 'purchase' && onDeletePurchaseEvent) {
+                          onDeletePurchaseEvent(col.id as number);
+                        }
+                      }}
+                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+              );
+            })}
+          </TableRow>
+        )}
       </TableBody>
     </Table>
   );

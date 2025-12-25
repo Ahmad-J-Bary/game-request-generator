@@ -10,13 +10,14 @@ import { GameDataTable } from '../../components/tables/GameDataTable';
 import { ImportDialog } from '../../components/molecules/ImportDialog';
 import { ExportDialog } from '../../components/molecules/ExportDialog';
 import { Button } from '../../components/ui/button';
-import { Download, Upload, Plus } from 'lucide-react';
+import { Download, Upload, Plus, Edit3, Save, X } from 'lucide-react';
 
 import { useGames } from '../../hooks/useGames';
 import { useLevels } from '../../hooks/useLevels';
 import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { TauriService } from '../../services/tauri.service';
 
 type Mode = 'all' | 'event-only';
 
@@ -36,28 +37,131 @@ export default function GameDetailPage() {
   const [mode, setMode] = useState<Mode>('event-only');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editedLevels, setEditedLevels] = useState<any[]>([]);
+  const [editedPurchaseEvents, setEditedPurchaseEvents] = useState<any[]>([]);
 
   useEffect(() => {
     setLayout('vertical');
     setMode('event-only');
   }, [gameId]);
 
+  // Initialize edited data when entering edit mode
+  useEffect(() => {
+    if (isEditMode) {
+      setEditedLevels([...levels]);
+      setEditedPurchaseEvents([...purchaseEvents]);
+    }
+  }, [isEditMode, levels, purchaseEvents]);
+
+  const handleEditToggle = () => {
+    setIsEditMode(!isEditMode);
+  };
+
+  const handleSaveChanges = async () => {
+    try {
+      // Save level changes
+      for (const editedLevel of editedLevels) {
+        const originalLevel = levels.find(l => l.id === editedLevel.id);
+        if (originalLevel) {
+          // Check if level was modified
+          if (originalLevel.level_name !== editedLevel.level_name ||
+            originalLevel.event_token !== editedLevel.event_token ||
+            originalLevel.days_offset !== editedLevel.days_offset ||
+            originalLevel.time_spent !== editedLevel.time_spent ||
+            originalLevel.is_bonus !== editedLevel.is_bonus) {
+            await TauriService.updateLevel({
+              id: editedLevel.id,
+              level_name: editedLevel.level_name,
+              event_token: editedLevel.event_token,
+              days_offset: editedLevel.days_offset,
+              time_spent: editedLevel.time_spent,
+              is_bonus: editedLevel.is_bonus,
+            });
+          }
+        }
+      }
+
+      // Save purchase event changes
+      for (const editedEvent of editedPurchaseEvents) {
+        const originalEvent = purchaseEvents.find(e => e.id === editedEvent.id);
+        if (originalEvent) {
+          // Check if purchase event was modified
+          if (originalEvent.event_token !== editedEvent.event_token ||
+            originalEvent.is_restricted !== editedEvent.is_restricted ||
+            originalEvent.max_days_offset !== editedEvent.max_days_offset) {
+            await TauriService.updatePurchaseEvent({
+              id: editedEvent.id,
+              event_token: editedEvent.event_token,
+              is_restricted: editedEvent.is_restricted,
+              max_days_offset: editedEvent.max_days_offset,
+            });
+          }
+        }
+      }
+
+      setIsEditMode(false);
+      // Refresh data by reloading the page
+      window.location.reload();
+    } catch (error) {
+      console.error('Error saving changes:', error);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditMode(false);
+  };
+
+  const handleDeleteLevel = async (levelId: number) => {
+    try {
+      await TauriService.deleteLevel(levelId);
+      setEditedLevels(prev => prev.filter(l => l.id !== levelId));
+    } catch (error) {
+      console.error('Error deleting level:', error);
+    }
+  };
+
+  const handleDeletePurchaseEvent = async (eventId: number) => {
+    try {
+      await TauriService.deletePurchaseEvent(eventId);
+      setEditedPurchaseEvents(prev => prev.filter(e => e.id !== eventId));
+    } catch (error) {
+      console.error('Error deleting purchase event:', error);
+    }
+  };
+
+  const handleUpdateLevel = (levelId: number, field: string, value: any) => {
+    setEditedLevels(prev => prev.map(level =>
+      level.id === levelId ? { ...level, [field]: value } : level
+    ));
+  };
+
+  const handleUpdatePurchaseEvent = (eventId: number, field: string, value: any) => {
+    setEditedPurchaseEvents(prev => prev.map(event =>
+      event.id === eventId ? { ...event, [field]: value } : event
+    ));
+  };
+
   const game = games.find(g => String(g.id) === String(id));
 
+  const currentLevels = isEditMode ? editedLevels : levels;
+  const currentPurchaseEvents = isEditMode ? editedPurchaseEvents : purchaseEvents;
+
   const baseColumns = useMemo(() => {
-    const levelCols = levels.map(l => ({
+    const levelCols = currentLevels.map(l => ({
       kind: 'level' as const,
       id: l.id,
-      token: l.event_token,
+      token: l.event_token.split('_day')[0],
       name: l.level_name,
       daysOffsetRaw: l.days_offset,
       daysOffset: typeof l.days_offset === 'number' ? l.days_offset : null,
       timeSpentRaw: l.time_spent,
       timeSpent: typeof l.time_spent === 'number' ? l.time_spent : null,
       isBonus: !!l.is_bonus,
+      synthetic: l.level_name === '-',
     }));
 
-    const purchaseCols = purchaseEvents.map(p => ({
+    const purchaseCols = currentPurchaseEvents.map(p => ({
       kind: 'purchase' as const,
       id: p.id,
       token: p.event_token,
@@ -66,10 +170,11 @@ export default function GameDetailPage() {
       daysOffset: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : null,
       isRestricted: !!p.is_restricted,
       timeSpent: null as number | null,
+      synthetic: false,
     }));
 
     return [...levelCols, ...purchaseCols] as const;
-  }, [levels, purchaseEvents]);
+  }, [currentLevels, currentPurchaseEvents, t]);
 
   function interpolateTime(leftT: number, leftD: number, rightT: number, rightD: number, day: number) {
     if (rightD === leftD) return leftT;
@@ -79,10 +184,8 @@ export default function GameDetailPage() {
 
   const columns = useMemo(() => {
     if (mode === 'event-only') {
-      return baseColumns.map((c: any) => ({
-        ...c,
-        synthetic: false,
-      }));
+      // Filter out session levels (name '-')
+      return baseColumns.filter((c: any) => c.name !== '-');
     }
 
     const levelCols = baseColumns.filter((c: any) => c.kind === 'level').slice();
@@ -92,7 +195,7 @@ export default function GameDetailPage() {
     const result: any[] = [];
     for (let i = 0; i < numeric.length; i++) {
       const left = numeric[i];
-      result.push({ ...left, synthetic: false });
+      result.push(left);
       const right = numeric[i + 1];
       if (right && typeof right.daysOffset === 'number' && typeof left.daysOffset === 'number' && right.daysOffset > left.daysOffset + 1) {
         for (let d = left.daysOffset + 1; d <= right.daysOffset - 1; d++) {
@@ -101,6 +204,11 @@ export default function GameDetailPage() {
             const v = interpolateTime(left.timeSpent, left.daysOffset!, right.timeSpent, right.daysOffset, d);
             synthesizedTime = Math.round(v);
           }
+
+          // Check if we already have a "real" session level for this day
+          // Since we iterate through numeric list, if it was there, it would be 'left' or 'right'.
+          // However, we might have gaps.
+
           const synth = {
             kind: 'level' as const,
             id: `synth-${left.id}-${d}`,
@@ -120,9 +228,9 @@ export default function GameDetailPage() {
 
     const numericIds = new Set(numeric.map((c: any) => c.id));
     const nonNumeric = levelCols.filter((c: any) => !numericIds.has(c.id));
-    nonNumeric.forEach(c => result.push({ ...c, synthetic: false }));
+    nonNumeric.forEach(c => result.push(c));
 
-    const purchases = baseColumns.filter((c: any) => c.kind === 'purchase').map((p: any) => ({ ...p, synthetic: false }));
+    const purchases = baseColumns.filter((c: any) => c.kind === 'purchase');
     return [...result, ...purchases];
   }, [baseColumns, mode]);
 
@@ -161,6 +269,39 @@ export default function GameDetailPage() {
 
           <LayoutToggle layout={layout} onLayoutChange={setLayout} />
 
+          {!isEditMode ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleEditToggle}
+              className="flex items-center gap-2"
+            >
+              <Edit3 className="h-4 w-4" />
+              {t('common.edit', 'Edit')}
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveChanges}
+                className="flex items-center gap-2"
+              >
+                <Save className="h-4 w-4" />
+                {t('common.save', 'Save')}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCancelEdit}
+                className="flex items-center gap-2"
+              >
+                <X className="h-4 w-4" />
+                {t('common.cancel', 'Cancel')}
+              </Button>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 px-2 py-1 border rounded">
             <label className="inline-flex items-center gap-2">
               <input
@@ -171,7 +312,7 @@ export default function GameDetailPage() {
               />
               <span className="text-sm">{t('common.eventOnly')}</span>
             </label>
-            
+
             <label className="inline-flex items-center gap-2">
               <input
                 type="radio"
@@ -192,35 +333,42 @@ export default function GameDetailPage() {
           <GameDataTable
             columns={columns}
             layout={layout}
+            isEditMode={isEditMode}
+            onDeleteLevel={handleDeleteLevel}
+            onDeletePurchaseEvent={handleDeletePurchaseEvent}
+            onUpdateLevel={handleUpdateLevel}
+            onUpdatePurchaseEvent={handleUpdatePurchaseEvent}
           />
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap gap-4 mt-6">
-        <Button
-          onClick={() => navigate('/levels', { state: { selectedGameId: gameId } })}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          {t('games.quickActions.addLevel')}
-        </Button>
+      {!isEditMode && (
+        <div className="flex flex-wrap gap-4 mt-6">
+          <Button
+            onClick={() => navigate('/levels', { state: { selectedGameId: gameId } })}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            {t('games.quickActions.addLevel')}
+          </Button>
 
-        <Button
-          onClick={() => navigate('/purchase-events', { state: { selectedGameId: gameId } })}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          {t('games.quickActions.addPurchaseEvent')}
-        </Button>
+          <Button
+            onClick={() => navigate('/purchase-events', { state: { selectedGameId: gameId } })}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            {t('games.quickActions.addPurchaseEvent')}
+          </Button>
 
-        <Button
-          onClick={() => navigate(`/accounts/new?gameId=${gameId}`)}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          {t('games.quickActions.addAccount')}
-        </Button>
-      </div>
+          <Button
+            onClick={() => navigate(`/accounts/new?gameId=${gameId}`)}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            {t('games.quickActions.addAccount')}
+          </Button>
+        </div>
+      )}
 
       <ImportDialog
         open={showImportDialog}
@@ -237,6 +385,7 @@ export default function GameDetailPage() {
         colorSettings={colors}
         theme={theme}
         source="game-detail"
+        data={columns}
       />
     </div>
   );

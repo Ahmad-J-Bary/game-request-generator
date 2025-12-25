@@ -74,18 +74,21 @@ export default function LevelListPage() {
   // Filter levels based on mode using exact GameDetailPage logic
   const filteredLevels = useMemo(() => {
     if (mode === 'event-only') {
-      return levels.map(level => ({ ...level, synthetic: false }));
+      return levels
+        .filter(level => level.level_name !== '-')
+        .map(level => ({ ...level, event_token: level.event_token.split('_day')[0], synthetic: false }));
     }
 
     // In 'all' mode, implement the same logic as GameDetailPage for creating synthetic entries
     const levelCols = levels.map(l => ({
       kind: 'level' as const,
       id: l.id,
-      token: l.event_token,
+      token: l.event_token.split('_day')[0],
       name: l.level_name,
       daysOffset: l.days_offset,
       timeSpent: l.time_spent,
       isBonus: l.is_bonus,
+      synthetic: l.level_name === '-',
     }));
 
     const numeric = levelCols.filter((c: any) => typeof c.daysOffset === 'number');
@@ -94,7 +97,7 @@ export default function LevelListPage() {
     const result: any[] = [];
     for (let i = 0; i < numeric.length; i++) {
       const left = numeric[i];
-      result.push({ ...left, synthetic: false });
+      result.push(left);
       const right = numeric[i + 1];
       if (right && typeof right.daysOffset === 'number' && typeof left.daysOffset === 'number' && right.daysOffset > left.daysOffset + 1) {
         for (let d = left.daysOffset + 1; d <= right.daysOffset - 1; d++) {
@@ -120,7 +123,7 @@ export default function LevelListPage() {
 
     const numericIds = new Set(numeric.map((c: any) => c.id));
     const nonNumeric = levelCols.filter((c: any) => !numericIds.has(c.id));
-    nonNumeric.forEach(c => result.push({ ...c, synthetic: false }));
+    nonNumeric.forEach(c => result.push(c));
 
     // Convert back to Level format for display
     return result.map(item => ({
