@@ -8,7 +8,7 @@ import { Label } from '../../components/ui/label';
 import { Badge } from '../../components/ui/badge';
 import { Separator } from '../../components/ui/separator';
 import { TauriService } from '../../services/tauri.service';
-import { toast } from 'sonner';
+import { NotificationService } from '../../utils/notifications';
 import type { DailyRequestsResponse } from '../../types';
 
 interface RequestGeneratorProps {
@@ -27,9 +27,9 @@ export function RequestGenerator({ accountId, accountName }: RequestGeneratorPro
     try {
       const result = await TauriService.getDailyRequests(accountId, targetDate);
       setResponse(result);
-      toast.success(t('requests.generated'));
+      NotificationService.success(t('requests.generated'));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('requests.generateError'));
+      NotificationService.error(error instanceof Error ? error.message : t('requests.generateError'));
     } finally {
       setLoading(false);
     }
@@ -37,7 +37,7 @@ export function RequestGenerator({ accountId, accountName }: RequestGeneratorPro
 
   const copyToClipboard = (content: string) => {
     navigator.clipboard.writeText(content);
-    toast.success(t('requests.copied'));
+    NotificationService.success(t('requests.copied'));
   };
 
   const getRequestTypeLabel = (type: string) => {

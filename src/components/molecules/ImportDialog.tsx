@@ -14,7 +14,7 @@ import { Button } from '../ui/button';
 import { ExcelService } from '../../services/excel.service';
 import { TauriService } from '../../services/tauri.service';
 import { useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { NotificationService } from '../../utils/notifications';
 
 interface ImportDialogProps {
   open: boolean;
@@ -39,7 +39,7 @@ export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) 
       setImportResult(result);
     } catch (error) {
       console.error('Import failed:', error);
-      toast.error(t('import.failed', 'Import failed'));
+      NotificationService.error(t('import.failed'));
     } finally {
       setIsImporting(false);
     }
@@ -109,12 +109,12 @@ export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) 
       // Refresh data
       queryClient.invalidateQueries();
 
-      toast.success(t('import.success', `Successfully imported ${importedCount} items`));
+      NotificationService.success(t('import.success', { count: importedCount }));
       onOpenChange(false);
       setImportResult(null);
     } catch (error) {
       console.error('Confirm import failed:', error);
-      toast.error(t('import.confirmFailed', 'Failed to save imported data'));
+      NotificationService.error(t('import.confirmFailed'));
     } finally {
       setIsImporting(false);
     }

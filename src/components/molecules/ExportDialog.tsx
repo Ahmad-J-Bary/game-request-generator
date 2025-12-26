@@ -12,7 +12,7 @@ import {
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { ExcelService } from '../../services/excel.service';
-import { toast } from 'sonner';
+import { NotificationService } from '../../utils/notifications';
 
 interface ExportDialogProps {
   open: boolean;
@@ -108,14 +108,14 @@ export function ExportDialog({ open, onOpenChange, gameId, accountId, exportType
       }
 
       if (success) {
-        toast.success(t('export.success', 'Data exported successfully'));
+        NotificationService.success(t('export.success'));
         onOpenChange(false);
       } else {
-        toast.error(t('export.failed', 'Export failed'));
+        NotificationService.error(t('export.failed'));
       }
     } catch (error) {
       console.error('Export failed:', error);
-      toast.error(t('export.failed', 'Export failed'));
+      NotificationService.error(t('export.failed'));
     } finally {
       setIsExporting(false);
     }

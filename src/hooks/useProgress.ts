@@ -9,7 +9,7 @@ import type {
   CreateAccountPurchaseEventProgressRequest,
   UpdateAccountPurchaseEventProgressRequest
 } from '../types';
-import { toast } from 'sonner';
+import { NotificationService } from '../utils/notifications';
 
 function extractErrorMessage(err: any): string {
   if (!err) return 'Unknown error';
@@ -43,7 +43,7 @@ export const useProgress = (accountId?: number) => {
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
-      toast.error(msg);
+      NotificationService.error(msg);
     } finally {
       setLoading(false);
     }
@@ -67,7 +67,7 @@ export const useProgress = (accountId?: number) => {
       await load();
     } catch (err) {
       const msg = extractErrorMessage(err);
-      toast.error(msg);
+      NotificationService.error(msg);
       throw err;
     }
   };
@@ -82,7 +82,7 @@ export const useProgress = (accountId?: number) => {
       return ok;
     } catch (err) {
       const msg = extractErrorMessage(err);
-      toast.error(msg);
+      NotificationService.error(msg);
       throw err;
     }
   };
@@ -94,7 +94,7 @@ export const useProgress = (accountId?: number) => {
       await load();
     } catch (err) {
       const msg = extractErrorMessage(err);
-      toast.error(msg);
+      NotificationService.error(msg);
       throw err;
     }
   };
@@ -109,7 +109,7 @@ export const useProgress = (accountId?: number) => {
       return ok;
     } catch (err) {
       const msg = extractErrorMessage(err);
-      toast.error(msg);
+      NotificationService.error(msg);
       throw err;
     }
   };

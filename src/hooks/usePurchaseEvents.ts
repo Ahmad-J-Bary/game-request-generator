@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TauriService } from '../services/tauri.service';
 import type { PurchaseEvent, CreatePurchaseEventRequest, UpdatePurchaseEventRequest } from '../types';
-import { toast } from 'sonner';
+import { NotificationService } from '../utils/notifications';
 
 function extractErrorMessage(err: any): string {
   if (!err) return 'Unknown error';
@@ -32,7 +32,7 @@ export const usePurchaseEvents = (gameId?: number) => {
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
-      toast.error(msg);
+      NotificationService.error(msg);
     } finally {
       setLoading(false);
     }
@@ -53,14 +53,14 @@ export const usePurchaseEvents = (gameId?: number) => {
     setError(null);
     try {
       const id = await TauriService.addPurchaseEvent(request);
-      toast.success('Purchase event added');
+      NotificationService.success('Purchase event added');
       window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { gameId: request.game_id, id } }));
       await load();
       return id;
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
-      toast.error(msg);
+      NotificationService.error(msg);
       throw err;
     } finally {
       setLoading(false);
@@ -73,7 +73,7 @@ export const usePurchaseEvents = (gameId?: number) => {
     try {
       const ok = await TauriService.updatePurchaseEvent(request);
       if (ok) {
-        toast.success('Purchase event updated');
+        NotificationService.success('Purchase event updated');
         const detailGameId = request.game_id ?? gameId;
         window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { gameId: detailGameId, id: request.id } }));
         await load();
@@ -82,7 +82,7 @@ export const usePurchaseEvents = (gameId?: number) => {
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
-      toast.error(msg);
+      NotificationService.error(msg);
       throw err;
     } finally {
       setLoading(false);
@@ -95,7 +95,7 @@ export const usePurchaseEvents = (gameId?: number) => {
     try {
       const ok = await TauriService.deletePurchaseEvent(id);
       if (ok) {
-        toast.success('Purchase event deleted');
+        NotificationService.success('Purchase event deleted');
         window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { gameId } }));
         await load();
       }
@@ -103,7 +103,7 @@ export const usePurchaseEvents = (gameId?: number) => {
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
-      toast.error(msg);
+      NotificationService.error(msg);
       throw err;
     } finally {
       setLoading(false);

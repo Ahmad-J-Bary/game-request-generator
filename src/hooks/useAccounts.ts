@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TauriService } from '../services/tauri.service';
 import { Account, CreateAccountRequest, UpdateAccountRequest } from '../types';
-import { toast } from 'sonner';
+import { NotificationService } from '../utils/notifications';
 
 function extractErrorMessage(err: any): string {
   if (!err) return 'Unknown error';
@@ -31,7 +31,7 @@ export const useAccounts = (gameId?: number) => {
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
-      toast.error(msg);
+      NotificationService.error(msg);
     } finally {
       setLoading(false);
     }
@@ -56,7 +56,7 @@ export const useAccounts = (gameId?: number) => {
     setError(null);
     try {
       const id = await TauriService.addAccount(request);
-      toast.success('Account added successfully');
+      NotificationService.success('Account added successfully');
       window.dispatchEvent(
         new CustomEvent('accounts-updated', {
           detail: { gameId: request.game_id, id },
@@ -67,7 +67,7 @@ export const useAccounts = (gameId?: number) => {
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
-      toast.error(msg);
+      NotificationService.error(msg);
       throw err;
     } finally {
       setLoading(false);
@@ -80,7 +80,7 @@ export const useAccounts = (gameId?: number) => {
     try {
       const success = await TauriService.updateAccount(request);
       if (success) {
-        toast.success('Account updated successfully');
+        NotificationService.success('Account updated successfully');
         window.dispatchEvent(
           new CustomEvent('accounts-updated', {
             detail: { gameId, id: request.id },
@@ -92,7 +92,7 @@ export const useAccounts = (gameId?: number) => {
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
-      toast.error(msg);
+      NotificationService.error(msg);
       throw err;
     } finally {
       setLoading(false);
@@ -105,7 +105,7 @@ export const useAccounts = (gameId?: number) => {
     try {
       const success = await TauriService.deleteAccount(id);
       if (success) {
-        toast.success('Account deleted successfully');
+        NotificationService.success('Account deleted successfully');
         window.dispatchEvent(
           new CustomEvent('accounts-updated', {
             detail: { gameId, id },
@@ -117,7 +117,7 @@ export const useAccounts = (gameId?: number) => {
     } catch (err) {
       const msg = extractErrorMessage(err);
       setError(msg);
-      toast.error(msg);
+      NotificationService.error(msg);
       throw err;
     } finally {
       setLoading(false);

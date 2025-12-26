@@ -164,6 +164,158 @@ static async deletePurchaseEvent(id: number): Promise<boolean> {
     return await invoke<AccountPurchaseEventProgress[]>('get_account_purchase_event_progress', { accountId });
   }
 
+  // ===== File Operations =====
+  static async selectFilesOrFolder(): Promise<string[]> {
+    return await invoke<string[]>('select_files_or_folder');
+  }
+
+  static async readTextFile(filePath: string): Promise<string> {
+    return await invoke<string>('read_text_file', { filePath });
+  }
+
 }
 
 export const tauriService = new TauriService();
+
+import { TEMPLATE_PATTERNS } from '../constants';
+
+// ===== Request Processing Utilities =====
+export class RequestProcessor {
+  /**
+   * Process request content to apply template pattern matching
+   * Replaces &event_token=&time_spent=& with actual values
+   */
+  static processRequestContent(content: string, eventToken: string, timeSpent: number): string {
+    let processedContent = content;
+
+    // Find &event_token=&time_spent=& pattern and replace with actual values
+    const eventTokenIndex = processedContent.indexOf(TEMPLATE_PATTERNS.EVENT_TOKEN);
+    if (eventTokenIndex !== -1) {
+      const afterEventToken = eventTokenIndex + TEMPLATE_PATTERNS.EVENT_TOKEN.length;
+      const timeSpentIndex = processedContent.indexOf(TEMPLATE_PATTERNS.TIME_SPENT, afterEventToken);
+
+      if (timeSpentIndex !== -1) {
+        const afterTimeSpent = timeSpentIndex + TEMPLATE_PATTERNS.TIME_SPENT.length;
+        const nextAmpersand = processedContent.indexOf('&', afterTimeSpent);
+
+        // If we found the pattern, replace it
+        if (nextAmpersand !== -1 || afterTimeSpent < processedContent.length) {
+          const endPos = nextAmpersand !== -1 ? nextAmpersand : processedContent.length;
+          const remainingPart = processedContent.substring(endPos);
+
+          // Replace the variable part
+          const before = processedContent.substring(0, eventTokenIndex);
+          const newVariablePart = `${TEMPLATE_PATTERNS.EVENT_TOKEN}${eventToken}${TEMPLATE_PATTERNS.TIME_SPENT}${timeSpent}${remainingPart}`;
+
+          processedContent = before + newVariablePart;
+        }
+      }
+    }
+
+    return processedContent;
+  }
+}
+
+// ===== Import Service (SOLID - Single Responsibility) =====
+export class ImportService {
+  /**
+   * Import request templates from files
+   */
+  static async importRequestTemplates(gameId?: number): Promise<{
+    success: boolean;
+    message: string;
+    templates?: Array<{
+      filename: string;
+      accountName: string;
+      content: string;
+      matchedAccount?: any;
+    }>;
+  }> {
+    try {
+      // Select files or folder
+      const filePaths = await TauriService.selectFilesOrFolder();
+
+      if (filePaths.length === 0) {
+        return {
+          success: false,
+          message: 'No files selected'
+        };
+      }
+
+      // Read all files and match with accounts
+      const templates: Array<{
+        filename: string;
+        accountName: string;
+        content: string;
+        matchedAccount?: any;
+      }> = [];
+
+      const accounts = gameId ? await TauriService.getAccounts(gameId) : [];
+
+      for (const filePath of filePaths) {
+        try {
+          const content = await TauriService.readTextFile(filePath);
+
+          // Extract account name from filename (remove .txt extension)
+          const filename = filePath.split('/').pop() || '';
+          const accountName = filename.replace(/\.txt$/, '');
+
+          // Find matching account
+          const matchedAccount = accounts.find(account => account.name === accountName);
+
+          templates.push({
+            filename,
+            accountName,
+            content,
+            matchedAccount
+          });
+        } catch (error) {
+          console.error(`Failed to read file ${filePath}:`, error);
+        }
+      }
+
+      const matchedCount = templates.filter(t => t.matchedAccount).length;
+      const unmatchedCount = templates.length - matchedCount;
+
+      return {
+        success: true,
+        message: `Found ${templates.length} template files. ${matchedCount} matched existing accounts, ${unmatchedCount} unmatched.`,
+        templates
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to import templates'
+      };
+    }
+  }
+
+  /**
+   * Confirm and apply template imports
+   */
+  static async confirmTemplateImport(templates: Array<{
+    filename: string;
+    accountName: string;
+    content: string;
+    matchedAccount?: any;
+  }>): Promise<{ importedCount: number }> {
+    let importedCount = 0;
+
+    for (const template of templates) {
+      if (template.matchedAccount) {
+        try {
+          await TauriService.updateAccount({
+            id: template.matchedAccount.id,
+            request_template: template.content,
+          });
+          importedCount++;
+        } catch (error) {
+          console.error('Failed to update account template:', template.accountName, error);
+        }
+      }
+    }
+
+    return { importedCount };
+  }
+}

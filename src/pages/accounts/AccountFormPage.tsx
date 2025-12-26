@@ -11,7 +11,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { BackButton } from '../../components/molecules/BackButton';
 import { CreateAccountRequest, UpdateAccountRequest } from '../../types';
-import { toast } from 'sonner';
+import { NotificationService } from '../../utils/notifications';
 
 export default function AccountFormPage() {
   const { t } = useTranslation();
@@ -59,7 +59,7 @@ export default function AccountFormPage() {
 
     const currentGameId = account ? account.game_id : gameId;
     if (!currentGameId || !name.trim() || !startDate.trim() || !startTime.trim() || !requestTemplate.trim()) {
-        toast.error("All fields are required");
+        NotificationService.error("All fields are required");
         return;
     }
 
@@ -87,7 +87,7 @@ export default function AccountFormPage() {
         navigate('/accounts');
     } catch (error) {
         console.error('Failed to save account:', error);
-        toast.error("An error occurred while saving the account");
+        NotificationService.error("An error occurred while saving the account");
     } finally {
         setLoading(false);
     }

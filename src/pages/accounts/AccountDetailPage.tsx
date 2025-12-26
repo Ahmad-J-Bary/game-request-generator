@@ -322,6 +322,27 @@ export default function AccountDetailPage() {
 
     const result: any[] = [];
 
+    // Check if we need a session at Days Offset 0
+    if (numeric.length > 0 && numeric[0].daysOffset > 0) {
+      const firstLevel = numeric[0];
+      // Generate session at Days Offset 0 with half the time spent of the first level
+      const sessionTimeSpent = typeof firstLevel.timeSpent === 'number'
+        ? Math.round(firstLevel.timeSpent / 2)
+        : null;
+
+      const sessionZero = {
+        kind: 'level' as const,
+        id: `session-zero-${firstLevel.token}`,
+        token: firstLevel.token,
+        name: '-',
+        daysOffset: 0,
+        timeSpent: sessionTimeSpent,
+        isBonus: false,
+        synthetic: true,
+      };
+      result.push(sessionZero);
+    }
+
     // Add levels with synthetic ones
     for (let i = 0; i < numeric.length; i++) {
       const left = numeric[i];

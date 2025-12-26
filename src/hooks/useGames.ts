@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TauriService } from '../services/tauri.service';
 import { Game, CreateGameRequest, UpdateGameRequest } from '../types';
-import { toast } from 'sonner';
+import { NotificationService } from '../utils/notifications';
 
 function extractErrorMessage(err: any): string {
   if (!err) return 'Unknown error';
@@ -26,7 +26,7 @@ export function useGames() {
     } catch (err) {
       const message = extractErrorMessage(err);
       setError(message);
-      toast.error(message);
+      NotificationService.error(message);
     } finally {
       setLoading(false);
     }
@@ -49,7 +49,7 @@ export function useGames() {
       setLoading(true);
       setError(null);
       const id = await TauriService.addGame(request);
-      toast.success('Game added successfully');
+      NotificationService.success('Game added successfully');
       // notify other listeners to refresh
       window.dispatchEvent(new CustomEvent('games-updated', { detail: { id } }));
       // refresh local list
@@ -58,7 +58,7 @@ export function useGames() {
     } catch (err) {
       const message = extractErrorMessage(err);
       setError(message);
-      toast.error(message);
+      NotificationService.error(message);
       return false;
     } finally {
       setLoading(false);
@@ -71,7 +71,7 @@ export function useGames() {
       setError(null);
       const success = await TauriService.updateGame(request);
       if (success) {
-        toast.success('Game updated successfully');
+        NotificationService.success('Game updated successfully');
         window.dispatchEvent(new CustomEvent('games-updated', { detail: { id: request.id } }));
         await fetchGames();
       }
@@ -79,7 +79,7 @@ export function useGames() {
     } catch (err) {
       const message = extractErrorMessage(err);
       setError(message);
-      toast.error(message);
+      NotificationService.error(message);
       return false;
     } finally {
       setLoading(false);
@@ -92,7 +92,7 @@ export function useGames() {
       setError(null);
       const success = await TauriService.deleteGame(id);
       if (success) {
-        toast.success('Game deleted successfully');
+        NotificationService.success('Game deleted successfully');
         window.dispatchEvent(new CustomEvent('games-updated', { detail: { id } }));
         await fetchGames();
       }
@@ -100,7 +100,7 @@ export function useGames() {
     } catch (err) {
       const message = extractErrorMessage(err);
       setError(message);
-      toast.error(message);
+      NotificationService.error(message);
       return false;
     } finally {
       setLoading(false);
