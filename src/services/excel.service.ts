@@ -59,21 +59,6 @@ export class ExcelService {
   }
 
   /**
-   * Simple test export to verify filesystem access
-   */
-  static async testExport(): Promise<boolean> {
-    try {
-      const workbook = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([['Test', 'Export'], ['Success', 'Yes']]);
-      XLSX.utils.book_append_sheet(workbook, ws, 'Test');
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      return await this.saveFile('Test_Export.xlsx', buffer);
-    } catch (error) {
-      console.error('Test export failed:', error);
-      return false;
-    }
-  }
-  /**
    * Parse Excel file and extract data based on sheet structure
    */
   static async parseExcelFile(filePath: string): Promise<ImportData> {
@@ -92,25 +77,50 @@ export class ExcelService {
         accounts: []
       };
 
-      // Parse levels sheet
+      // Try to parse levels sheet (horizontal format)
       const levelsSheet = workbook.Sheets['Levels'];
       if (levelsSheet) {
         const levelsData = XLSX.utils.sheet_to_json(levelsSheet, { header: 1 }) as any[][];
         result.levels = this.parseLevelsData(levelsData);
       }
 
-      // Parse purchase events sheet
+      // Try to parse purchase events sheet (horizontal format)
       const purchaseSheet = workbook.Sheets['Purchase Events'];
       if (purchaseSheet) {
         const purchaseData = XLSX.utils.sheet_to_json(purchaseSheet, { header: 1 }) as any[][];
         result.purchaseEvents = this.parsePurchaseEventsData(purchaseData);
       }
 
-      // Parse accounts sheet
+      // Try to parse accounts sheet (horizontal format)
       const accountsSheet = workbook.Sheets['Accounts'];
       if (accountsSheet) {
         const accountsData = XLSX.utils.sheet_to_json(accountsSheet, { header: 1 }) as any[][];
         result.accounts = this.parseAccountsData(accountsData);
+      }
+
+      // If no data found in horizontal sheets, try parsing vertical layout formats
+      if (result.levels.length === 0 && result.purchaseEvents.length === 0 && result.accounts.length === 0) {
+        // Try to parse the first sheet as vertical layout (from GameDetailPage export)
+        const firstSheetName = workbook.SheetNames[0];
+        if (firstSheetName) {
+          const verticalSheet = workbook.Sheets[firstSheetName];
+          if (verticalSheet) {
+            const verticalData = XLSX.utils.sheet_to_json(verticalSheet, { header: 1 }) as any[][];
+
+            // Check if this is accounts detail format (has account rows)
+            if (this.isAccountsDetailFormat(verticalData)) {
+              const parsedData = this.parseAccountsDetailVerticalLayout(verticalData);
+              result.levels = parsedData.levels;
+              result.purchaseEvents = parsedData.purchaseEvents;
+              result.accounts = parsedData.accounts;
+            } else {
+              // Try game detail vertical format
+              const parsedData = this.parseVerticalLayoutData(verticalData);
+              result.levels = parsedData.levels;
+              result.purchaseEvents = parsedData.purchaseEvents;
+            }
+          }
+        }
       }
 
       console.log('Successfully parsed Excel file with data:', {
@@ -183,6 +193,339 @@ export class ExcelService {
     }
 
     return levels;
+  }
+
+  /**
+   * Check if the data is in accounts detail vertical layout format
+   */
+  private static isAccountsDetailFormat(rows: any[][]): boolean {
+    if (rows.length < 6) return false;
+
+    // Look for "Account" header in the first column around row 5-6
+    for (let i = 4; i < Math.min(8, rows.length); i++) {
+      if (rows[i] && rows[i][0] && rows[i][0].toString().toLowerCase().includes('account')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Parse accounts detail vertical layout data (from AccountsDetailPage export)
+   */
+  private static parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Partial<Level>[], purchaseEvents: Partial<PurchaseEvent>[], accounts: Partial<Account>[] } {
+    const levels: Partial<Level>[] = [];
+    const purchaseEvents: Partial<PurchaseEvent>[] = [];
+    const accounts: Partial<Account>[] = [];
+
+    if (rows.length < 6) {
+      return { levels, purchaseEvents, accounts };
+    }
+
+    // Find the account header row
+    let accountHeaderRow = -1;
+    for (let i = 4; i < rows.length; i++) {
+      if (rows[i] && rows[i][0] && rows[i][0].toString().toLowerCase().includes('account')) {
+        accountHeaderRow = i;
+        break;
+      }
+    }
+
+    if (accountHeaderRow === -1) {
+      // Fallback to game detail parsing if no account section found
+      const gameData = this.parseVerticalLayoutData(rows);
+      return { levels: gameData.levels, purchaseEvents: gameData.purchaseEvents, accounts };
+    }
+
+    // Parse levels and purchase events (rows 0-3 before account header)
+    const maxCols = Math.max(...rows.slice(0, accountHeaderRow).map(row => row.length));
+    for (let col = 1; col < maxCols; col++) {
+      const eventToken = rows[0] && rows[0][col] ? rows[0][col].toString().trim() : '';
+      const levelName = rows[1] && rows[1][col] ? rows[1][col].toString().trim() : '';
+      const daysOffsetCell = rows[2] && rows[2][col];
+      const daysOffsetStr = daysOffsetCell != null ? daysOffsetCell.toString().trim() : '';
+      const timeSpentCell = rows[3] && rows[3][col];
+      const timeSpentStr = timeSpentCell != null ? timeSpentCell.toString().trim() : '';
+
+      if (!eventToken) continue;
+
+      if (levelName === '$$$') {
+        // Purchase event
+        const purchaseEvent: Partial<PurchaseEvent> = {
+          event_token: eventToken,
+          is_restricted: false,
+        };
+
+        if (daysOffsetStr && daysOffsetStr.toLowerCase().includes('less than')) {
+          const match = daysOffsetStr.match(/less than (\d+)/i);
+          if (match) {
+            purchaseEvent.max_days_offset = parseInt(match[1], 10);
+          }
+        } else {
+          const daysOffset = parseInt(daysOffsetStr, 10);
+          if (!isNaN(daysOffset)) {
+            purchaseEvent.max_days_offset = daysOffset;
+          } else {
+            // If parsing fails, try to use the string value directly if it's a valid number
+            const numValue = Number(daysOffsetStr);
+            if (!isNaN(numValue) && isFinite(numValue)) {
+              purchaseEvent.max_days_offset = Math.floor(numValue);
+            }
+          }
+        }
+
+        purchaseEvents.push(purchaseEvent);
+      } else {
+        // Level
+        const level: Partial<Level> = {
+          event_token: eventToken,
+          level_name: levelName,
+        };
+
+        if (daysOffsetStr !== '-' && daysOffsetStr !== '') {
+          const daysOffset = parseInt(daysOffsetStr, 10);
+          if (!isNaN(daysOffset)) {
+            level.days_offset = daysOffset;
+          } else {
+            // If parsing fails, try to use the string value directly if it's a valid number
+            const numValue = Number(daysOffsetStr);
+            if (!isNaN(numValue) && isFinite(numValue)) {
+              level.days_offset = Math.floor(numValue);
+            }
+          }
+        }
+
+        if (timeSpentStr !== '-' && timeSpentStr !== '') {
+          const timeSpent = parseInt(timeSpentStr);
+          if (!isNaN(timeSpent)) {
+            level.time_spent = timeSpent;
+          }
+        } else {
+          // If time_spent is missing or invalid, set a default value
+          level.time_spent = level.time_spent || 0;
+        }
+
+        level.is_bonus = false; // As requested by user - import all as regular levels without bonus
+
+        // Only add levels that have required fields
+        if (level.event_token && level.level_name && level.level_name !== '-' &&
+            level.days_offset != null && level.time_spent != null) {
+          levels.push(level);
+        }
+      }
+    }
+
+    // Parse accounts (starting from accountHeaderRow + 1)
+    for (let i = accountHeaderRow + 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length < 3) continue;
+
+      const accountName = row[0] ? row[0].toString().trim() : '';
+
+      // Handle start date - could be string or Excel date value
+      let startDateStr = '';
+      if (row[1]) {
+        if (row[1] instanceof Date) {
+          // Excel date object - format as YYYY-MM-DD
+          const dateObj = row[1] as Date;
+          startDateStr = dateObj.toISOString().split('T')[0];
+        } else {
+          // String value - use as-is for parsing
+          startDateStr = row[1].toString().trim();
+        }
+      }
+
+      // Handle start time - could be string or Excel time value
+      let startTimeStr = '';
+      if (row[2]) {
+        if (row[2] instanceof Date) {
+          // Excel time object - format as HH:MM:SS
+          const timeObj = row[2] as Date;
+          const hours = timeObj.getHours().toString().padStart(2, '0');
+          const minutes = timeObj.getMinutes().toString().padStart(2, '0');
+          const seconds = timeObj.getSeconds().toString().padStart(2, '0');
+          startTimeStr = `${hours}:${minutes}:${seconds}`;
+        } else {
+          // String value - use as-is for parsing
+          startTimeStr = row[2].toString().trim();
+        }
+      }
+
+      if (!accountName) continue;
+
+      const account: Partial<Account> = {
+        name: accountName,
+        request_template: 'Needs to be filled in - imported from Excel export',
+      };
+
+      // Parse start date - handle various formats and store in standardized YYYY-MM-DD format
+      if (startDateStr) {
+        let parsedDate: Date | null = null;
+
+        // Try MM/DD/YYYY format (e.g., "12/23/2025")
+        const slashDateMatch = startDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (slashDateMatch) {
+          const month = parseInt(slashDateMatch[1]) - 1; // JS months are 0-based
+          const day = parseInt(slashDateMatch[2]);
+          const year = parseInt(slashDateMatch[3]);
+          parsedDate = new Date(year, month, day);
+          if (!isNaN(parsedDate.getTime())) {
+            // Store in standardized YYYY-MM-DD format
+            account.start_date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          }
+        }
+
+        // Try YYYY-MM-DD format (e.g., "2025-12-23")
+        if (!parsedDate && startDateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          parsedDate = new Date(startDateStr);
+          if (!isNaN(parsedDate.getTime())) {
+            account.start_date = startDateStr;
+          }
+        }
+
+        // Try DD-MMM format (e.g., "23-Dec")
+        if (!parsedDate) {
+          const dashDateMatch = startDateStr.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+          if (dashDateMatch) {
+            const day = parseInt(dashDateMatch[1]);
+            const monthStr = dashDateMatch[2].toLowerCase();
+            const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+            const monthIndex = months.indexOf(monthStr);
+            if (monthIndex >= 0) {
+              const now = new Date();
+              const year = now.getFullYear();
+              parsedDate = new Date(year, monthIndex, day);
+              if (!isNaN(parsedDate.getTime())) {
+                // Store in standardized YYYY-MM-DD format
+                account.start_date = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              }
+            }
+          }
+        }
+      }
+
+      // Parse start time - handle various formats and store in standardized 24-hour HH:MM:SS format
+      if (startTimeStr) {
+        let parsedTime = startTimeStr.trim();
+        let finalTime = '';
+
+        // Handle AM/PM formats and convert to 24-hour format
+        const timeMatch = parsedTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+        if (timeMatch) {
+          let hours = parseInt(timeMatch[1]);
+          const minutes = timeMatch[2];
+          const seconds = timeMatch[3] || '00';
+          const ampm = timeMatch[4]?.toUpperCase();
+
+          // Convert to 24-hour format
+          if (ampm === 'PM' && hours !== 12) {
+            hours += 12;
+          } else if (ampm === 'AM' && hours === 12) {
+            hours = 0;
+          }
+
+          // Store in standardized HH:MM:SS format
+          finalTime = `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
+        } else if (parsedTime.match(/^(\d{1,2}):(\d{2})$/)) {
+          // Already in HH:MM format, add seconds
+          finalTime = `${parsedTime}:00`;
+        } else if (parsedTime.match(/^(\d{1,2}):(\d{2}):(\d{2})$/)) {
+          // Already in HH:MM:SS format
+          finalTime = parsedTime;
+        }
+
+        if (finalTime) {
+          account.start_time = finalTime;
+        }
+      }
+
+      accounts.push(account);
+    }
+
+    return { levels, purchaseEvents, accounts };
+  }
+
+  /**
+   * Parse vertical layout data (from GameDetailPage export)
+   */
+  private static parseVerticalLayoutData(rows: any[][]): { levels: Partial<Level>[], purchaseEvents: Partial<PurchaseEvent>[] } {
+    const levels: Partial<Level>[] = [];
+    const purchaseEvents: Partial<PurchaseEvent>[] = [];
+
+    if (rows.length < 4) {
+      return { levels, purchaseEvents };
+    }
+
+    // Find the maximum number of columns
+    const maxCols = Math.max(...rows.map(row => row.length));
+
+    // Skip the first column (index 0) as it contains headers, start from column 1
+    for (let col = 1; col < maxCols; col++) {
+      const eventToken = rows[0] && rows[0][col] ? rows[0][col].toString().trim() : '';
+      const levelName = rows[1] && rows[1][col] ? rows[1][col].toString().trim() : '';
+      const daysOffsetStr = rows[2] && rows[2][col] ? rows[2][col].toString().trim() : '';
+      const timeSpentStr = rows[3] && rows[3][col] ? rows[3][col].toString().trim() : '';
+
+      if (!eventToken) continue; // Skip empty columns
+
+      // Check if this is a purchase event ($$$ in level name)
+      if (levelName === '$$$') {
+        // This is a purchase event
+        const purchaseEvent: Partial<PurchaseEvent> = {
+          event_token: eventToken,
+          is_restricted: false, // Default to unrestricted
+        };
+
+        // Parse days offset - for purchase events it might be "Less Than X"
+        if (daysOffsetStr && daysOffsetStr.toLowerCase().includes('less than')) {
+          const match = daysOffsetStr.match(/less than (\d+)/i);
+          if (match) {
+            purchaseEvent.max_days_offset = parseInt(match[1]);
+          }
+        } else {
+          const daysOffset = parseInt(daysOffsetStr);
+          if (!isNaN(daysOffset)) {
+            purchaseEvent.max_days_offset = daysOffset;
+          }
+        }
+
+        purchaseEvents.push(purchaseEvent);
+      } else {
+        // This is a level
+        const level: Partial<Level> = {
+          event_token: eventToken,
+          level_name: levelName,
+        };
+
+        // Parse days offset
+        if (daysOffsetStr !== '-' && daysOffsetStr !== '') {
+          const daysOffset = parseInt(daysOffsetStr);
+          if (!isNaN(daysOffset)) {
+            level.days_offset = daysOffset;
+          }
+        }
+
+        // Parse time spent
+        if (timeSpentStr !== '-' && timeSpentStr !== '') {
+          const timeSpent = parseInt(timeSpentStr);
+          if (!isNaN(timeSpent)) {
+            level.time_spent = timeSpent;
+          }
+        }
+
+        // Determine if it's a bonus level (simple heuristic - check if level name contains bonus indicators)
+        level.is_bonus = levelName.toLowerCase().includes('bonus') ||
+                        levelName.toLowerCase().includes('extra') ||
+                        levelName.match(/\+\d+/); // Contains +number
+
+        // Only add levels that have meaningful data
+        if (level.level_name && level.level_name !== '-') {
+          levels.push(level);
+        }
+      }
+    }
+
+    return { levels, purchaseEvents };
   }
 
   /**
@@ -598,7 +941,7 @@ export class ExcelService {
                 const col = columns[c - 3];
                 const acc = accounts[r - 5];
                 const progressKey = `${acc.id}_${col.id}`;
-                const progress = col.kind === 'level' ? levelsProgress?.[progressKey] : purchaseProgress?.[progressKey];
+                const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
                 const isCompleted = progress?.is_completed ?? false;
                 const bgColor = isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
                 cell.s = getCellStyle(bgColor, false, col.synthetic);
@@ -655,7 +998,7 @@ export class ExcelService {
                 const acc = accounts[c - 4];
                 const col = columns[r - 1];
                 const progressKey = `${acc.id}_${col.id}`;
-                const progress = col.kind === 'level' ? levelsProgress?.[progressKey] : purchaseProgress?.[progressKey];
+                const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
                 const isCompleted = progress?.is_completed ?? false;
                 const bgColor = isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
                 cell.s = getCellStyle(bgColor, false, col.synthetic);
@@ -887,7 +1230,36 @@ export class ExcelService {
 
     // Add account rows
     accounts.forEach((acc, accIdx) => {
-      const row = [acc.name, formatDateShort(acc.start_date), acc.start_time];
+      // Convert start_date and start_time to actual Date/Time objects for Excel
+      let startDateValue: Date | string = acc.start_date;
+      let startTimeValue: Date | string = acc.start_time;
+
+      // Try to create proper date/time objects
+      if (acc.start_date) {
+        const dateObj = new Date(acc.start_date);
+        if (!isNaN(dateObj.getTime())) {
+          startDateValue = dateObj;
+        }
+      }
+
+      if (acc.start_time) {
+        // Create a full datetime for Excel by combining today's date with the time
+        const today = new Date();
+        const timeParts = acc.start_time.split(':');
+        if (timeParts.length >= 2) {
+          const hours = parseInt(timeParts[0], 10);
+          const minutes = parseInt(timeParts[1], 10);
+          const seconds = timeParts.length >= 3 ? parseInt(timeParts[2], 10) : 0;
+
+          if (!isNaN(hours) && !isNaN(minutes)) {
+            const timeObj = new Date(today);
+            timeObj.setHours(hours, minutes, seconds || 0, 0);
+            startTimeValue = timeObj;
+          }
+        }
+      }
+
+      const row = [acc.name, startDateValue, startTimeValue];
       columns.forEach(() => row.push(''));
       wsData.push(row);
 

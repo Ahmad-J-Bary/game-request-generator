@@ -1,3 +1,5 @@
+// src/pages/accounts/AccountFormPage.tsx
+
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';

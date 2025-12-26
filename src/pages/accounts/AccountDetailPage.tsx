@@ -9,7 +9,7 @@ import { BackButton } from '../../components/molecules/BackButton';
 import { ImportDialog } from '../../components/molecules/ImportDialog';
 import { ExportDialog } from '../../components/molecules/ExportDialog';
 import { Button } from '../../components/ui/button';
-import { Download, Upload, Edit3, Save, X } from 'lucide-react';
+import { Download, Upload, Edit3, Save, X, CheckSquare } from 'lucide-react';
 import { Level, Account } from '../../types';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
@@ -92,6 +92,7 @@ export default function AccountDetailPage() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [completeAllChecked, setCompleteAllChecked] = useState(false);
   const [tempProgress, setTempProgress] = useState<{
     levels: { [key: number | string]: boolean };
     purchases: { [key: number]: boolean };
@@ -112,6 +113,35 @@ export default function AccountDetailPage() {
         [id]: completed,
       },
     }));
+  };
+
+  const handleCompleteAllChange = (checked: boolean) => {
+    setCompleteAllChecked(checked);
+
+    if (checked) {
+      // Mark all levels and purchase events as completed
+      const newTempProgress = {
+        levels: {} as { [key: number | string]: boolean },
+        purchases: {} as { [key: number]: boolean },
+      };
+
+      // Mark all levels as completed
+      columns.forEach(col => {
+        if (col.kind === 'level') {
+          newTempProgress.levels[col.id] = true;
+        } else if (col.kind === 'purchase') {
+          newTempProgress.purchases[col.id] = true;
+        }
+      });
+
+      setTempProgress(newTempProgress);
+    } else {
+      // Clear all progress when unchecked
+      setTempProgress({
+        levels: {},
+        purchases: {},
+      });
+    }
   };
 
   const handleSaveProgress = async () => {
@@ -408,6 +438,23 @@ export default function AccountDetailPage() {
 
           {isEditMode ? (
             <>
+              <div className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-muted/50">
+                <input
+                  type="checkbox"
+                  id="complete-all"
+                  checked={completeAllChecked}
+                  onChange={(e) => handleCompleteAllChange(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <label
+                  htmlFor="complete-all"
+                  className="text-sm font-medium flex items-center gap-2 cursor-pointer"
+                >
+                  <CheckSquare className="h-4 w-4 text-muted-foreground" />
+                  {t('accounts.completeAll', 'Complete All')}
+                </label>
+              </div>
+
               <Button
                 variant="default"
                 size="sm"

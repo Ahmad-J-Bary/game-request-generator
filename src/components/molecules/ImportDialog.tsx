@@ -52,14 +52,23 @@ export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) 
     try {
       let importedCount = 0;
 
+      console.log('Importing data:', {
+        levels: importResult.imported.levels.length,
+        purchaseEvents: importResult.imported.purchaseEvents.length,
+        accounts: importResult.imported.accounts.length
+      });
+
       // Import levels
       for (const level of importResult.imported.levels) {
         try {
+          console.log('Importing level:', level);
           await TauriService.addLevel({
             ...level,
             game_id: gameId,
+            is_bonus: level.is_bonus || false, // Ensure is_bonus is always set
           } as any);
           importedCount++;
+          console.log('Successfully imported level');
         } catch (error) {
           console.error('Failed to import level:', level, error);
         }
@@ -68,11 +77,14 @@ export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) 
       // Import purchase events
       for (const event of importResult.imported.purchaseEvents) {
         try {
+          console.log('Importing purchase event:', event);
           await TauriService.addPurchaseEvent({
             ...event,
             game_id: gameId,
+            is_restricted: event.is_restricted || false, // Ensure is_restricted is always set
           } as any);
           importedCount++;
+          console.log('Successfully imported purchase event');
         } catch (error) {
           console.error('Failed to import purchase event:', event, error);
         }
@@ -81,11 +93,14 @@ export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) 
       // Import accounts
       for (const account of importResult.imported.accounts) {
         try {
+          console.log('Importing account:', account);
           await TauriService.addAccount({
             ...account,
             game_id: gameId,
+            request_template: account.request_template || 'Needs to be filled in - imported from Excel export',
           } as any);
           importedCount++;
+          console.log('Successfully imported account');
         } catch (error) {
           console.error('Failed to import account:', account, error);
         }

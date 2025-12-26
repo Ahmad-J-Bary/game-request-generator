@@ -20,8 +20,6 @@ import { ProgressProvider } from '../../components/progress/ProgressProvider';
 import { TauriService } from '../../services/tauri.service';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { toast } from 'sonner';
-import { ExcelService } from '../../services/excel.service';
 
 import type { PurchaseEvent } from '../../types';
 
@@ -217,21 +215,6 @@ export default function AccountsDetailPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              const success = await ExcelService.testExport();
-              if (success) {
-                toast.success('Test export successful!');
-              } else {
-                toast.error('Test export failed.');
-              }
-            }}
-          >
-            Test Export
-          </Button>
 
           <LayoutToggle layout={layout} onLayoutChange={setLayout} />
 

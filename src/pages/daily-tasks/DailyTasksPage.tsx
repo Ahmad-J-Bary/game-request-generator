@@ -130,8 +130,11 @@ export default function DailyTasksPage() {
     }
   };
 
-  const copyToClipboard = (content: string) => {
-    navigator.clipboard.writeText(content);
+  const copyToClipboard = (content: string, eventToken?: string, timeSpent?: number) => {
+    const processedContent = eventToken && timeSpent !== undefined
+      ? processRequestContent(content, eventToken, timeSpent)
+      : content;
+    navigator.clipboard.writeText(processedContent);
     toast.success('Request copied to clipboard');
   };
 
@@ -159,6 +162,40 @@ export default function DailyTasksPage() {
       default:
         return 'default';
     }
+  };
+
+  // Process request content to apply template pattern matching
+  const processRequestContent = (content: string, eventToken: string, timeSpent: number): string => {
+    let processedContent = content;
+
+    // Find &event_token=&time_spent=& pattern and replace with actual values
+    const eventTokenPattern = '&event_token=';
+    const timeSpentPattern = '&time_spent=';
+
+    const eventTokenIndex = processedContent.indexOf(eventTokenPattern);
+    if (eventTokenIndex !== -1) {
+      const afterEventToken = eventTokenIndex + eventTokenPattern.length;
+      const timeSpentIndex = processedContent.indexOf(timeSpentPattern, afterEventToken);
+
+      if (timeSpentIndex !== -1) {
+        const afterTimeSpent = timeSpentIndex + timeSpentPattern.length;
+        const nextAmpersand = processedContent.indexOf('&', afterTimeSpent);
+
+        // If we found the pattern, replace it
+        if (nextAmpersand !== -1 || afterTimeSpent < processedContent.length) {
+          const endPos = nextAmpersand !== -1 ? nextAmpersand : processedContent.length;
+          const remainingPart = processedContent.substring(endPos);
+
+          // Replace the variable part
+          const before = processedContent.substring(0, eventTokenIndex);
+          const newVariablePart = `&event_token=${eventToken}&time_spent=${timeSpent}${remainingPart}`;
+
+          processedContent = before + newVariablePart;
+        }
+      }
+    }
+
+    return processedContent;
   };
 
   return (
@@ -228,7 +265,7 @@ export default function DailyTasksPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => copyToClipboard(request.content)}
+                          onClick={() => copyToClipboard(request.content, request.event_token, request.time_spent)}
                         >
                           <Copy className="h-4 w-4 mr-1" />
                           Copy
@@ -253,7 +290,7 @@ export default function DailyTasksPage() {
                     </div>
 
                     <div className="bg-muted p-3 rounded text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto">
-                      {request.content.split('\n').map((line, i) => (
+                      {processRequestContent(request.content, request.event_token || '', request.time_spent).split('\n').map((line, i) => (
                         <div key={i} className="whitespace-nowrap">
                           {line || <br />}
                         </div>

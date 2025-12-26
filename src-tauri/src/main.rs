@@ -433,14 +433,35 @@ fn get_daily_requests(
             .next()
             .unwrap_or(&level.event_token);
 
-        let content = format!("country=US&api_level=32&hardware_name=star2qltechn-user+12+PQ3B.190801.10101846+1201240816+release-keys&partner_params=%7B%22refid%22%3A%22MKIyV-dDvZ%22%2C%22gid%22%3A%229%22%2C%22cli%22%3A%220%22%2C%22b%22%3A%22710%22%2C%22evty%22%3A%22install%22%2C%22dtflag%22%3A%22false%22%7D&app_version=1.710.0&app_token=brmx7fdxeakg&wait_total=0.0&device_type=tablet&language=en&gps_adid=9bfd8c4a-88ef-43a9-879a-9962c8762d9e&foreground=1&connectivity_type=1&mcc=310&os_build=PQ3B.190801.10101846&cpu_type=x86_64&retry_count=0&screen_size=large&gps_adid_src=service&subsession_count=1&wait_time=0.0&first_error=0&sent_at=2025-12-14T08%3A08%3A02.716Z-0800&offline_mode_enabled=0&screen_density=high&session_count=1&ui_mode=1&enqueue_size=1&gps_adid_attempt=1&event_count=3&session_length=13&created_at=2025-12-14T08%3A08%3A02.582Z-0800&device_manufacturer=samsung&display_width=1080&event_token={}&time_spent={}&google_app_set_id=f4abf4a9-1d63-9101-c9fa-cdd013eab7da&device_name=SM-S9180&needs_response_details=1&screen_format=long&last_error=0&mnc=02&queue_size=1&os_version=12&android_uuid=dc6c341f-f08c-43b9-9c94-40ee3241fcad&environment=production&attribution_deeplink=1&display_height=1920&package_name=in.playsimple.wordtrip&os_name=android&tracking_enabled=1", clean_event_token, time_spent);
+        // Use the account's request template
+        let mut request_content = account.request_template.clone();
 
-        // Create Session HTTP request
-        let session_content = format!("POST /session HTTP/2\nHost: app.adjust.net.in\nClient-Sdk: android5.1.0\nAuthorization: Signature signature=\"3B5462966501B95D3037E13F55DDCC99C35EC36DD39EBEEE9EDFA996407E7A9BA045107CCE5E47C96BCB0199994E4BD6474969FB10CE7E052E99736AC25437212AF027C3D2D4A7AEA5F78B5C273948B0C0DDF32BD292C26515E77753D0D82E27172F0F89145615A8C19FC39825521BBCDD6697C406B1452FDDA3BF65D1D6CF2AF21D12FA0A58FF8998189FCC6A613E64F49E55FBDE66113A8C0BBA357018977844F4EBF824C1C5B66F5B59764FD307186741C180D5934683791A7CDB9E10D9D8E8971C040B9C3EBEA3E63583F8E5680C\"\nContent-Type: application/x-www-form-urlencoded\nUser-Agent: Dalvik/2.1.0 (Linux; U; Android 12; SM-S9180 Build/PQ3B.190801.10101846)\nConnection: Keep-Alive\nAccept-Encoding: gzip, deflate, br\nContent-Length: {}\n\n{}", content.len(), content);
+        // Replace placeholders in the request template
+        request_content = request_content.replace("{event_token}", &clean_event_token);
+        request_content = request_content.replace("{time_spent}", &time_spent.to_string());
+
+        // Additional placeholders that might be useful
+        request_content = request_content.replace("{account_name}", &account.name);
+        request_content = request_content.replace("{game_id}", &account.game_id.to_string());
+        request_content = request_content.replace("{level_name}", &level.level_name);
+        request_content = request_content.replace("{days_offset}", &level.days_offset.to_string());
+
+        // If the template doesn't contain Content-Length header, calculate it
+        if !request_content.contains("Content-Length:") && request_content.contains("\n\n") {
+            let parts: Vec<&str> = request_content.split("\n\n").collect();
+            if parts.len() >= 2 {
+                let headers = parts[0];
+                let body = parts[1];
+                let content_length_line = format!("Content-Length: {}", body.len());
+
+                // Insert Content-Length header before the body
+                request_content = format!("{}\n{}\n\n{}", headers, content_length_line, body);
+            }
+        }
 
         requests.push(serde_json::json!({
             "request_type": "session",
-            "content": session_content,
+            "content": request_content,
             "event_token": clean_event_token,
             "level_id": level.id,
             "time_spent": time_spent,
@@ -449,11 +470,38 @@ fn get_daily_requests(
 
         // Create Event HTTP request (only for regular levels)
         if level.level_name != "-" {
-            let event_content = format!("POST /event HTTP/2\nHost: app.adjust.net.in\nClient-Sdk: android5.1.0\nAuthorization: Signature signature=\"3B5462966501B95D3037E13F55DDCC99C35EC36DD39EBEEE9EDFA996407E7A9BA045107CCE5E47C96BCB0199994E4BD6474969FB10CE7E052E99736AC25437212AF027C3D2D4A7AEA5F78B5C273948B0C0DDF32BD292C26515E77753D0D82E27172F0F89145615A8C19FC39825521BBCDD6697C406B1452FDDA3BF65D1D6CF2AF21D12FA0A58FF8998189FCC6A613E64F49E55FBDE66113A8C0BBA357018977844F4EBF824C1C5B66F5B59764FD307186741C180D5934683791A7CDB9E10D9D8E8971C040B9C3EBEA3E63583F8E5680C\"\nContent-Type: application/x-www-form-urlencoded\nUser-Agent: Dalvik/2.1.0 (Linux; U; Android 12; SM-S9180 Build/PQ3B.190801.10101846)\nConnection: Keep-Alive\nAccept-Encoding: gzip, deflate, br\nContent-Length: {}\n\n{}", content.len(), content);
+            // Use the same template but modify for event request
+            let mut event_request_content = account.request_template.clone();
+
+            // Replace placeholders for event request
+            event_request_content = event_request_content.replace("{event_token}", &clean_event_token);
+            event_request_content = event_request_content.replace("{time_spent}", &time_spent.to_string());
+
+            // Additional placeholders
+            event_request_content = event_request_content.replace("{account_name}", &account.name);
+            event_request_content = event_request_content.replace("{game_id}", &account.game_id.to_string());
+            event_request_content = event_request_content.replace("{level_name}", &level.level_name);
+            event_request_content = event_request_content.replace("{days_offset}", &level.days_offset.to_string());
+
+            // Change POST /session to POST /event if needed
+            event_request_content = event_request_content.replace("POST /session", "POST /event");
+
+            // If the template doesn't contain Content-Length header, calculate it
+            if !event_request_content.contains("Content-Length:") && event_request_content.contains("\n\n") {
+                let parts: Vec<&str> = event_request_content.split("\n\n").collect();
+                if parts.len() >= 2 {
+                    let headers = parts[0];
+                    let body = parts[1];
+                    let content_length_line = format!("Content-Length: {}", body.len());
+
+                    // Insert Content-Length header before the body
+                    event_request_content = format!("{}\n{}\n\n{}", headers, content_length_line, body);
+                }
+            }
 
             requests.push(serde_json::json!({
                 "request_type": "event",
-                "content": event_content,
+                "content": event_request_content,
                 "event_token": clean_event_token,
                 "level_id": level.id,
                 "time_spent": time_spent,
@@ -482,26 +530,48 @@ fn get_daily_requests(
                 let time_spent = p.time_spent;
                 let clean_event_token = &event.event_token;
 
-                let content = format!("country=US&api_level=32&hardware_name=star2qltechn-user+12+PQ3B.190801.10101846+1201240816+release-keys&partner_params=%7B%22refid%22%3A%22MKIyV-dDvZ%22%2C%22gid%22%3A%229%22%2C%22cli%22%3A%220%22%2C%22b%22%3A%22710%22%2C%22evty%22%3A%22install%22%2C%22dtflag%22%3A%22false%22%7D&app_version=1.710.0&app_token=brmx7fdxeakg&wait_total=0.0&device_type=tablet&language=en&gps_adid=9bfd8c4a-88ef-43a9-879a-9962c8762d9e&foreground=1&connectivity_type=1&mcc=310&os_build=PQ3B.190801.10101846&cpu_type=x86_64&retry_count=0&screen_size=large&gps_adid_src=service&subsession_count=1&wait_time=0.0&first_error=0&sent_at=2025-12-14T08%3A08%3A02.716Z-0800&offline_mode_enabled=0&screen_density=high&session_count=1&ui_mode=1&enqueue_size=1&gps_adid_attempt=1&event_count=3&session_length=13&created_at=2025-12-14T08%3A08%3A02.582Z-0800&device_manufacturer=samsung&display_width=1080&event_token={}&time_spent={}&google_app_set_id=f4abf4a9-1d63-9101-c9fa-cdd013eab7da&device_name=SM-S9180&needs_response_details=1&screen_format=long&last_error=0&mnc=02&queue_size=1&os_version=12&android_uuid=dc6c341f-f08c-43b9-9c94-40ee3241fcad&environment=production&attribution_deeplink=1&display_height=1920&package_name=in.playsimple.wordtrip&os_name=android&tracking_enabled=1", clean_event_token, time_spent);
+                // Use the account's request template for purchase events
+                let mut purchase_request_content = account.request_template.clone();
 
-                // Create Session HTTP request
-                let session_content = format!("POST /session HTTP/2\nHost: app.adjust.net.in\nClient-Sdk: android5.1.0\nAuthorization: Signature signature=\"3B5462966501B95D3037E13F55DDCC99C35EC36DD39EBEEE9EDFA996407E7A9BA045107CCE5E47C96BCB0199994E4BD6474969FB10CE7E052E99736AC25437212AF027C3D2D4A7AEA5F78B5C273948B0C0DDF32BD292C26515E77753D0D82E27172F0F89145615A8C19FC39825521BBCDD6697C406B1452FDDA3BF65D1D6CF2AF21D12FA0A58FF8998189FCC6A613E64F49E55FBDE66113A8C0BBA357018977844F4EBF824C1C5B66F5B59764FD307186741C180D5934683791A7CDB9E10D9D8E8971C040B9C3EBEA3E63583F8E5680C\"\nContent-Type: application/x-www-form-urlencoded\nUser-Agent: Dalvik/2.1.0 (Linux; U; Android 12; SM-S9180 Build/PQ3B.190801.10101846)\nConnection: Keep-Alive\nAccept-Encoding: gzip, deflate, br\nContent-Length: {}\n\n{}", content.len(), content);
+                // Replace placeholders for purchase event
+                purchase_request_content = purchase_request_content.replace("{event_token}", clean_event_token);
+                purchase_request_content = purchase_request_content.replace("{time_spent}", &time_spent.to_string());
+
+                // Additional placeholders
+                purchase_request_content = purchase_request_content.replace("{account_name}", &account.name);
+                purchase_request_content = purchase_request_content.replace("{game_id}", &account.game_id.to_string());
+                purchase_request_content = purchase_request_content.replace("{level_name}", &event.event_token); // Use event token as level name for purchase events
+                purchase_request_content = purchase_request_content.replace("{days_offset}", &p.days_offset.to_string());
+
+                // If the template doesn't contain Content-Length header, calculate it
+                if !purchase_request_content.contains("Content-Length:") && purchase_request_content.contains("\n\n") {
+                    let parts: Vec<&str> = purchase_request_content.split("\n\n").collect();
+                    if parts.len() >= 2 {
+                        let headers = parts[0];
+                        let body = parts[1];
+                        let content_length_line = format!("Content-Length: {}", body.len());
+
+                        // Insert Content-Length header before the body
+                        purchase_request_content = format!("{}\n{}\n\n{}", headers, content_length_line, body);
+                    }
+                }
 
                 requests.push(serde_json::json!({
                     "request_type": "session",
-                    "content": session_content,
+                    "content": purchase_request_content.clone(),
                     "event_token": clean_event_token,
                     "level_id": null, // No level ID for purchase events
                     "time_spent": time_spent,
                     "timestamp": target_date
                 }));
 
-                // Create Event HTTP request
-                let event_content = format!("POST /event HTTP/2\nHost: app.adjust.net.in\nClient-Sdk: android5.1.0\nAuthorization: Signature signature=\"3B5462966501B95D3037E13F55DDCC99C35EC36DD39EBEEE9EDFA996407E7A9BA045107CCE5E47C96BCB0199994E4BD6474969FB10CE7E052E99736AC25437212AF027C3D2D4A7AEA5F78B5C273948B0C0DDF32BD292C26515E77753D0D82E27172F0F89145615A8C19FC39825521BBCDD6697C406B1452FDDA3BF65D1D6CF2AF21D12FA0A58FF8998189FCC6A613E64F49E55FBDE66113A8C0BBA357018977844F4EBF824C1C5B66F5B59764FD307186741C180D5934683791A7CDB9E10D9D8E8971C040B9C3EBEA3E63583F8E5680C\"\nContent-Type: application/x-www-form-urlencoded\nUser-Agent: Dalvik/2.1.0 (Linux; U; Android 12; SM-S9180 Build/PQ3B.190801.10101846)\nConnection: Keep-Alive\nAccept-Encoding: gzip, deflate, br\nContent-Length: {}\n\n{}", content.len(), content);
+                // Create Event HTTP request for purchase events
+                let mut purchase_event_request_content = purchase_request_content.clone();
+                purchase_event_request_content = purchase_event_request_content.replace("POST /session", "POST /event");
 
                 requests.push(serde_json::json!({
                     "request_type": "event",
-                    "content": event_content,
+                    "content": purchase_event_request_content,
                     "event_token": clean_event_token,
                     "level_id": null,
                     "time_spent": time_spent,
