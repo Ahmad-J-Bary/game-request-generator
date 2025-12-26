@@ -396,9 +396,68 @@ fn get_daily_requests(
         .map(|p| p.level_id)
         .collect();
 
-    // Find levels due today
+    // Generate synthetic sessions for all missing days within the observed range
+    let mut all_levels = levels.clone();
+    let numeric_levels: Vec<&models::level::Level> = levels.iter().collect();
+    if !numeric_levels.is_empty() {
+        let existing_days: std::collections::HashSet<i32> = numeric_levels.iter().map(|l| l.days_offset as i32).collect();
+
+        let min_day = *existing_days.iter().min().unwrap();
+        let max_day = *existing_days.iter().max().unwrap();
+        let start_day = if min_day > 0 { 0 } else { min_day };
+
+        for day in start_day..=max_day {
+            if !existing_days.contains(&day) {
+                // Find the next real level after this day
+                let next_real_level = levels.iter()
+                    .filter(|l| l.days_offset > day)
+                    .min_by_key(|l| l.days_offset);
+
+                if let Some(next_level) = next_real_level {
+                    let time: f64;
+                    let token = next_level.event_token.split("_day").next().unwrap_or(&next_level.event_token).to_string();
+
+                    // Check if this synthetic level appears before any real level in the dataset
+                    let first_real_day = *existing_days.iter().min().unwrap();
+                    let is_before_first_real = day < first_real_day;
+
+                    if is_before_first_real {
+                        // Apply cumulative percentage to the first level event: (target_time - 0) / (first_real_day - (-1)) = target_time / (first_real_day + 1)
+                        let increment = next_level.time_spent as f64 / (first_real_day + 1) as f64;
+                        time = (day + 1) as f64 * increment;
+                    } else {
+                        // Normal interpolation between adjacent real levels
+                        let prev_real_level = levels.iter()
+                            .filter(|l| l.days_offset < day)
+                            .max_by_key(|l| l.days_offset);
+
+                        if let Some(prev_level) = prev_real_level {
+                            let ratio = (day - prev_level.days_offset) as f64 / (next_level.days_offset - prev_level.days_offset) as f64;
+                            time = prev_level.time_spent as f64 + ratio * (next_level.time_spent - prev_level.time_spent) as f64;
+                        } else {
+                            time = (next_level.time_spent / 2) as f64;
+                        }
+                    }
+
+                    // Create a synthetic level
+                    let synthetic_level = models::level::Level {
+                        id: -(day as i64), // Use negative ID to indicate synthetic
+                        game_id: account.game_id,
+                        level_name: "-".to_string(),
+                        event_token: format!("{}_day{}", token, day),
+                        days_offset: day,
+                        time_spent: time.round() as i32,
+                        is_bonus: false,
+                    };
+                    all_levels.push(synthetic_level);
+                }
+            }
+        }
+    }
+
+    // Find levels due today (including synthetic ones)
     let mut due_levels = Vec::new();
-    for level in levels {
+    for level in all_levels {
         if level.days_offset as i64 == days_passed && !completed_level_ids.contains(&level.id) {
             due_levels.push(level);
         }

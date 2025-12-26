@@ -95,51 +95,76 @@ export default function AccountsDetailPage() {
       return [...baseLevelCols.filter(c => c.name !== '-'), ...basePeCols];
     }
 
-    // In 'all' mode, implement the same logic as GameDetailPage for creating synthetic entries
+    // In 'all' mode, generate synthetic entries for all missing days
     const numeric = baseLevelCols.filter((c: any) => typeof c.daysOffset === 'number');
     numeric.sort((a: any, b: any) => a.daysOffset - b.daysOffset);
 
-    const result: any[] = [];
+    const existingDaysMap = new Map(numeric.map((c: any) => [c.daysOffset, c]));
 
-    // Check if we need a session at Days Offset 0
-    if (numeric.length > 0 && numeric[0].daysOffset > 0) {
-      const firstLevel = numeric[0];
-      // Generate session at Days Offset 0 with half the time spent of the first level
-      const sessionTimeSpent = typeof firstLevel.timeSpent === 'number'
-        ? Math.round(firstLevel.timeSpent / 2)
-        : null;
+    let minDay = numeric.length > 0 ? numeric[0].daysOffset : 0;
+    let maxDay = numeric.length > 0 ? numeric[numeric.length - 1].daysOffset : 0;
 
-      const sessionZero = {
-        kind: 'level' as const,
-        id: `session-zero-${firstLevel.token}`,
-        token: firstLevel.token,
-        name: '-',
-        daysOffset: 0,
-        timeSpent: sessionTimeSpent,
-        isBonus: false,
-        synthetic: true,
-      };
-      result.push(sessionZero);
+    // Ensure minDay starts from 0 if there are levels
+    if (numeric.length > 0 && minDay > 0) {
+      minDay = 0;
     }
 
-    for (let i = 0; i < numeric.length; i++) {
-      const left = numeric[i];
-      result.push(left);
-      const right = numeric[i + 1];
-      if (right && typeof right.daysOffset === 'number' && typeof left.daysOffset === 'number' && right.daysOffset > left.daysOffset + 1) {
-        for (let d = left.daysOffset + 1; d <= right.daysOffset - 1; d++) {
-          let synthesizedTime: number | null = null;
-          if (typeof left.timeSpent === 'number' && typeof right.timeSpent === 'number') {
-            // Interpolate time between left and right levels
-            const ratio = (d - left.daysOffset) / (right.daysOffset - left.daysOffset);
-            synthesizedTime = Math.round(left.timeSpent + ratio * (right.timeSpent - left.timeSpent));
+    const result: any[] = [];
+
+    for (let day = minDay; day <= maxDay; day++) {
+      if (existingDaysMap.has(day)) {
+        result.push(existingDaysMap.get(day));
+      } else {
+        // Find the next real level after this day
+        let nextRealLevel = null;
+        for (let d = day + 1; d <= maxDay; d++) {
+          if (existingDaysMap.has(d)) {
+            nextRealLevel = existingDaysMap.get(d);
+            break;
           }
+        }
+
+        let synthesizedTime: number | null = null;
+        let token = '';
+
+        if (nextRealLevel) {
+          // Check if this synthetic level appears before any real level in the dataset
+          const firstRealDay = Math.min(...Array.from(existingDaysMap.keys()));
+          const isBeforeFirstReal = day < firstRealDay;
+
+          if (isBeforeFirstReal) {
+            // Apply cumulative percentage to the first level event: (target_time - 0) / (first_real_day - (-1)) = target_time / (first_real_day + 1)
+            const increment = nextRealLevel.timeSpent / (firstRealDay + 1);
+            synthesizedTime = Math.round((day + 1) * increment);
+            token = nextRealLevel.token;
+          } else {
+            // Normal interpolation between adjacent real levels
+            let prevRealLevel = null;
+            for (let d = day - 1; d >= minDay; d--) {
+              if (existingDaysMap.has(d)) {
+                prevRealLevel = existingDaysMap.get(d);
+                break;
+              }
+            }
+
+            if (prevRealLevel) {
+              const ratio = (day - prevRealLevel.daysOffset) / (nextRealLevel.daysOffset - prevRealLevel.daysOffset);
+              synthesizedTime = Math.round(prevRealLevel.timeSpent + ratio * (nextRealLevel.timeSpent - prevRealLevel.timeSpent));
+              token = nextRealLevel.token;
+            } else {
+              synthesizedTime = Math.round(nextRealLevel.timeSpent / 2);
+              token = nextRealLevel.token;
+            }
+          }
+        }
+
+        if (token) {
           const synth = {
             kind: 'level' as const,
-            id: `synth-${left.id}-${d}`,
-            token: right.token,
+            id: `synth-${token}-${day}`,
+            token: token,
             name: '-',
-            daysOffset: d,
+            daysOffset: day,
             timeSpent: synthesizedTime,
             isBonus: false,
             synthetic: true,
