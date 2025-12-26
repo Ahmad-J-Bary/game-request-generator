@@ -185,9 +185,22 @@ export default function GameDetailPage() {
 
     const levelCols = baseColumns.filter((c: any) => c.kind === 'level').slice();
     const numeric = levelCols.filter((c: any) => typeof c.daysOffset === 'number');
-    numeric.sort((a: any, b: any) => a.daysOffset - b.daysOffset);
+    numeric.sort((a: any, b: any) => {
+      // Sort by daysOffset first, then by id to maintain consistent order for same day entries
+      if (a.daysOffset !== b.daysOffset) {
+        return a.daysOffset - b.daysOffset;
+      }
+      return String(a.id).localeCompare(String(b.id));
+    });
 
-    const existingDaysMap = new Map(numeric.map((c: any) => [c.daysOffset, c]));
+    // Group entries by daysOffset to handle multiple entries per day
+    const entriesByDay: { [day: number]: any[] } = {};
+    numeric.forEach(entry => {
+      if (!entriesByDay[entry.daysOffset]) {
+        entriesByDay[entry.daysOffset] = [];
+      }
+      entriesByDay[entry.daysOffset].push(entry);
+    });
 
     let minDay = numeric.length > 0 ? numeric[0].daysOffset : 0;
     let maxDay = numeric.length > 0 ? numeric[numeric.length - 1].daysOffset : 0;
@@ -200,15 +213,20 @@ export default function GameDetailPage() {
     const result: any[] = [];
 
     for (let day = minDay; day <= maxDay; day++) {
-      if (existingDaysMap.has(day)) {
-        result.push(existingDaysMap.get(day));
+      // Add all existing entries for this day (could be multiple)
+      if (entriesByDay[day]) {
+        result.push(...entriesByDay[day]);
       } else {
         // Find the next real level after this day
         let nextRealLevel = null;
         for (let d = day + 1; d <= maxDay; d++) {
-          if (existingDaysMap.has(d)) {
-            nextRealLevel = existingDaysMap.get(d);
-            break;
+          if (entriesByDay[d]) {
+            // Find the first non-synthetic entry for this day
+            const nonSyntheticEntries = entriesByDay[d].filter(entry => !entry.synthetic);
+            if (nonSyntheticEntries.length > 0) {
+              nextRealLevel = nonSyntheticEntries[0];
+              break;
+            }
           }
         }
 
@@ -217,7 +235,10 @@ export default function GameDetailPage() {
 
         if (nextRealLevel) {
           // Check if this synthetic level appears before any real level in the dataset
-          const firstRealDay = Math.min(...Array.from(existingDaysMap.keys()));
+          const realDays = Object.keys(entriesByDay)
+            .map(d => parseInt(d))
+            .filter(d => entriesByDay[d].some(entry => !entry.synthetic));
+          const firstRealDay = Math.min(...realDays);
           const isBeforeFirstReal = day < firstRealDay;
 
           if (isBeforeFirstReal) {
@@ -229,9 +250,13 @@ export default function GameDetailPage() {
             // Normal interpolation between adjacent real levels
             let prevRealLevel = null;
             for (let d = day - 1; d >= minDay; d--) {
-              if (existingDaysMap.has(d)) {
-                prevRealLevel = existingDaysMap.get(d);
-                break;
+              if (entriesByDay[d]) {
+                // Find the last non-synthetic entry for this day
+                const nonSyntheticEntries = entriesByDay[d].filter(entry => !entry.synthetic);
+                if (nonSyntheticEntries.length > 0) {
+                  prevRealLevel = nonSyntheticEntries[nonSyntheticEntries.length - 1];
+                  break;
+                }
               }
             }
 
