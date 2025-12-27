@@ -180,13 +180,21 @@
     "pauseMessage": "خذ لحظة لتحديث إعدادات الوكيل.",
     "batchWaitMessage": "انتظر {{seconds}}ث قبل المتابعة إلى هذه الدفعة",
     "batchReady": "جاهز للمعالجة",
+    "comeBackAfter": "ارجع بعد {{time}} في {{date}}",
     "batchSeparator": "---",
     "proxyChangeWarning": "⚠️ يرجى تغيير الوكيل قبل المتابعة إلى الدفعة التالية",
     "proxyChangeHelp": "يساعد هذا في منع تقييد المعدل وضمان نجاح معالجة الطلبات.",
     "copyRequest": "نسخ",
     "requestCopied": "تم نسخ الطلب إلى الحافظة",
     "targetDateLabel": "الهدف: {{date}}",
-    "waitingTime": "انتظر {{seconds}}ث"
+    "waitingTime": "انتظر {{seconds}}ث",
+    "lastCompletion": "آخر إنجاز: {{timeSpent}}ث في {{completedAt}}",
+    "returnAfter": "ارجع بعد {{time}} في {{date}}",
+    "ready": "جاهز",
+    "cannotCompleteUntilTimer": "لا يمكن إكمال الطلب حتى يصل المؤقت إلى الصفر",
+    "copyingNotAllowed": "النسخ غير مسموح",
+    "completionNotAllowed": "الإكمال غير مسموح",
+    "accountInitializing": "تهيئة الحساب - الطلب الأول متاح {{time}}"
   },
   "purchaseEvents": {
     "title": "أحداث الشراء",

@@ -28,6 +28,7 @@ interface AccountDataTableProps {
     purchases: { [key: number]: boolean };
   };
   onProgressChange?: (type: 'level' | 'purchase', id: number | string, completed: boolean) => void;
+  onPurchaseDateChange?: (purchaseId: number, dateStr: string) => void;
   levels?: any[];
 }
 
@@ -40,6 +41,7 @@ export function AccountDataTable({
   isEditMode = false,
   tempProgress = { levels: {}, purchases: {} },
   onProgressChange,
+  onPurchaseDateChange,
   levels = []
 }: AccountDataTableProps) {
   const { t } = useTranslation();
@@ -61,7 +63,19 @@ export function AccountDataTable({
       case 'timeSpent':
         return col.kind === 'level' ? col.timeSpent : '-';
       case 'accountDate':
-        return col.kind === 'level' && idx !== undefined ? computedLevelDates[idx] : '-';
+        const dateStr = idx !== undefined ? computedLevelDates[idx] : '-';
+        if (isEditMode && col.kind === 'purchase' && onPurchaseDateChange) {
+          return (
+            <input
+              type="text"
+              value={dateStr === '-' ? '' : dateStr}
+              onChange={(e) => onPurchaseDateChange(col.id as number, e.target.value)}
+              className="w-16 bg-transparent border-b border-primary/30 focus:border-primary outline-none text-center"
+              placeholder="DD-Mon"
+            />
+          );
+        }
+        return dateStr;
       default:
         return '-';
     }
@@ -222,7 +236,7 @@ export function AccountDataTable({
           {columns.map((col) => {
             const columnStyle = getColumnSpecificStyle(col);
             const combinedStyle = { ...headerStyle, ...columnStyle };
-            
+
             return (
               <TableHead
                 key={`${col.kind}-${col.id}`}
@@ -241,7 +255,7 @@ export function AccountDataTable({
           {columns.map((col) => {
             const columnStyle = getColumnSpecificStyle(col);
             const combinedStyle = { ...dataRowStyle, ...columnStyle };
-            
+
             return (
               <DataTableCell key={`name-${col.kind}-${col.id}`} style={combinedStyle}>
                 {renderCellContent(col, 'name')}
@@ -255,7 +269,7 @@ export function AccountDataTable({
           {columns.map((col) => {
             const columnStyle = getColumnSpecificStyle(col);
             const combinedStyle = { ...dataRowStyle, ...columnStyle };
-            
+
             return (
               <DataTableCell key={`offset-${col.kind}-${col.id}`} style={combinedStyle}>
                 {renderCellContent(col, 'daysOffset')}
@@ -269,7 +283,7 @@ export function AccountDataTable({
           {columns.map((col) => {
             const columnStyle = getColumnSpecificStyle(col);
             const combinedStyle = { ...dataRowStyle, ...columnStyle };
-            
+
             return (
               <DataTableCell key={`time-${col.kind}-${col.id}`} style={combinedStyle}>
                 {renderCellContent(col, 'timeSpent')}

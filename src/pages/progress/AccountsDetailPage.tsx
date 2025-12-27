@@ -17,7 +17,6 @@ import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
 import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
 import { ProgressProvider } from '../../components/progress/ProgressProvider';
-import { TauriService } from '../../services/tauri.service';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -43,10 +42,6 @@ function formatDateShort(date: Date | null): string {
   return `${date.getDate()}-${months[date.getMonth()]}`;
 }
 
-function daysBetween(start: Date, target: Date) {
-  const ms = target.getTime() - start.getTime();
-  return Math.round(ms / (1000 * 60 * 60 * 24));
-}
 
 export default function AccountsDetailPage() {
   const { t } = useTranslation();
@@ -63,7 +58,6 @@ export default function AccountsDetailPage() {
   const { levels = [] } = useLevels(selectedGameId);
   const { events: purchaseEvents = [] } = usePurchaseEvents(selectedGameId);
 
-  const [peDates, setPeDates] = useState<Record<string, string>>({});
 
   const columns = useMemo(() => {
     const levelCols = levels.map((l) => ({
@@ -208,41 +202,7 @@ export default function AccountsDetailPage() {
     return [...result, ...finalPeCols];
   }, [levels, purchaseEvents, mode]);
 
-  const matrix = useMemo(() => {
-    return accounts.map((acc) => {
-      const start = parseDate(acc.start_date);
-      return columns.map((c) => {
-        if (c.kind === 'level' && start) {
-          return formatDateShort(addDays(start, Number(c.daysOffset || 0)));
-        }
-        return '-';
-      });
-    });
-  }, [accounts, columns]);
 
-  const handlePurchaseDateChange = async (accountId: number, peId: number, isoDate: string) => {
-    const key = `${accountId}_${peId}`;
-    setPeDates((prev) => ({ ...prev, [key]: isoDate }));
-
-    const acc = accounts.find((a) => a.id === accountId);
-    if (!acc) return;
-    const start = parseDate(acc.start_date);
-    const target = parseDate(isoDate);
-    if (!start || !target) return;
-    const daysOffset = daysBetween(start, target);
-
-    try {
-      await (TauriService as any).createPurchaseEventProgress({
-        account_id: accountId,
-        purchase_event_id: peId,
-        days_offset: daysOffset,
-        time_spent: 0,
-      } as any);
-      window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
-    } catch (err) {
-      console.error('Failed to save purchase-event date/progress', err);
-    }
-  };
 
   return (
     <div className="p-6 space-y-4">
@@ -321,33 +281,50 @@ export default function AccountsDetailPage() {
       <Card>
         <CardContent className="overflow-auto">
           <ProgressProvider accounts={accounts}>
-            {({ levelsProgress, purchaseProgress }) => (
-              <>
-                <AccountsDataTable
-                  accounts={accounts}
-                  columns={columns}
-                  matrix={matrix}
-                  layout={layout}
-                  peDates={peDates}
-                  onPurchaseDateChange={handlePurchaseDateChange}
-                  levelsProgress={levelsProgress}
-                  purchaseProgress={purchaseProgress}
-                />
-                <ExportDialog
-                  open={showExportDialog}
-                  onOpenChange={setShowExportDialog}
-                  gameId={selectedGameId}
-                  exportType={exportType}
-                  layout={layout}
-                  colorSettings={colors}
-                  theme={theme}
-                  source="accounts-detail"
-                  data={columns}
-                  levelsProgress={levelsProgress}
-                  purchaseProgress={purchaseProgress}
-                />
-              </>
-            )}
+            {({ levelsProgress, purchaseProgress }) => {
+              const matrix = accounts.map((acc) => {
+                const start = parseDate(acc.start_date);
+                return columns.map((c) => {
+                  if (c.kind === 'level' && start) {
+                    return formatDateShort(addDays(start, Number(c.daysOffset || 0)));
+                  }
+                  if (c.kind === 'purchase' && start) {
+                    const key = `${acc.id}_${c.id}`;
+                    const progress = purchaseProgress[key];
+                    if (progress) {
+                      return formatDateShort(addDays(start, progress.days_offset));
+                    }
+                  }
+                  return '-';
+                });
+              });
+
+              return (
+                <>
+                  <AccountsDataTable
+                    accounts={accounts}
+                    columns={columns}
+                    matrix={matrix}
+                    layout={layout}
+                    levelsProgress={levelsProgress}
+                    purchaseProgress={purchaseProgress}
+                  />
+                  <ExportDialog
+                    open={showExportDialog}
+                    onOpenChange={setShowExportDialog}
+                    gameId={selectedGameId}
+                    exportType={exportType}
+                    layout={layout}
+                    colorSettings={colors}
+                    theme={theme}
+                    source="accounts-detail"
+                    data={columns}
+                    levelsProgress={levelsProgress}
+                    purchaseProgress={purchaseProgress}
+                  />
+                </>
+              );
+            }}
           </ProgressProvider>
         </CardContent>
       </Card>

@@ -100,6 +100,7 @@ export default function AccountDetailPage() {
     levels: {},
     purchases: {},
   });
+  const [tempPurchaseDates, setTempPurchaseDates] = useState<{ [key: number]: string }>({});
 
   const handleEditToggle = () => {
     setIsEditMode(!isEditMode);
@@ -112,6 +113,13 @@ export default function AccountDetailPage() {
         ...prev[type === 'level' ? 'levels' : 'purchases'],
         [id]: completed,
       },
+    }));
+  };
+
+  const handlePurchaseDateChange = (purchaseId: number, dateStr: string) => {
+    setTempPurchaseDates(prev => ({
+      ...prev,
+      [purchaseId]: dateStr
     }));
   };
 
@@ -225,6 +233,17 @@ export default function AccountDetailPage() {
       // Save purchase event progress - create records for all purchase events that have been modified
       for (const [purchaseId, isCompleted] of Object.entries(tempProgress.purchases)) {
         const purchaseIdNum = parseInt(purchaseId);
+        const dateStr = tempPurchaseDates[purchaseIdNum];
+        let daysOffset = 0;
+
+        if (dateStr && dateStr !== '-') {
+          const dateObj = parseDateFlexible(dateStr);
+          if (dateObj) {
+            const diffTime = dateObj.getTime() - startDateObj.getTime();
+            daysOffset = Math.round(diffTime / (1000 * 60 * 60 * 24));
+          }
+        }
+
         const existingProgress = purchaseProgress.find(p => p.purchase_event_id === purchaseIdNum);
 
         if (existingProgress) {
@@ -233,6 +252,7 @@ export default function AccountDetailPage() {
             account_id: accountId,
             purchase_event_id: purchaseIdNum,
             is_completed: isCompleted,
+            days_offset: daysOffset,
           };
           await TauriService.updatePurchaseEventProgress(request);
         } else {
@@ -240,7 +260,7 @@ export default function AccountDetailPage() {
           const createRequest = {
             account_id: accountId,
             purchase_event_id: purchaseIdNum,
-            days_offset: 0, // Default values
+            days_offset: daysOffset,
             time_spent: 0,
           };
           await TauriService.createPurchaseEventProgress(createRequest);
@@ -436,6 +456,7 @@ export default function AccountDetailPage() {
     if (isEditMode) {
       const levelProgress: { [key: number | string]: boolean } = {};
       const purchaseProgressMap: { [key: number]: boolean } = {};
+      const purchaseDatesMap: { [key: number]: string } = {};
 
       // Initialize ALL level columns (including synthetic ones) with their current progress status
       columns.filter(col => col.kind === 'level').forEach(col => {
@@ -449,27 +470,44 @@ export default function AccountDetailPage() {
         }
       });
 
-      // Initialize ALL purchase events with their current progress status (defaulting to false if no progress exists)
+      // Initialize ALL purchase events with their current progress status and dates
       purchaseEvents.forEach(purchase => {
         const existingProgress = purchaseProgress.find(p => p.purchase_event_id === purchase.id);
         purchaseProgressMap[purchase.id] = existingProgress ? existingProgress.is_completed : false;
+
+        const daysOffset = existingProgress?.days_offset ?? 0;
+        const date = addDays(startDateObj, daysOffset);
+        purchaseDatesMap[purchase.id] = existingProgress ? formatDateShort(date) : '-';
       });
 
       setTempProgress({
         levels: levelProgress,
         purchases: purchaseProgressMap,
       });
+      setTempPurchaseDates(purchaseDatesMap);
     }
-  }, [isEditMode, columns, purchaseEvents, levelsProgress, purchaseProgress]);
+  }, [isEditMode, columns, purchaseEvents, levelsProgress, purchaseProgress, startDateObj]);
 
   const computedLevelDates = useMemo(() => {
     // Get all level columns from the final result and calculate their dates
-    const levelColumns = columns.filter(col => col.kind === 'level');
-    return levelColumns.map((col) => {
-      const dd = addDays(startDateObj, Number(col.daysOffset || 0));
-      return formatDateShort(dd);
+    return columns.map((col) => {
+      if (col.kind === 'level') {
+        const dd = addDays(startDateObj, Number(col.daysOffset || 0));
+        return formatDateShort(dd);
+      } else if (col.kind === 'purchase') {
+        if (isEditMode && tempPurchaseDates[col.id as number]) {
+          return tempPurchaseDates[col.id as number];
+        }
+        const progress = purchaseProgress.find(p => p.purchase_event_id === col.id);
+        if (progress) {
+          const dd = addDays(startDateObj, progress.days_offset);
+          return formatDateShort(dd);
+        }
+        return '-';
+      }
+      return '-';
     });
-  }, [columns, startDateObj]);
+  }, [columns, startDateObj, isEditMode, tempPurchaseDates, purchaseProgress]);
 
   return (
     <div className="p-6 space-y-6">
@@ -590,6 +628,7 @@ export default function AccountDetailPage() {
             isEditMode={isEditMode}
             tempProgress={tempProgress}
             onProgressChange={handleProgressChange}
+            onPurchaseDateChange={handlePurchaseDateChange}
             levels={levels}
           />
         </CardContent>

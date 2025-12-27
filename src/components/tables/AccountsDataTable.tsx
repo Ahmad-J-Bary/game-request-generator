@@ -28,8 +28,6 @@ interface AccountsDataTableProps {
   columns: ColumnData[];
   matrix: string[][];
   layout: 'horizontal' | 'vertical';
-  peDates: Record<string, string>;
-  onPurchaseDateChange: (accountId: number, peId: number, isoDate: string) => void;
   levelsProgress?: Record<string, { level_id: number; is_completed: boolean }>;
   purchaseProgress?: Record<string, { purchase_event_id: number; is_completed: boolean }>;
 }
@@ -39,8 +37,6 @@ export function AccountsDataTable({
   columns,
   matrix,
   layout,
-  peDates,
-  onPurchaseDateChange,
   levelsProgress = {},
   purchaseProgress = {}
 }: AccountsDataTableProps) {
@@ -165,22 +161,9 @@ export function AccountsDataTable({
                 </DataTableCell>
 
                 {accounts.map((acc) => {
-                  if (col.kind === 'purchase') {
-                    const key = `${acc.id}_${col.id}`;
-                    return (
-                      <TableCell key={acc.id} className="text-center">
-                        <input
-                          type="date"
-                          className="border rounded px-1 text-xs mb-1"
-                          value={peDates[key] ?? ''}
-                          onChange={(e) => onPurchaseDateChange(acc.id, col.id, e.target.value)}
-                        />
-                      </TableCell>
-                    );
-                  }
                   const accIdx = accounts.findIndex(a => a.id === acc.id);
                   return (
-                    <TableCell key={acc.id} className="text-center">
+                    <TableCell key={acc.id} className="text-center" style={getDateCellStyle(acc.id, col)}>
                       {matrix[accIdx]?.[colIdx]}
                     </TableCell>
                   );
@@ -285,19 +268,6 @@ export function AccountsDataTable({
             <TableCell style={dataRowStyle}>{acc.start_time}</TableCell>
 
             {columns.map((c, colIdx) => {
-              if (c.kind === 'purchase') {
-                const key = `${acc.id}_${c.id}`;
-                return (
-                  <TableCell key={colIdx} className="text-center" style={getDateCellStyle(acc.id, c)}>
-                    <input
-                      type="date"
-                      className="border rounded px-1 text-xs"
-                      value={peDates[key] ?? ''}
-                      onChange={(e) => onPurchaseDateChange(acc.id, c.id, e.target.value)}
-                    />
-                  </TableCell>
-                );
-              }
               return (
                 <TableCell
                   key={colIdx}
@@ -320,6 +290,6 @@ function formatDateShort(input?: string): string {
   if (!input) return '-';
   const d = new Date(input);
   if (Number.isNaN(d.getTime())) return '-';
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${d.getDate()}-${months[d.getMonth()]}`;
 }
