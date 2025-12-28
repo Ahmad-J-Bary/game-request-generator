@@ -221,74 +221,18 @@ export class ImportService {
   /**
    * Import request templates from files
    */
-  static async importRequestTemplates(gameId?: number): Promise<{
-    success: boolean;
-    message: string;
-    templates?: Array<{
+  static async importRequestTemplates(gameId: number): Promise<{
+    imported_templates: Array<{
+      account_name: string;
       filename: string;
-      accountName: string;
-      content: string;
-      matchedAccount?: any;
+      status: string;
     }>;
+    errors: string[];
+    total_processed: number;
+    successful_imports: number;
+    cancelled?: boolean;
   }> {
-    try {
-      // Select files or folder
-      const filePaths = await TauriService.selectFilesOrFolder();
-
-      if (filePaths.length === 0) {
-        return {
-          success: false,
-          message: 'No files selected'
-        };
-      }
-
-      // Read all files and match with accounts
-      const templates: Array<{
-        filename: string;
-        accountName: string;
-        content: string;
-        matchedAccount?: any;
-      }> = [];
-
-      const accounts = gameId ? await TauriService.getAccounts(gameId) : [];
-
-      for (const filePath of filePaths) {
-        try {
-          const content = await TauriService.readTextFile(filePath);
-
-          // Extract account name from filename (remove .txt extension)
-          const filename = filePath.split('/').pop() || '';
-          const accountName = filename.replace(/\.txt$/, '');
-
-          // Find matching account
-          const matchedAccount = accounts.find(account => account.name === accountName);
-
-          templates.push({
-            filename,
-            accountName,
-            content,
-            matchedAccount
-          });
-        } catch (error) {
-          console.error(`Failed to read file ${filePath}:`, error);
-        }
-      }
-
-      const matchedCount = templates.filter(t => t.matchedAccount).length;
-      const unmatchedCount = templates.length - matchedCount;
-
-      return {
-        success: true,
-        message: `Found ${templates.length} template files. ${matchedCount} matched existing accounts, ${unmatchedCount} unmatched.`,
-        templates
-      };
-
-    } catch (error) {
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to import templates'
-      };
-    }
+    return await invoke('import_request_templates', { gameId });
   }
 
   /**
@@ -318,4 +262,5 @@ export class ImportService {
 
     return { importedCount };
   }
+
 }

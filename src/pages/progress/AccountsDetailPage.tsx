@@ -71,33 +71,71 @@ export default function AccountsDetailPage() {
       synthetic: l.level_name === '-',
     }));
 
-    const peCols = purchaseEvents.map((p: PurchaseEvent) => ({
-      kind: 'purchase' as const,
-      id: p.id,
-      token: p.event_token,
-      name: '$$$',
-      isRestricted: (p as any).is_restricted ?? false,
-      maxDaysOffset: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : '-',
-    }));
+    const peCols = purchaseEvents.map((p: PurchaseEvent) => {
+      const day = p.days_offset;
+      let midpointTime: number | null = null;
 
-    // Base columns following GameDetailPage logic
-    const baseLevelCols = [...levelCols];
-    const basePeCols = [...peCols];
+      if (day != null) {
+        const numericLevels = levelCols
+          .filter(l => typeof l.daysOffset === 'number' && l.daysOffset !== null)
+          .sort((a, b) => (a.daysOffset as number) - (b.daysOffset as number));
 
-    if (mode === 'event-only') {
-      // In event-only mode, filter out session levels (name '-')
-      return [...baseLevelCols.filter(c => c.name !== '-'), ...basePeCols];
-    }
+        if (numericLevels.length > 0) {
+          // Find all levels on the same day as the purchase event
+          const sameDayLevels = numericLevels.filter(l => (l.daysOffset as number) === day);
+          // Find the next level after the purchase event day
+          const nextLevel = numericLevels.find(l => (l.daysOffset as number) > day);
 
-    // In 'all' mode, generate synthetic entries for all missing days
-    const numeric = baseLevelCols.filter((c: any) => typeof c.daysOffset === 'number');
-    numeric.sort((a: any, b: any) => {
-      // Sort by daysOffset first, then by id to maintain consistent order for same day entries
+          const levelsToAverage = [...sameDayLevels];
+          if (nextLevel) {
+            levelsToAverage.push(nextLevel);
+          }
+
+          if (levelsToAverage.length > 0) {
+            const totalTimeSpent = levelsToAverage.reduce((sum, level) => sum + (level.timeSpent || 0), 0);
+            midpointTime = Math.round(totalTimeSpent / levelsToAverage.length);
+          }
+        }
+      }
+
+      return {
+        kind: 'purchase' as const,
+        id: p.id,
+        token: p.event_token,
+        name: '$$$',
+        isRestricted: (p as any).is_restricted ?? false,
+        daysOffset: day != null ? day : null,
+        timeSpent: midpointTime,
+        maxDaysOffset: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : '-',
+      };
+    });
+
+    const allCols = [...levelCols, ...peCols];
+    const numeric = allCols.filter((c: any) => typeof c.daysOffset === 'number' && c.daysOffset !== null) as Array<any & { daysOffset: number }>;
+    numeric.sort((a, b) => {
       if (a.daysOffset !== b.daysOffset) {
         return a.daysOffset - b.daysOffset;
       }
+      if (a.kind !== b.kind) {
+        return a.kind === 'level' ? -1 : 1;
+      }
       return String(a.id).localeCompare(String(b.id));
     });
+
+    if (mode === 'event-only') {
+      const levels = allCols.filter((c: any) => c.kind === 'level' && c.name !== '-');
+      const purchases = allCols.filter((c: any) => c.kind === 'purchase');
+
+      levels.sort((a: any, b: any) => (a.daysOffset || 0) - (b.daysOffset || 0));
+      purchases.sort((a: any, b: any) => {
+        if (a.daysOffset === b.daysOffset) return 0;
+        if (a.daysOffset == null) return 1;
+        if (b.daysOffset == null) return -1;
+        return a.daysOffset - b.daysOffset;
+      });
+
+      return [...levels, ...purchases];
+    }
 
     // Group entries by daysOffset to handle multiple entries per day
     const entriesByDay: { [day: number]: any[] } = {};
@@ -111,7 +149,6 @@ export default function AccountsDetailPage() {
     let minDay = numeric.length > 0 ? numeric[0].daysOffset : 0;
     let maxDay = numeric.length > 0 ? numeric[numeric.length - 1].daysOffset : 0;
 
-    // Ensure minDay starts from 0 if there are levels
     if (numeric.length > 0 && minDay > 0) {
       minDay = 0;
     }
@@ -119,7 +156,6 @@ export default function AccountsDetailPage() {
     const result: any[] = [];
 
     for (let day = minDay; day <= maxDay; day++) {
-      // Add all existing entries for this day (could be multiple)
       if (entriesByDay[day]) {
         result.push(...entriesByDay[day]);
       } else {
@@ -127,10 +163,9 @@ export default function AccountsDetailPage() {
         let nextRealLevel = null;
         for (let d = day + 1; d <= maxDay; d++) {
           if (entriesByDay[d]) {
-            // Find the first non-synthetic entry for this day
-            const nonSyntheticEntries = entriesByDay[d].filter(entry => !entry.synthetic);
-            if (nonSyntheticEntries.length > 0) {
-              nextRealLevel = nonSyntheticEntries[0];
+            const nonSyntheticLevels = entriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
+            if (nonSyntheticLevels.length > 0) {
+              nextRealLevel = nonSyntheticLevels[0];
               break;
             }
           }
@@ -140,27 +175,24 @@ export default function AccountsDetailPage() {
         let token = '';
 
         if (nextRealLevel) {
-          // Check if this synthetic level appears before any real level in the dataset
-          const realDays = Object.keys(entriesByDay)
-            .map(d => parseInt(d))
-            .filter(d => entriesByDay[d].some(entry => !entry.synthetic));
-          const firstRealDay = Math.min(...realDays);
+          const realLevelDays = numeric
+            .filter(entry => entry.kind === 'level' && !entry.synthetic)
+            .map(entry => entry.daysOffset);
+
+          const firstRealDay = Math.min(...realLevelDays);
           const isBeforeFirstReal = day < firstRealDay;
 
           if (isBeforeFirstReal) {
-            // Apply cumulative percentage to the first level event: (target_time - 0) / (first_real_day - (-1)) = target_time / (first_real_day + 1)
             const increment = nextRealLevel.timeSpent / (firstRealDay + 1);
             synthesizedTime = Math.round((day + 1) * increment);
             token = nextRealLevel.token;
           } else {
-            // Normal interpolation between adjacent real levels
             let prevRealLevel = null;
             for (let d = day - 1; d >= minDay; d--) {
               if (entriesByDay[d]) {
-                // Find the last non-synthetic entry for this day
-                const nonSyntheticEntries = entriesByDay[d].filter(entry => !entry.synthetic);
-                if (nonSyntheticEntries.length > 0) {
-                  prevRealLevel = nonSyntheticEntries[nonSyntheticEntries.length - 1];
+                const nonSyntheticLevels = entriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
+                if (nonSyntheticLevels.length > 0) {
+                  prevRealLevel = nonSyntheticLevels[nonSyntheticLevels.length - 1];
                   break;
                 }
               }
@@ -178,7 +210,7 @@ export default function AccountsDetailPage() {
         }
 
         if (token) {
-          const synth = {
+          result.push({
             kind: 'level' as const,
             id: `synth-${token}-${day}`,
             token: token,
@@ -187,19 +219,14 @@ export default function AccountsDetailPage() {
             timeSpent: synthesizedTime,
             isBonus: false,
             synthetic: true,
-          };
-          result.push(synth);
+          });
         }
       }
     }
 
     const numericIds = new Set(numeric.map((c: any) => c.id));
-    const nonNumeric = baseLevelCols.filter((c: any) => !numericIds.has(c.id));
-    nonNumeric.forEach(c => result.push(c));
-
-    const finalPeCols = basePeCols;
-
-    return [...result, ...finalPeCols];
+    const nonNumeric = allCols.filter((c: any) => !numericIds.has(c.id));
+    return [...result, ...nonNumeric];
   }, [levels, purchaseEvents, mode]);
 
 
@@ -293,6 +320,9 @@ export default function AccountsDetailPage() {
                     const progress = purchaseProgress[key];
                     if (progress) {
                       return formatDateShort(addDays(start, progress.days_offset));
+                    }
+                    if (c.daysOffset != null) {
+                      return formatDateShort(addDays(start, Number(c.daysOffset)));
                     }
                   }
                   return '-';

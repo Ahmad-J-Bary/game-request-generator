@@ -89,12 +89,14 @@ export default function GameDetailPage() {
           // Check if purchase event was modified
           if (originalEvent.event_token !== editedEvent.event_token ||
             originalEvent.is_restricted !== editedEvent.is_restricted ||
-            originalEvent.max_days_offset !== editedEvent.max_days_offset) {
+            originalEvent.max_days_offset !== editedEvent.max_days_offset ||
+            originalEvent.days_offset !== editedEvent.days_offset) {
             await TauriService.updatePurchaseEvent({
               id: editedEvent.id,
               event_token: editedEvent.event_token,
               is_restricted: editedEvent.is_restricted,
               max_days_offset: editedEvent.max_days_offset,
+              days_offset: editedEvent.days_offset,
             });
           }
         }
@@ -161,37 +163,77 @@ export default function GameDetailPage() {
       synthetic: l.level_name === '-',
     }));
 
-    const purchaseCols = currentPurchaseEvents.map(p => ({
-      kind: 'purchase' as const,
-      id: p.id,
-      token: p.event_token,
-      name: '$$$',
-      daysOffsetRaw: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : null,
-      daysOffset: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : null,
-      isRestricted: !!p.is_restricted,
-      timeSpent: null as number | null,
-      synthetic: false,
-    }));
+    const purchaseCols = currentPurchaseEvents.map(p => {
+      const day = p.days_offset;
+      let midpointTime: number | null = null;
+
+      if (day != null) {
+        const numericLevels = levelCols
+          .filter(l => typeof l.daysOffset === 'number' && l.daysOffset !== null)
+          .sort((a, b) => (a.daysOffset as number) - (b.daysOffset as number));
+
+        if (numericLevels.length > 0) {
+          // Find all levels on the same day as the purchase event
+          const sameDayLevels = numericLevels.filter(l => (l.daysOffset as number) === day);
+          // Find the next level after the purchase event day
+          const nextLevel = numericLevels.find(l => (l.daysOffset as number) > day);
+
+          const levelsToAverage = [...sameDayLevels];
+          if (nextLevel) {
+            levelsToAverage.push(nextLevel);
+          }
+
+          if (levelsToAverage.length > 0) {
+            const totalTimeSpent = levelsToAverage.reduce((sum, level) => sum + (level.timeSpent || 0), 0);
+            midpointTime = Math.round(totalTimeSpent / levelsToAverage.length);
+          }
+        }
+      }
+
+      return {
+        kind: 'purchase' as const,
+        id: p.id,
+        token: p.event_token,
+        name: '$$$',
+        daysOffset: day != null ? day : null,
+        maxDaysOffset: p.max_days_offset != null ? p.max_days_offset : null,
+        isRestricted: !!p.is_restricted,
+        timeSpent: midpointTime,
+        synthetic: false,
+      };
+    });
 
     return [...levelCols, ...purchaseCols] as const;
   }, [currentLevels, currentPurchaseEvents, t]);
 
 
   const columns = useMemo(() => {
-    if (mode === 'event-only') {
-      // Filter out session levels (name '-')
-      return baseColumns.filter((c: any) => c.name !== '-');
-    }
-
-    const levelCols = baseColumns.filter((c: any) => c.kind === 'level').slice();
-    const numeric = levelCols.filter((c: any) => typeof c.daysOffset === 'number');
+    const allCols = [...baseColumns];
+    const numeric = allCols.filter((c: any) => typeof c.daysOffset === 'number' && c.daysOffset !== null);
     numeric.sort((a: any, b: any) => {
-      // Sort by daysOffset first, then by id to maintain consistent order for same day entries
       if (a.daysOffset !== b.daysOffset) {
         return a.daysOffset - b.daysOffset;
       }
+      if (a.kind !== b.kind) {
+        return a.kind === 'level' ? -1 : 1;
+      }
       return String(a.id).localeCompare(String(b.id));
     });
+
+    if (mode === 'event-only') {
+      const levels = allCols.filter((c: any) => c.kind === 'level' && c.name !== '-');
+      const purchases = allCols.filter((c: any) => c.kind === 'purchase');
+
+      levels.sort((a: any, b: any) => (a.daysOffset || 0) - (b.daysOffset || 0));
+      purchases.sort((a: any, b: any) => {
+        if (a.daysOffset === b.daysOffset) return 0;
+        if (a.daysOffset == null) return 1;
+        if (b.daysOffset == null) return -1;
+        return a.daysOffset - b.daysOffset;
+      });
+
+      return [...levels, ...purchases];
+    }
 
     // Group entries by daysOffset to handle multiple entries per day
     const entriesByDay: { [day: number]: any[] } = {};
@@ -205,7 +247,6 @@ export default function GameDetailPage() {
     let minDay = numeric.length > 0 ? numeric[0].daysOffset : 0;
     let maxDay = numeric.length > 0 ? numeric[numeric.length - 1].daysOffset : 0;
 
-    // Ensure minDay starts from 0 if there are levels
     if (numeric.length > 0 && minDay > 0) {
       minDay = 0;
     }
@@ -213,7 +254,6 @@ export default function GameDetailPage() {
     const result: any[] = [];
 
     for (let day = minDay; day <= maxDay; day++) {
-      // Add all existing entries for this day (could be multiple)
       if (entriesByDay[day]) {
         result.push(...entriesByDay[day]);
       } else {
@@ -221,10 +261,9 @@ export default function GameDetailPage() {
         let nextRealLevel = null;
         for (let d = day + 1; d <= maxDay; d++) {
           if (entriesByDay[d]) {
-            // Find the first non-synthetic entry for this day
-            const nonSyntheticEntries = entriesByDay[d].filter(entry => !entry.synthetic);
-            if (nonSyntheticEntries.length > 0) {
-              nextRealLevel = nonSyntheticEntries[0];
+            const nonSyntheticLevels = entriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
+            if (nonSyntheticLevels.length > 0) {
+              nextRealLevel = nonSyntheticLevels[0];
               break;
             }
           }
@@ -234,27 +273,24 @@ export default function GameDetailPage() {
         let token = '';
 
         if (nextRealLevel) {
-          // Check if this synthetic level appears before any real level in the dataset
-          const realDays = Object.keys(entriesByDay)
-            .map(d => parseInt(d))
-            .filter(d => entriesByDay[d].some(entry => !entry.synthetic));
-          const firstRealDay = Math.min(...realDays);
+          const realLevelDays = numeric
+            .filter(entry => entry.kind === 'level' && !entry.synthetic)
+            .map(entry => entry.daysOffset);
+
+          const firstRealDay = Math.min(...realLevelDays);
           const isBeforeFirstReal = day < firstRealDay;
 
           if (isBeforeFirstReal) {
-            // Apply cumulative percentage to the first level event: (target_time - 0) / (first_real_day - (-1)) = target_time / (first_real_day + 1)
             const increment = nextRealLevel.timeSpent / (firstRealDay + 1);
             synthesizedTime = Math.round((day + 1) * increment);
             token = nextRealLevel.token;
           } else {
-            // Normal interpolation between adjacent real levels
             let prevRealLevel = null;
             for (let d = day - 1; d >= minDay; d--) {
               if (entriesByDay[d]) {
-                // Find the last non-synthetic entry for this day
-                const nonSyntheticEntries = entriesByDay[d].filter(entry => !entry.synthetic);
-                if (nonSyntheticEntries.length > 0) {
-                  prevRealLevel = nonSyntheticEntries[nonSyntheticEntries.length - 1];
+                const nonSyntheticLevels = entriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
+                if (nonSyntheticLevels.length > 0) {
+                  prevRealLevel = nonSyntheticLevels[nonSyntheticLevels.length - 1];
                   break;
                 }
               }
@@ -272,29 +308,23 @@ export default function GameDetailPage() {
         }
 
         if (token) {
-          const synth = {
+          result.push({
             kind: 'level' as const,
             id: `synth-${token}-${day}`,
             token: token,
             name: '-',
-            daysOffsetRaw: day,
             daysOffset: day,
-            timeSpentRaw: synthesizedTime,
             timeSpent: synthesizedTime,
             isBonus: false,
             synthetic: true,
-          };
-          result.push(synth);
+          });
         }
       }
     }
 
     const numericIds = new Set(numeric.map((c: any) => c.id));
-    const nonNumeric = levelCols.filter((c: any) => !numericIds.has(c.id));
-    nonNumeric.forEach(c => result.push(c));
-
-    const purchases = baseColumns.filter((c: any) => c.kind === 'purchase');
-    return [...result, ...purchases];
+    const nonNumeric = baseColumns.filter((c: any) => !numericIds.has(c.id));
+    return [...result, ...nonNumeric];
   }, [baseColumns, mode]);
 
   return (

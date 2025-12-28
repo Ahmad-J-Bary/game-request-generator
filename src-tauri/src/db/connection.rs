@@ -1,8 +1,8 @@
 // src-tauri/src/db/connection.rs
 
 use rusqlite::{Connection, Result as SqlResult};
-use tauri::{AppHandle, Manager};
 use std::path::PathBuf;
+use tauri::{AppHandle, Manager};
 
 /// Wrapper حول rusqlite::Connection مع وظائف إعداد الجداول
 pub struct Database {
@@ -12,7 +12,8 @@ pub struct Database {
 impl Database {
     /// افتح أو أنشئ ملف قاعدة البيانات داخل app data directory
     pub fn new(app: &AppHandle) -> Result<Self, String> {
-        let data_dir = app.path()
+        let data_dir = app
+            .path()
             .app_data_dir()
             .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
@@ -23,8 +24,8 @@ impl Database {
 
         println!("Database path: {:?}", db_path);
 
-        let conn = Connection::open(db_path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
+        let conn =
+            Connection::open(db_path).map_err(|e| format!("Failed to open database: {}", e))?;
 
         Ok(Database { connection: conn })
     }
@@ -105,7 +106,9 @@ impl Database {
 
         // small helper to check column existence
         let column_exists = |table: &str, column: &str| -> SqlResult<bool> {
-            let mut stmt = self.connection.prepare(&format!("PRAGMA table_info({})", table))?;
+            let mut stmt = self
+                .connection
+                .prepare(&format!("PRAGMA table_info({})", table))?;
             let mut rows = stmt.query([])?;
             while let Some(row) = rows.next()? {
                 let name: String = row.get(1)?;
@@ -119,7 +122,7 @@ impl Database {
         // Ensure purchase_events table exists and has expected columns (handled previously)
         // create table if missing
         let mut tbl_stmt = self.connection.prepare(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='purchase_events'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='purchase_events'",
         )?;
         let mut tbl_rows = tbl_stmt.query([])?;
         let purchase_events_exists = tbl_rows.next()?.is_some();
@@ -133,11 +136,12 @@ impl Database {
                     event_token TEXT NOT NULL,
                     is_restricted INTEGER NOT NULL DEFAULT 0,
                     max_days_offset INTEGER,
+                    days_offset INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
                     UNIQUE(game_id, event_token)
                 );
-                "
+                ",
             )?;
         } else {
             if !column_exists("purchase_events", "game_id")? {
@@ -158,6 +162,12 @@ impl Database {
                     [],
                 )?;
             }
+            if !column_exists("purchase_events", "days_offset")? {
+                self.connection.execute(
+                    "ALTER TABLE purchase_events ADD COLUMN days_offset INTEGER",
+                    [],
+                )?;
+            }
             if !column_exists("purchase_events", "created_at")? {
                 self.connection.execute(
                     "ALTER TABLE purchase_events ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
@@ -167,9 +177,9 @@ impl Database {
         }
 
         // --- NEW: ensure levels.has is_bonus column exists (migration for older DBs) ---
-        let mut levels_tbl_stmt = self.connection.prepare(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='levels'"
-        )?;
+        let mut levels_tbl_stmt = self
+            .connection
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='levels'")?;
         let mut levels_tbl_rows = levels_tbl_stmt.query([])?;
         let levels_exists = levels_tbl_rows.next()?.is_some();
 
@@ -210,5 +220,4 @@ impl Database {
 
         Ok(())
     }
-
 }

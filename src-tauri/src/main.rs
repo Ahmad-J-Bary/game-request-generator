@@ -81,6 +81,8 @@ fn main() {
             get_account_purchase_event_progress,
             // أوامر الطلبات اليومية
             get_daily_requests,
+            // أوامر استيراد قوالب الطلبات
+            import_request_templates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -649,4 +651,85 @@ fn get_daily_requests(
     });
 
     Ok(response)
+}
+
+#[tauri::command]
+async fn import_request_templates(state: tauri::State<'_, AppState>, app: tauri::AppHandle, game_id: i64) -> Result<serde_json::Value, String> {
+    use tauri_plugin_dialog::DialogExt;
+    use std::path::Path;
+
+    // Open file dialog to select multiple .txt files
+    let files = app
+        .dialog()
+        .file()
+        .add_filter("Text Files", &["txt"])
+        .blocking_pick_files();
+
+    let file_paths = match files {
+        Some(paths) => paths,
+        None => return Ok(serde_json::json!({"cancelled": true})),
+    };
+
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let account_service = AccountService::new();
+
+    // Get all accounts for this game
+    let accounts = account_service
+        .get_accounts_by_game(conn, game_id)
+        .map_err(|e| format!("Failed to get accounts: {}", e))?;
+
+    let total_processed = file_paths.len();
+    let mut imported_templates = Vec::new();
+    let mut errors = Vec::new();
+
+    for file_path in file_paths {
+        let path_str = file_path.to_string();
+        let path_buf = std::path::PathBuf::from(&path_str);
+        let path = Path::new(&path_buf);
+
+        // Get filename without extension
+        let filename = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| format!("Invalid filename: {}", path_str))?;
+
+        // Read file content
+        let content = std::fs::read_to_string(&path_buf)
+            .map_err(|e| format!("Failed to read file {}: {}", path_str, e))?;
+
+        // Find matching account
+        let matching_account = accounts.iter().find(|account| account.name == filename);
+
+        if let Some(account) = matching_account {
+            // Update account's request template
+            let update_request = models::account::UpdateAccountRequest {
+                id: account.id,
+                request_template: Some(content.clone()),
+                ..Default::default()
+            };
+
+            match account_service.update_account(conn, update_request) {
+                Ok(_) => {
+                    imported_templates.push(serde_json::json!({
+                        "account_name": account.name,
+                        "filename": filename,
+                        "status": "success"
+                    }));
+                }
+                Err(e) => {
+                    errors.push(format!("Failed to update account {}: {}", account.name, e));
+                }
+            }
+        } else {
+            errors.push(format!("No account found matching filename: {}", filename));
+        }
+    }
+
+    Ok(serde_json::json!({
+        "imported_templates": imported_templates,
+        "errors": errors,
+        "total_processed": total_processed,
+        "successful_imports": imported_templates.len()
+    }))
 }

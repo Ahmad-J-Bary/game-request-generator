@@ -22,7 +22,7 @@ pub struct CreateAccountRequest {
     pub request_template: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct UpdateAccountRequest {
     pub id: i64,
     pub name: Option<String>,

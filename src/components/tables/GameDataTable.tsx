@@ -17,7 +17,7 @@ import { Trash2 } from 'lucide-react';
 
 type ColumnData =
   | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number | string | null; timeSpent: number | null; isBonus: boolean; synthetic?: boolean }
-  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; daysOffset: string | null; timeSpent: null; synthetic?: boolean };
+  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; daysOffset: number | null; maxDaysOffset: number | null; timeSpent: number | null; synthetic?: boolean };
 
 interface GameDataTableProps {
   columns: ColumnData[];
@@ -27,6 +27,7 @@ interface GameDataTableProps {
   onDeletePurchaseEvent?: (eventId: number) => void;
   onUpdateLevel?: (levelId: number, field: string, value: any) => void;
   onUpdatePurchaseEvent?: (eventId: number, field: string, value: any) => void;
+  mode?: 'event-only' | 'all';
 }
 
 export function GameDataTable({
@@ -36,7 +37,8 @@ export function GameDataTable({
   onDeleteLevel,
   onDeletePurchaseEvent,
   onUpdateLevel,
-  onUpdatePurchaseEvent
+  onUpdatePurchaseEvent,
+  mode = 'event-only'
 }: GameDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
@@ -52,32 +54,59 @@ export function GameDataTable({
           case 'name':
             return col.name;
           case 'daysOffset':
-            if (col.kind === 'level') {
-              return col.daysOffset != null ? String(col.daysOffset) : '';
-            }
-            return col.daysOffset || '';
+            return col.daysOffset != null ? String(col.daysOffset) : '';
           case 'timeSpent':
-            return col.kind === 'level' ? (col.timeSpent != null ? String(col.timeSpent) : '') : '';
+            if (col.kind === 'level') {
+              return col.timeSpent != null ? String(col.timeSpent) : '';
+            }
+            if (mode === 'all' && col.timeSpent != null) {
+              return String(col.timeSpent);
+            }
+            return '';
           default:
             return '';
         }
       })();
 
-      const handleChange = (newValue: string) => {
+      const handleChange = (newValue: string, fieldOverride?: string) => {
+        const targetField = fieldOverride || field;
         if (col.kind === 'level' && onUpdateLevel) {
           let processedValue: any = newValue;
-          if (field === 'daysOffset' || field === 'timeSpent') {
+          if (targetField === 'daysOffset' || targetField === 'timeSpent') {
             processedValue = newValue === '' ? null : Number(newValue);
           }
-          onUpdateLevel(col.id as number, field === 'daysOffset' ? 'days_offset' : field === 'timeSpent' ? 'time_spent' : field, processedValue);
+          onUpdateLevel(col.id as number, targetField === 'daysOffset' ? 'days_offset' : targetField === 'timeSpent' ? 'time_spent' : targetField, processedValue);
         } else if (col.kind === 'purchase' && onUpdatePurchaseEvent) {
           let processedValue: any = newValue;
-          if (field === 'daysOffset') {
+          if (targetField === 'daysOffset' || targetField === 'maxDaysOffset') {
             processedValue = newValue === '' ? null : Number(newValue);
           }
-          onUpdatePurchaseEvent(col.id as number, field === 'daysOffset' ? 'max_days_offset' : field, processedValue);
+          onUpdatePurchaseEvent(col.id as number, targetField === 'daysOffset' ? 'days_offset' : targetField === 'maxDaysOffset' ? 'max_days_offset' : targetField, processedValue);
         }
       };
+
+      if (col.kind === 'purchase' && field === 'daysOffset') {
+        return (
+          <div className="flex flex-col gap-1">
+            <Input
+              value={col.daysOffset != null ? String(col.daysOffset) : ''}
+              onChange={(e) => handleChange(e.target.value, 'daysOffset')}
+              className="h-8 text-xs"
+              placeholder={t('levels.daysOffset')}
+            />
+            {col.isRestricted && (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] whitespace-nowrap text-muted-foreground">{t('purchaseEvents.lessThan')}</span>
+                <Input
+                  value={col.maxDaysOffset != null ? String(col.maxDaysOffset) : ''}
+                  onChange={(e) => handleChange(e.target.value, 'maxDaysOffset')}
+                  className="h-7 text-[10px] px-1"
+                />
+              </div>
+            )}
+          </div>
+        );
+      }
 
       return (
         <Input
@@ -98,7 +127,14 @@ export function GameDataTable({
         if (col.kind === 'level') {
           return col.daysOffset != null ? col.daysOffset : '-';
         }
-        return col.daysOffset || '-';
+        if (col.kind === 'purchase') {
+          const base = col.daysOffset != null ? String(col.daysOffset) : '-';
+          if (col.isRestricted && col.maxDaysOffset != null) {
+            return `${base} (${t('purchaseEvents.lessThan')} ${col.maxDaysOffset})`;
+          }
+          return base;
+        }
+        return '-';
       case 'timeSpent':
         return col.kind === 'level' ? (col.timeSpent != null ? col.timeSpent : '-') : '-';
       default:
@@ -115,7 +151,7 @@ export function GameDataTable({
       style = getColorStyle('purchase', undefined, col.isRestricted, theme);
     }
 
-    return { 
+    return {
       ...style,
       opacity: col.synthetic ? 0.6 : 1,
       fontStyle: col.synthetic ? 'italic' : 'normal'

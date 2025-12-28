@@ -14,7 +14,7 @@ import { DataTableCell } from './DataTableCell';
 
 type ColumnData =
   | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean }
-  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; maxDaysOffset: string | null; synthetic?: boolean };
+  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; daysOffset: number | null; timeSpent: number; maxDaysOffset: string | null; synthetic?: boolean };
 
 interface AccountDataTableProps {
   columns: ColumnData[];
@@ -30,6 +30,7 @@ interface AccountDataTableProps {
   onProgressChange?: (type: 'level' | 'purchase', id: number | string, completed: boolean) => void;
   onPurchaseDateChange?: (purchaseId: number, dateStr: string) => void;
   levels?: any[];
+  mode?: 'event-only' | 'all';
 }
 
 export function AccountDataTable({
@@ -42,7 +43,8 @@ export function AccountDataTable({
   tempProgress = { levels: {}, purchases: {} },
   onProgressChange,
   onPurchaseDateChange,
-  levels = []
+  levels = [],
+  mode = 'event-only'
 }: AccountDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
@@ -59,9 +61,15 @@ export function AccountDataTable({
         if (col.kind === 'level') {
           return col.daysOffset;
         }
-        return col.isRestricted ? (col.maxDaysOffset) : '-';
+        return col.daysOffset != null ? String(col.daysOffset) : '';
       case 'timeSpent':
-        return col.kind === 'level' ? col.timeSpent : '-';
+        if (col.kind === 'level') {
+          return col.timeSpent;
+        }
+        if (mode === 'all' && col.timeSpent > 0) {
+          return col.timeSpent;
+        }
+        return '-';
       case 'accountDate':
         const dateStr = idx !== undefined ? computedLevelDates[idx] : '-';
         if (isEditMode && col.kind === 'purchase' && onPurchaseDateChange) {

@@ -14,7 +14,7 @@ import { DataTableCell } from './DataTableCell';
 
 type ColumnData =
   | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean }
-  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; maxDaysOffset: string | null; synthetic?: boolean };
+  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; daysOffset: number | null; maxDaysOffset: string | null; synthetic?: boolean };
 
 interface Account {
   id: number;
@@ -55,7 +55,11 @@ export function AccountsDataTable({
         if (col.kind === 'level') {
           return col.daysOffset;
         }
-        return col.isRestricted ? (col.maxDaysOffset) : '-';
+        const offsetStr = col.daysOffset != null ? String(col.daysOffset) : '';
+        if (col.isRestricted && col.maxDaysOffset) {
+          return `${offsetStr} (${col.maxDaysOffset})`;
+        }
+        return offsetStr;
       case 'timeSpent':
         return col.kind === 'level' ? col.timeSpent : '-';
       default:

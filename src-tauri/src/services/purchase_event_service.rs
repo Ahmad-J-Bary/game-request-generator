@@ -1,7 +1,9 @@
 // src-tauri/src/services/purchase_event_service.rs
 
-use rusqlite::{params, OptionalExtension, Connection};
-use crate::models::purchase_event::{PurchaseEvent, CreatePurchaseEventRequest, UpdatePurchaseEventRequest};
+use crate::models::purchase_event::{
+    CreatePurchaseEventRequest, PurchaseEvent, UpdatePurchaseEventRequest,
+};
+use rusqlite::{params, Connection, OptionalExtension};
 
 pub struct PurchaseEventService;
 
@@ -10,7 +12,11 @@ impl PurchaseEventService {
         PurchaseEventService
     }
 
-    pub fn create_purchase_event(&self, conn: &Connection, request: CreatePurchaseEventRequest) -> Result<i64, String> {
+    pub fn create_purchase_event(
+        &self,
+        conn: &Connection,
+        request: CreatePurchaseEventRequest,
+    ) -> Result<i64, String> {
         // تحقق من وجود اللعبة
         let game_exists: i64 = conn
             .query_row(
@@ -27,13 +33,14 @@ impl PurchaseEventService {
         }
 
         conn.execute(
-            "INSERT INTO purchase_events (game_id, event_token, is_restricted, max_days_offset)
-             VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO purchase_events (game_id, event_token, is_restricted, max_days_offset, days_offset)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
                 request.game_id,
                 request.event_token,
                 if request.is_restricted { 1 } else { 0 },
                 request.max_days_offset,
+                request.days_offset,
             ],
         )
         .map_err(|e| format!("Failed to create purchase event: {}", e))?;
@@ -41,10 +48,14 @@ impl PurchaseEventService {
         Ok(conn.last_insert_rowid())
     }
 
-    pub fn get_purchase_events_by_game(&self, conn: &Connection, game_id: i64) -> Result<Vec<PurchaseEvent>, String> {
+    pub fn get_purchase_events_by_game(
+        &self,
+        conn: &Connection,
+        game_id: i64,
+    ) -> Result<Vec<PurchaseEvent>, String> {
         let mut stmt = conn
             .prepare(
-                "SELECT id, game_id, event_token, is_restricted, max_days_offset, created_at
+                "SELECT id, game_id, event_token, is_restricted, max_days_offset, days_offset, created_at
                  FROM purchase_events WHERE game_id = ?1 ORDER BY id",
             )
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
@@ -57,7 +68,8 @@ impl PurchaseEventService {
                     event_token: row.get(2)?,
                     is_restricted: row.get::<_, i32>(3)? != 0,
                     max_days_offset: row.get(4).ok(),
-                    created_at: row.get(5).ok(),
+                    days_offset: row.get(5).ok(),
+                    created_at: row.get(6).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query purchase events: {}", e))?;
@@ -70,9 +82,13 @@ impl PurchaseEventService {
         Ok(events)
     }
 
-    pub fn get_purchase_event_by_id(&self, conn: &Connection, id: i64) -> Result<Option<PurchaseEvent>, String> {
+    pub fn get_purchase_event_by_id(
+        &self,
+        conn: &Connection,
+        id: i64,
+    ) -> Result<Option<PurchaseEvent>, String> {
         conn.query_row(
-            "SELECT id, game_id, event_token, is_restricted, max_days_offset, created_at 
+            "SELECT id, game_id, event_token, is_restricted, max_days_offset, days_offset, created_at 
              FROM purchase_events WHERE id = ?1",
             params![id],
             |row| {
@@ -82,7 +98,8 @@ impl PurchaseEventService {
                     event_token: row.get(2)?,
                     is_restricted: row.get::<_, i32>(3)? != 0,
                     max_days_offset: row.get(4).ok(),
-                    created_at: row.get(5).ok(),
+                    days_offset: row.get(5).ok(),
+                    created_at: row.get(6).ok(),
                 })
             },
         )
@@ -90,7 +107,11 @@ impl PurchaseEventService {
         .map_err(|e| format!("Failed to get purchase event: {}", e))
     }
 
-    pub fn update_purchase_event(&self, conn: &Connection, request: UpdatePurchaseEventRequest) -> Result<bool, String> {
+    pub fn update_purchase_event(
+        &self,
+        conn: &Connection,
+        request: UpdatePurchaseEventRequest,
+    ) -> Result<bool, String> {
         let mut updates = Vec::new();
         let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -109,11 +130,19 @@ impl PurchaseEventService {
             values.push(Box::new(max_days_offset));
         }
 
+        if let Some(days_offset) = request.days_offset {
+            updates.push("days_offset = ?");
+            values.push(Box::new(days_offset));
+        }
+
         if updates.is_empty() {
             return Ok(false);
         }
 
-        let sql = format!("UPDATE purchase_events SET {} WHERE id = ?", updates.join(", "));
+        let sql = format!(
+            "UPDATE purchase_events SET {} WHERE id = ?",
+            updates.join(", ")
+        );
         values.push(Box::new(request.id));
 
         let params: Vec<&dyn rusqlite::ToSql> = values.iter().map(|v| &**v).collect();

@@ -9,6 +9,7 @@ pub struct PurchaseEvent {
     pub event_token: String,
     pub is_restricted: bool,
     pub max_days_offset: Option<i32>,
+    pub days_offset: Option<i32>,
     pub created_at: Option<String>,
 }
 
@@ -18,6 +19,7 @@ pub struct CreatePurchaseEventRequest {
     pub event_token: String,
     pub is_restricted: bool,
     pub max_days_offset: Option<i32>,
+    pub days_offset: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -26,4 +28,5 @@ pub struct UpdatePurchaseEventRequest {
     pub event_token: Option<String>,
     pub is_restricted: Option<bool>,
     pub max_days_offset: Option<i32>,
+    pub days_offset: Option<i32>,
 }
