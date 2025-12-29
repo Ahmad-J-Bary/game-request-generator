@@ -38,7 +38,7 @@ export function GameSelector({ selectedGameId, onGameChange, className }: GameSe
 
   return (
     <Select
-      value={internalGameId?.toString()}
+      value={internalGameId?.toString() || ''}
       onValueChange={(val) => {
         const gameId = Number(val);
         setInternalGameId(gameId);

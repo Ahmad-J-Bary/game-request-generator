@@ -24,6 +24,7 @@ import PurchaseEventListPage from './pages/purchase-events/PurchaseEventListPage
 import PurchaseEventDetailPage from './pages/purchase-events/PurchaseEventDetailPage';
 // Daily Tasks
 import DailyTasksPage from './pages/daily-tasks/DailyTasksPage';
+import UnreadyDailyTasksPage from './pages/daily-tasks/UnreadyDailyTasksPage';
 // Settings
 import SettingsPage from './pages/SettingsPage';
 import './i18n';
@@ -35,12 +36,12 @@ const App = () => (
     <ThemeProvider>
       <LanguageProvider>
         <SettingsProvider>
-        <TooltipProvider>
-          <Toaster />
-          <BrowserRouter>
-            <MainLayout>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
+          <TooltipProvider>
+            <Toaster />
+            <BrowserRouter>
+              <MainLayout>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
                   <Route path="/games" element={<GameListPage />} />
                   <Route path="/games/:id" element={<GameDetailPage />} />
                   <Route path="/accounts" element={<AccountListPage />} />
@@ -50,14 +51,15 @@ const App = () => (
                   <Route path="/accounts/detail" element={<AccountsDetailPage />} />
                   <Route path="/levels" element={<LevelListPage />} />
                   <Route path="/daily-tasks" element={<DailyTasksPage />} />
+                  <Route path="/daily-tasks/unready" element={<UnreadyDailyTasksPage />} />
                   <Route path="/purchase-events" element={<PurchaseEventListPage />} />
                   <Route path="/purchase-events/:id" element={<PurchaseEventDetailPage />} />
-                <Route path="/events" element={<Events />} />
+                  <Route path="/events" element={<Events />} />
                   <Route path="/settings" element={<SettingsPage />} />
-              </Routes>
-            </MainLayout>
-          </BrowserRouter>
-        </TooltipProvider>
+                </Routes>
+              </MainLayout>
+            </BrowserRouter>
+          </TooltipProvider>
         </SettingsProvider>
       </LanguageProvider>
     </ThemeProvider>

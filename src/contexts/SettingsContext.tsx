@@ -48,6 +48,8 @@ interface SettingsContextType {
   resetColors: () => void;
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+  completedSidebarOpen: boolean;
+  toggleCompletedSidebar: () => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -62,6 +64,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     const saved = storageService.get<boolean>('sidebarCollapsed');
+    return saved ?? false;
+  });
+
+  const [completedSidebarOpen, setCompletedSidebarOpen] = useState<boolean>(() => {
+    const saved = storageService.get<boolean>('completedSidebarOpen');
     return saved ?? false;
   });
 
@@ -81,6 +88,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     storageService.set('sidebarCollapsed', sidebarCollapsed);
   }, [sidebarCollapsed]);
 
+  useEffect(() => {
+    storageService.set('completedSidebarOpen', completedSidebarOpen);
+  }, [completedSidebarOpen]);
+
   const updateColors = (newColors: Partial<ColorSettings>) => {
     setColors(prev => ({ ...prev, ...newColors }));
   };
@@ -93,8 +104,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSidebarCollapsed(prev => !prev);
   };
 
+  const toggleCompletedSidebar = () => {
+    setCompletedSidebarOpen(prev => !prev);
+  };
+
   return (
-    <SettingsContext.Provider value={{ colors, updateColors, resetColors, sidebarCollapsed, toggleSidebar }}>
+    <SettingsContext.Provider value={{ colors, updateColors, resetColors, sidebarCollapsed, toggleSidebar, completedSidebarOpen, toggleCompletedSidebar }}>
       {children}
     </SettingsContext.Provider>
   );
@@ -111,7 +126,7 @@ export function useSettings() {
 // Hook to get color class based on type with proper type guards
 export function useColorClass() {
   const { colors } = useSettings();
-  
+
   return (kind: 'level' | 'purchase', isBonus?: boolean, isRestricted?: boolean): string => {
     if (kind === 'level') {
       return isBonus ? colors.levelBonus : colors.levelNormal;

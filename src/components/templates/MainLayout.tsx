@@ -2,16 +2,17 @@
 import { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { 
-  LayoutDashboard, 
-  Gamepad2, 
-  Users, 
-  Trophy, 
-  FileText, 
+import {
+  LayoutDashboard,
+  Gamepad2,
+  Users,
+  Trophy,
+  FileText,
   Calendar,
   ShoppingCart,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  CheckCircle
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ThemeToggle } from '../molecules/ThemeToggle';
@@ -20,6 +21,7 @@ import { Link } from 'react-router-dom';
 import { Settings } from 'lucide-react';
 import { useSettings } from '../../contexts/SettingsContext';
 import { Button } from '../ui/button';
+import { CompletedTasksSidebar } from '../CompletedTasksSidebar';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -38,12 +40,12 @@ const navigation = [
 
 export function MainLayout({ children }: MainLayoutProps) {
   const { t } = useTranslation();
-  const { sidebarCollapsed, toggleSidebar } = useSettings();
+  const { sidebarCollapsed, toggleSidebar, completedSidebarOpen, toggleCompletedSidebar } = useSettings();
 
   return (
     <div className="min-h-screen bg-background">
       {/* Sidebar */}
-      <aside 
+      <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 border-r bg-card transition-all duration-300",
           sidebarCollapsed ? "w-16" : "w-64"
@@ -147,14 +149,42 @@ export function MainLayout({ children }: MainLayoutProps) {
               )}
             </Button>
           </div>
+
+          {/* Completed Tasks Toggle */}
+          <div className="border-t p-2">
+            <Button
+              variant={completedSidebarOpen ? "default" : "ghost"}
+              size="sm"
+              onClick={toggleCompletedSidebar}
+              className="w-full"
+              aria-label={completedSidebarOpen ? 'Close completed tasks' : 'Open completed tasks'}
+              title={t('dailyTasks.completedToday', 'Completed Today')}
+            >
+              {sidebarCollapsed ? (
+                <CheckCircle className="h-4 w-4" />
+              ) : (
+                <>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  <span className="text-sm">{t('dailyTasks.completed', 'Completed')}</span>
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </aside>
 
+      {/* Completed Tasks Sidebar */}
+      <CompletedTasksSidebar
+        isOpen={completedSidebarOpen}
+        onClose={toggleCompletedSidebar}
+      />
+
       {/* Main Content */}
-      <main 
+      <main
         className={cn(
           "transition-all duration-300",
-          sidebarCollapsed ? "pl-16" : "pl-64"
+          sidebarCollapsed ? "pl-16" : "pl-64",
+          completedSidebarOpen ? "pr-96" : "pr-0"
         )}
       >
         <div className="container mx-auto p-6">

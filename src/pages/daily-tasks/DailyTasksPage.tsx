@@ -1,296 +1,16 @@
-// src/pages/daily-tasks/DailyTasksPage.tsx
-
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle, Clock, Copy } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Clock } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { Badge } from '../../components/ui/badge';
+import { Card, CardContent } from '../../components/ui/card';
 import { TauriService, RequestProcessor } from '../../services/tauri.service';
 import { ApiService } from '../../services/api.service';
 import { NotificationService } from '../../utils/notifications';
-import type { Account, DailyRequestsResponse, Level } from '../../types';
-
-// ===== Interfaces =====
-interface AccountCompletionRecord {
-  accountId: number;
-  timeSpent: number;
-  completionTime: number; // timestamp when both Session and Event were completed
-  levelId: number;
-  eventToken: string;
-}
-
-interface AccountTaskAssignment {
-  accountId: number;
-  assignedTime: number; // timestamp when task was first assigned
-  eventToken: string;
-  timeSpent: number;
-}
-
-interface AccountStartState {
-  accountId: number;
-  startTime: string; // account start_time
-  firstRequestAllowedAt: number; // calculated timestamp when first request is allowed
-  isInitialized: boolean; // whether the initial delay has been calculated
-}
-
-// ===== Task Item Component =====
-interface TaskItemProps {
-  task: DailyTask;
-  onCompleteTask: (accountId: number, requestIndex: number) => void;
-  onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
-  accountLastRequestTime?: { [accountId: number]: number };
-  accountScheduledTime: { [accountId: number]: number[] };
-  accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
-  accountTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
-  accountStartStates: { [accountId: number]: AccountStartState };
-  batchIndex: number;
-  allBatches: GameBatch[];
-}
-
-function TaskItem({ task, onCompleteTask, onCopyRequest, accountScheduledTime, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, currentTime }: TaskItemProps & { currentTime: number }) {
-  const { t } = useTranslation();
-
-  // Calculate timing status based on completion records and scheduled times
-  const accountId = task.account.id;
-  const completionRecord = accountCompletionRecords[accountId];
-
-  // Check scheduled time readiness
-  let groupIndex = 0;
-  for (const otherBatch of allBatches.slice(0, batchIndex)) {
-    for (const otherTask of otherBatch.tasks) {
-      if (otherTask.account.id === accountId) {
-        groupIndex++;
-      }
-    }
-  }
-
-  const scheduledTime = accountScheduledTime[accountId]?.[groupIndex] || 0;
-  const isScheduledReady = currentTime >= scheduledTime;
-
-  // Check completion record readiness
-  let isCompletionReady = true;
-  let completionRemainingTime = 0;
-  let completionComeBackTime: Date | null = null;
-
-  if (completionRecord) {
-    // Sequential timing: wait for the CURRENT task's time_spent after the previous completion
-    // Find the current group's time_spent
-    const currentGroup = task.requestGroups?.[0] || { time_spent: task.requests[0]?.time_spent || 0 };
-    const requiredCooldown = currentGroup.time_spent * 1000;
-    const timeSinceCompletion = currentTime - completionRecord.completionTime;
-    isCompletionReady = timeSinceCompletion >= requiredCooldown;
-
-    if (!isCompletionReady) {
-      completionRemainingTime = Math.ceil((requiredCooldown - timeSinceCompletion) / 1000);
-      completionComeBackTime = new Date(currentTime + (requiredCooldown - timeSinceCompletion));
-    }
-  }
-
-  // Check account start state (new accounts have initial delay)
-  const startState = accountStartStates[accountId];
-  let isStartReady = true;
-  let startRemainingTime = 0;
-  let startComeBackTime: Date | null = null;
-
-  if (groupIndex === 0) { // Only check for first request group
-    let firstRequestAllowedAt = startState?.firstRequestAllowedAt;
-
-    // If startState is missing, try to calculate it locally for robustness
-    if (!firstRequestAllowedAt && task.requests.length > 0) {
-      const firstEvent = task.requests
-        .filter(r => r.request_type === 'session' || r.request_type === 'event')
-        .sort((a, b) => a.time_spent - b.time_spent)[0];
-
-      if (firstEvent) {
-        firstRequestAllowedAt = calculateFirstRequestAllowedTime(task.account, firstEvent.time_spent);
-      }
-    }
-
-    if (firstRequestAllowedAt) {
-      isStartReady = currentTime >= firstRequestAllowedAt;
-
-      if (!isStartReady) {
-        startRemainingTime = Math.ceil((firstRequestAllowedAt - currentTime) / 1000);
-        startComeBackTime = new Date(firstRequestAllowedAt);
-      }
-    }
-  }
-
-  // Account is ready only if all checks pass
-  const isReady = isScheduledReady && isCompletionReady && isStartReady;
-  const remainingTime = Math.max(
-    Math.ceil((scheduledTime - currentTime) / 1000),
-    completionRemainingTime,
-    startRemainingTime
-  );
-  const comeBackTime = startComeBackTime || completionComeBackTime || (scheduledTime > currentTime ? new Date(scheduledTime) : null);
-
-  return (
-    <Card key={task.account.id} className={!isReady ? "border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10" : ""}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              {task.account.name}
-              <Badge variant="outline">
-                {t('dailyTasks.taskCount', {
-                  count: task.requests.length,
-                  plural: task.requests.length === 1 ? '' : 's'
-                })}
-              </Badge>
-              {!isReady && (
-                <Badge variant="destructive" className="text-xs animate-pulse">
-                  {t('dailyTasks.waitingTime', {
-                    seconds: remainingTime
-                  })}
-                </Badge>
-              )}
-              {isReady && (
-                <Badge variant="default" className="text-xs bg-green-500">
-                  {t('dailyTasks.ready')}
-                </Badge>
-              )}
-            </CardTitle>
-            <CardDescription>
-              {task.account.start_date} • {t('dailyTasks.targetDateLabel', { date: task.targetDate })}
-              {completionRecord && (
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {t('dailyTasks.lastCompletion', {
-                    timeSpent: completionRecord.timeSpent,
-                    completedAt: new Date(completionRecord.completionTime).toLocaleString()
-                  })}
-                </div>
-              )}
-              {!isReady && comeBackTime && (
-                <div className="mt-1 text-xs text-amber-600 dark:text-amber-400 font-bold bg-amber-100 dark:bg-amber-900/30 p-2 rounded border border-amber-200 dark:border-amber-800">
-                  {!isStartReady && startComeBackTime ? t('dailyTasks.accountInitializing', {
-                    time: startComeBackTime.toLocaleString()
-                  }) : t('dailyTasks.returnAfter', {
-                    time: comeBackTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    date: comeBackTime.toLocaleDateString()
-                  })}
-                </div>
-              )}
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {task.requests.map((request, index) => (
-            <RequestItem
-              key={index}
-              request={request}
-              isCompleted={task.completedTasks.has(index.toString())}
-              isReady={isReady}
-              onComplete={() => onCompleteTask(task.account.id, index)}
-              onCopy={(content, eventToken, timeSpent) =>
-                onCopyRequest(content, eventToken, timeSpent)}
-            />
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ===== Request Item Component =====
-interface RequestItemProps {
-  request: DailyRequestsResponse['requests'][0];
-  isCompleted: boolean;
-  isReady: boolean;
-  onComplete: () => void;
-  onCopy: (content: string, eventToken?: string, timeSpent?: number) => void;
-}
-
-function RequestItem({ request, isCompleted, isReady, onComplete, onCopy }: RequestItemProps) {
-  const { t } = useTranslation();
-
-  const getRequestTypeLabel = (type: string) => {
-    switch (type) {
-      case 'session':
-        return 'Session';
-      case 'event':
-        return 'Event';
-      case 'purchase_event':
-        return 'Purchase Event';
-      default:
-        return type;
-    }
-  };
-
-  const getRequestTypeBadgeVariant = (type: string): 'default' | 'secondary' | 'destructive' => {
-    switch (type) {
-      case 'session':
-        return 'default';
-      case 'event':
-        return 'secondary';
-      case 'purchase_event':
-        return 'destructive';
-      default:
-        return 'default';
-    }
-  };
-
-  return (
-    <div className={`border rounded-lg p-4 transition-all duration-300 ${!isReady ? "bg-gray-100/50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800 opacity-60 grayscale-[0.5]" : "bg-card border-border shadow-sm"}`}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Badge variant={getRequestTypeBadgeVariant(request.request_type)}>
-            {getRequestTypeLabel(request.request_type)}
-          </Badge>
-          {request.event_token && (
-            <span className="text-xs text-muted-foreground font-mono">
-              {request.event_token}
-            </span>
-          )}
-          <span className="text-xs text-muted-foreground">
-            {request.time_spent}s
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!isReady}
-            onClick={() => isReady && onCopy(request.content, request.event_token, request.time_spent)}
-            className={!isReady ? "opacity-30 cursor-not-allowed grayscale" : "hover:bg-primary hover:text-primary-foreground transition-colors"}
-          >
-            <Copy className="h-4 w-4 mr-1" />
-            {t('dailyTasks.copyRequest')}
-          </Button>
-          {!isCompleted && (
-            <Button
-              variant="default"
-              size="sm"
-              disabled={!isReady}
-              onClick={() => isReady && onComplete()}
-              className={!isReady ? "opacity-30 cursor-not-allowed grayscale" : "transition-all active:scale-95"}
-            >
-              <CheckCircle className="h-4 w-4 mr-1" />
-              {t('dailyTasks.completeTask')}
-            </Button>
-          )}
-          {isCompleted && (
-            <Badge variant="secondary">
-              <CheckCircle className="h-3 w-3 mr-1" />
-              Completed
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-muted p-3 rounded text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto">
-        {RequestProcessor.processRequestContent(request.content, request.event_token || '', request.time_spent).split('\n').map((line, i) => (
-          <div key={i} className="whitespace-nowrap">
-            {line || <br />}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+import { TaskItem } from '../../components/daily-tasks/TaskItem';
+import { checkTaskReadiness, calculateFirstRequestAllowedTime, getInterpolatedTimeSpent } from '../../utils/daily-tasks.utils';
+import type { Account } from '../../types';
+import type { DailyTask, GameBatch, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, CompletedDailyTask } from '../../types/daily-tasks.types';
 
 // ===== Empty State Component =====
 function EmptyState() {
@@ -309,162 +29,12 @@ function EmptyState() {
   );
 }
 
-// ===== Utility Functions =====
-
-const calculateFirstRequestAllowedTime = (account: Account, firstEventTimeSpent: number): number => {
-  try {
-    // Combine start_date and start_time for a precise base timestamp
-    // Assuming start_date is YYYY-MM-DD and start_time is HH:mm
-    let baseDate: Date;
-
-    if (account.start_date && account.start_time) {
-      // Try to combine them. If start_date is already a full ISO string, we might need to extract the date part.
-      const datePart = account.start_date.includes('T') ? account.start_date.split('T')[0] : account.start_date;
-      baseDate = new Date(`${datePart}T${account.start_time}`);
-    } else {
-      baseDate = new Date(account.start_date);
-    }
-
-    if (isNaN(baseDate.getTime())) {
-      console.warn(`Could not parse start time for account ${account.id}. Falling back to current time.`);
-      return Date.now();
-    }
-
-    // Calculate delay based on first event's time_spent
-    // Use time_spent as seconds, convert to milliseconds. NO RANDOMIZATION.
-    const delayMs = firstEventTimeSpent * 1000;
-
-    return baseDate.getTime() + delayMs;
-  } catch (error) {
-    console.error(`Error calculating first request time for account ${account.id}:`, error);
-    return Date.now();
-  }
-};
-
-const getInterpolatedTimeSpent = (day: number, gameLevels: Level[]): number => {
-  if (gameLevels.length === 0) return 0;
-
-  const numeric = gameLevels
-    .filter((l) => typeof l.days_offset === 'number')
-    .sort((a, b) => a.days_offset - b.days_offset);
-
-  if (numeric.length === 0) return 0;
-
-  // Find exact match
-  const exact = numeric.find((l) => l.days_offset === day);
-  if (exact) return exact.time_spent;
-
-  // Find surrounding real levels
-  const prevReal = [...numeric].reverse().find((l) => l.days_offset < day);
-  const nextReal = numeric.find((l) => l.days_offset > day);
-
-  if (nextReal && !prevReal) {
-    // Before first real level
-    const firstRealDay = nextReal.days_offset;
-    const increment = nextReal.time_spent / (firstRealDay + 1);
-    return Math.round((day + 1) * increment);
-  }
-
-  if (prevReal && nextReal) {
-    // Between two real levels
-    const ratio = (day - prevReal.days_offset) / (nextReal.days_offset - prevReal.days_offset);
-    return Math.round(prevReal.time_spent + ratio * (nextReal.time_spent - prevReal.time_spent));
-  }
-
-  if (prevReal && !nextReal) {
-    // After last real level - assume it stays the same or grows slightly? 
-    // For now, just return the last real level's time_spent
-    return prevReal.time_spent;
-  }
-
-  return 0;
-};
-
-interface RequestGroup {
-  event_token: string;
-  time_spent: number;
-  requests: DailyRequestsResponse['requests'];
-}
-
-interface DailyTask {
-  account: Account;
-  requests: DailyRequestsResponse['requests'];
-  requestGroups?: RequestGroup[]; // Groups of related requests (Session + Event pairs)
-  targetDate: string;
-  completedTasks: Set<string>; // Track completed tasks by index
-}
-
-interface GameBatch {
-  batchIndex: number;
-  tasks: DailyTask[];
-}
-
-// ===== Utility Functions =====
-
-const checkTaskReadiness = (
-  task: DailyTask,
-  batchIndex: number,
-  allBatches: GameBatch[],
-  currentTime: number,
-  accountScheduledTime: { [accountId: number]: number[] },
-  accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
-  accountStartStates: { [accountId: number]: AccountStartState }
-): boolean => {
-  const accountId = task.account.id;
-  const completionRecord = accountCompletionRecords[accountId];
-
-  // Check scheduled time readiness
-  let groupIndex = 0;
-  for (const otherBatch of allBatches.slice(0, batchIndex)) {
-    for (const otherTask of otherBatch.tasks) {
-      if (otherTask.account.id === accountId) {
-        groupIndex++;
-      }
-    }
-  }
-
-  const scheduledTime = accountScheduledTime[accountId]?.[groupIndex] || 0;
-  const isScheduledReady = currentTime >= scheduledTime;
-
-  // Check completion record readiness
-  let isCompletionReady = true;
-  if (completionRecord) {
-    // Sequential timing: wait for the CURRENT task's time_spent after the previous completion
-    const currentGroup = task.requestGroups?.[0] || { time_spent: task.requests[0]?.time_spent || 0 };
-    const requiredCooldown = currentGroup.time_spent * 1000;
-    const timeSinceCompletion = currentTime - completionRecord.completionTime;
-    isCompletionReady = timeSinceCompletion >= requiredCooldown;
-  }
-
-  // Check account start state
-  const startState = accountStartStates[accountId];
-  let isStartReady = true;
-  if (groupIndex === 0) {
-    let firstRequestAllowedAt = startState?.firstRequestAllowedAt;
-    if (!firstRequestAllowedAt && task.requests.length > 0) {
-      const firstEvent = task.requests
-        .filter(r => r.request_type === 'session' || r.request_type === 'event')
-        .sort((a, b) => a.time_spent - b.time_spent)[0];
-      if (firstEvent) {
-        // We need calculateFirstRequestAllowedTime here
-        // Assuming it's available in the scope or imported
-        firstRequestAllowedAt = calculateFirstRequestAllowedTime(task.account, firstEvent.time_spent);
-      }
-    }
-    if (firstRequestAllowedAt) {
-      isStartReady = currentTime >= firstRequestAllowedAt;
-    }
-  }
-
-  return isScheduledReady && isCompletionReady && isStartReady;
-};
-
 export default function DailyTasksPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [batches, setBatches] = useState<GameBatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [games, setGames] = useState<any[]>([]);
-  const [accountLastRequestTime, setAccountLastRequestTime] = useState<{ [accountId: number]: number }>({});
   const [accountScheduledTime, setAccountScheduledTime] = useState<{ [accountId: number]: number[] }>({});
   const [accountCompletionRecords, setAccountCompletionRecords] = useState<{ [accountId: number]: AccountCompletionRecord }>({});
   const [accountTaskAssignments, setAccountTaskAssignments] = useState<{ [accountId: number]: AccountTaskAssignment[] }>({});
@@ -491,6 +61,35 @@ export default function DailyTasksPage() {
     };
     loadGames();
   }, []);
+
+  // Auto-generate tasks once per day
+  useEffect(() => {
+    if (games.length === 0) return; // Wait for games to load
+
+    const today = new Date().toISOString().split('T')[0];
+    // Always load tasks from storage first if available
+    const storedTasks = localStorage.getItem(`dailyTasks_batches_${today}`);
+    if (storedTasks) {
+      try {
+        const parsed = JSON.parse(storedTasks);
+        const loadedBatches = (parsed.batches || []).map((batch: any) => ({
+          ...batch,
+          tasks: batch.tasks.map((task: any) => ({
+            ...task,
+            completedTasks: new Set(task.completedTasks || [])
+          }))
+        }));
+        setBatches(loadedBatches);
+        setAccountScheduledTime(parsed.accountScheduledTime || {});
+      } catch (error) {
+        console.error('Error loading stored tasks:', error);
+      }
+    }
+
+    // Always generate/refresh tasks to catch new additions
+    generateTodaysTasks();
+    localStorage.setItem('dailyTasks_lastGenerated', today);
+  }, [games]); // Re-run when games are loaded
 
   // Load persisted account data on mount
   useEffect(() => {
@@ -557,6 +156,9 @@ export default function DailyTasksPage() {
   // Save account completion records to localStorage whenever they change
   useEffect(() => {
     try {
+      const today = new Date().toISOString().split('T')[0];
+      localStorage.setItem(`dailyTasks_completionRecords_${today}`, JSON.stringify(accountCompletionRecords));
+      // Also save to generic key for backward compatibility
       localStorage.setItem('accountCompletionRecords', JSON.stringify(accountCompletionRecords));
     } catch (error) {
       console.error('Error saving account completion records:', error);
@@ -566,6 +168,9 @@ export default function DailyTasksPage() {
   // Save account start states to localStorage whenever they change
   useEffect(() => {
     try {
+      const today = new Date().toISOString().split('T')[0];
+      localStorage.setItem(`dailyTasks_startStates_${today}`, JSON.stringify(accountStartStates));
+      // Also save to generic key for backward compatibility
       localStorage.setItem('accountStartStates', JSON.stringify(accountStartStates));
     } catch (error) {
       console.error('Error saving account start states:', error);
@@ -577,16 +182,93 @@ export default function DailyTasksPage() {
     setLoading(true);
     try {
       const today = new Date().toISOString().split('T')[0];
+
+      // 1. Fetch current accounts to validate existing tasks
+      const validAccountsMap = new Map<number, Account>();
+      for (const game of games) {
+        try {
+          const accounts = await TauriService.getAccounts(game.id);
+          accounts.forEach(acc => validAccountsMap.set(acc.id, acc));
+        } catch (e) {
+          console.error(`Error fetching accounts for game ${game.id}:`, e);
+        }
+      }
+
+      // 2. Load and filter existing batches
+      let existingBatches: GameBatch[] = [];
+      let existingScheduledTimes: { [accountId: number]: number[] } = {};
+      const storedTasks = localStorage.getItem(`dailyTasks_batches_${today}`);
+
+      if (storedTasks) {
+        try {
+          const parsed = JSON.parse(storedTasks);
+          const rawBatches = (parsed.batches || []);
+
+          // Filter and update tasks
+          existingBatches = rawBatches.reduce((accBatches: GameBatch[], batch: any) => {
+            const validTasks = batch.tasks.reduce((accTasks: DailyTask[], task: any) => {
+              const currentAccount = validAccountsMap.get(task.account.id);
+              if (currentAccount) {
+                // Update account details in case they changed (e.g. name)
+                accTasks.push({
+                  ...task,
+                  account: currentAccount,
+                  completedTasks: new Set(task.completedTasks || [])
+                });
+              }
+              return accTasks;
+            }, []);
+
+            if (validTasks.length > 0) {
+              accBatches.push({
+                ...batch,
+                tasks: validTasks
+              });
+            }
+            return accBatches;
+          }, []);
+
+          existingScheduledTimes = parsed.accountScheduledTime || {};
+          // Clean up scheduled times for deleted accounts
+          Object.keys(existingScheduledTimes).forEach(key => {
+            if (!validAccountsMap.has(parseInt(key))) {
+              delete existingScheduledTimes[parseInt(key)];
+            }
+          });
+
+        } catch (e) { console.error(e); }
+      }
+
+      // Load completed tasks to check for duplicates
+      // We'll filter out accounts that are already in existing batches or have completed tasks
+      const existingAccountIds = new Set<number>();
+      existingBatches.forEach(batch => {
+        batch.tasks.forEach(task => existingAccountIds.add(task.account.id));
+      });
+
+      // Also filter out accounts that have completed tasks today
+      const completedKey = `dailyTasks_completed_${today}`;
+      const storedCompleted = localStorage.getItem(completedKey);
+      if (storedCompleted) {
+        try {
+          const completedList = JSON.parse(storedCompleted);
+          completedList.forEach((t: any) => existingAccountIds.add(t.accountId));
+        } catch (e) { console.error(e); }
+      }
+
       const gameTasksMap: { [gameId: number]: DailyTask[] } = {};
 
       // Collect all tasks grouped by game
       for (const game of games) {
         try {
-          const accounts = await TauriService.getAccounts(game.id);
+          // We already fetched accounts above, use the map
+          const accounts = Array.from(validAccountsMap.values()).filter(a => a.game_id === game.id);
           const gameLevels = await TauriService.getGameLevels(game.id);
           const gameTasks: DailyTask[] = [];
 
           for (const account of accounts) {
+            if (existingAccountIds.has(account.id)) continue;
+
             try {
               // Initialize or update account start state
               // We recalculate it to ensure it uses the latest precise logic and combines start_date/start_time
@@ -726,8 +408,8 @@ export default function DailyTasksPage() {
                 if (i > 0) {
                   const prevGroup = task.requestGroups[i - 1];
                   const timeDifference = group.time_spent - prevGroup.time_spent;
-                  // Require at least 10% of the time difference as minimum spacing, minimum 30 seconds
-                  const minimumWaitTime = Math.max(30000, timeDifference * 1000 * 0.1); // 10% of time difference in ms
+                  // Use full time difference
+                  const minimumWaitTime = timeDifference * 1000;
                   currentScheduledTime += minimumWaitTime;
                 }
 
@@ -756,20 +438,45 @@ export default function DailyTasksPage() {
               const currentGroupIndex = accountGroupIndex[accountId] || 0;
 
               if (task.requestGroups && currentGroupIndex < task.requestGroups.length) {
-                // We remove the readiness check here so that all tasks are assigned to batches
-                // and visible to the user, even if they are not yet ready.
-                // The TaskItem component will handle the "Not Ready" UI and countdown.
+                // Check if this account is ready for a new request
+                const currentTime = Date.now();
+                let isAccountReady = true;
+
+                // Check completion record cooldown
+                const completionRecord = accountCompletionRecords[accountId];
+                if (completionRecord) {
+                  // Account has completed a previous request, check if cooldown has elapsed
+                  // Calculate required wait time
+                  const currentGroup = task.requestGroups[currentGroupIndex];
+                  const diff = Math.max(0, currentGroup.time_spent - completionRecord.timeSpent);
+                  const nextRequestAllowedAt = completionRecord.completionTime + (diff * 1000);
+                  isAccountReady = currentTime >= nextRequestAllowedAt;
+                }
+
+                // Check account start state (for first request only)
+                if (currentGroupIndex === 0 && isAccountReady) {
+                  const startState = accountStartStates[accountId];
+                  if (startState && startState.firstRequestAllowedAt) {
+                    isAccountReady = currentTime >= startState.firstRequestAllowedAt;
+                  }
+                }
+
+                // Only assign to batch if the account is ready
+                if (!isAccountReady) {
+                  continue; // Skip this account, try next one
+                }
 
                 // Create a task with only the current request group
                 const currentGroup = task.requestGroups[currentGroupIndex];
                 const groupTask: DailyTask = {
                   account: task.account,
                   requests: currentGroup.requests,
+                  requestGroups: [currentGroup], // Include the group for timing calculations
                   targetDate: task.targetDate,
                   completedTasks: new Set(),
                 };
 
-                // Record the task assignment (for internal tracking, though we show it anyway)
+                // Record the task assignment
                 const assignment: AccountTaskAssignment = {
                   accountId,
                   assignedTime: Date.now(),
@@ -805,9 +512,38 @@ export default function DailyTasksPage() {
         }
       }
 
-      setBatches(batches);
-      setAccountScheduledTime(scheduledTimes);
-      NotificationService.success(t('dailyTasks.generateTasksSuccess', { count: batches.length }));
+      // Merge with existing batches
+      let nextBatchIndex = existingBatches.length > 0
+        ? Math.max(...existingBatches.map(b => b.batchIndex)) + 1
+        : 0;
+
+      const adjustedBatches = batches.map(b => ({
+        ...b,
+        batchIndex: nextBatchIndex++
+      }));
+
+      const finalBatches = [...existingBatches, ...adjustedBatches];
+      const finalScheduledTimes = { ...existingScheduledTimes, ...scheduledTimes };
+
+      setBatches(finalBatches);
+      setAccountScheduledTime(finalScheduledTimes);
+
+      // Save to localStorage for persistence
+      const serializedBatches = finalBatches.map(batch => ({
+        ...batch,
+        tasks: batch.tasks.map(task => ({
+          ...task,
+          completedTasks: Array.from(task.completedTasks)
+        }))
+      }));
+      localStorage.setItem(`dailyTasks_batches_${today}`, JSON.stringify({
+        batches: serializedBatches,
+        accountScheduledTime: finalScheduledTimes
+      }));
+
+      if (adjustedBatches.length > 0) {
+        NotificationService.success(t('dailyTasks.generateTasksSuccess', { count: adjustedBatches.length }));
+      }
     } catch (error) {
       NotificationService.error(t('dailyTasks.generateTasksError'));
       console.error(error);
@@ -844,7 +580,11 @@ export default function DailyTasksPage() {
         level_id: request.level_id,
       };
 
-      await TauriService.createLevelProgress(createRequest);
+      try {
+        await TauriService.createLevelProgress(createRequest);
+      } catch (error) {
+        console.warn('Failed to create level progress (likely FK constraint for session event), proceeding to update:', error);
+      }
 
       // Now update the progress
       const updateRequest = {
@@ -856,12 +596,7 @@ export default function DailyTasksPage() {
       const result = await ApiService.updateLevelProgress(updateRequest);
 
       if (result.success) {
-        // Update the last request time for this account
         const now = Date.now();
-        setAccountLastRequestTime(prev => ({
-          ...prev,
-          [accountId]: now
-        }));
 
         // Update task completion status
         const updatedBatches = batches.map(batch => ({
@@ -894,6 +629,7 @@ export default function DailyTasksPage() {
 
             if (allGroupCompleted && groupIndices.includes(requestIndex)) {
               // Record the completion of this Session+Event pair
+
               const completionRecord: AccountCompletionRecord = {
                 accountId,
                 timeSpent: group.time_spent,
@@ -913,7 +649,56 @@ export default function DailyTasksPage() {
                 [accountId]: []
               }));
 
-              break;
+              // Add to completed tasks
+              const completedTask: CompletedDailyTask = {
+                id: `${accountId}_${group.event_token}_${now}`,
+                accountId,
+                accountName: foundTask!.account.name,
+                gameId: foundTask!.account.game_id,
+                gameName: games.find(g => g.id === foundTask!.account.game_id)?.name || 'Unknown',
+                eventToken: group.event_token,
+                timeSpent: group.time_spent,
+                completionTime: now,
+                completionDate: new Date().toISOString().split('T')[0],
+                levelId: request.level_id,
+              };
+
+              // Save to localStorage
+              const completedDate = new Date().toISOString().split('T')[0];
+              const completedKey = `dailyTasks_completed_${completedDate}`;
+              const existingCompleted = localStorage.getItem(completedKey);
+              const completedList: CompletedDailyTask[] = existingCompleted ? JSON.parse(existingCompleted) : [];
+              completedList.push(completedTask);
+              localStorage.setItem(completedKey, JSON.stringify(completedList));
+
+              // Dispatch event to update sidebar
+              window.dispatchEvent(new CustomEvent('daily-task-completed'));
+
+              // Remove this task from batches
+              const filteredBatches = updatedBatches.map(batch => ({
+                ...batch,
+                tasks: batch.tasks.filter(task => task.account.id !== accountId)
+              })).filter(batch => batch.tasks.length > 0);
+
+              setBatches(filteredBatches);
+
+              // Update localStorage
+              const serializedFilteredBatches = filteredBatches.map(batch => ({
+                ...batch,
+                tasks: batch.tasks.map(task => ({
+                  ...task,
+                  completedTasks: Array.from(task.completedTasks)
+                }))
+              }));
+              localStorage.setItem(`dailyTasks_batches_${completedDate}`, JSON.stringify({
+                batches: serializedFilteredBatches,
+                accountScheduledTime
+              }));
+
+              // Dispatch progress-updated event
+              window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
+
+              return; // Exit early since we've handled everything
             }
           }
         }
@@ -926,7 +711,8 @@ export default function DailyTasksPage() {
           );
 
           if (isBatchComplete) {
-            // Batch completed - scheduled times will handle subsequent batch timing
+            // Batch completed - user can manually regenerate tasks to see next ready batch
+            // Automatic regeneration is disabled to prevent issues with already completed tasks
           }
         }
 
@@ -959,14 +745,18 @@ export default function DailyTasksPage() {
           <h1 className="text-3xl font-bold">{t('dailyTasks.title')}</h1>
           <p className="text-muted-foreground">{t('dailyTasks.subtitle')}</p>
         </div>
-        <Button onClick={generateTodaysTasks} disabled={loading || games.length === 0}>
-          {loading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-          ) : (
-            <Clock className="h-4 w-4 mr-2" />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate('/daily-tasks/unready')}>
+            <Clock className="mr-2 h-4 w-4" />
+            {t('dailyTasks.viewDeferred', 'View Deferred Tasks')}
+          </Button>
+          {loading && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+              <span>{t('dailyTasks.generateTasksLoading')}</span>
+            </div>
           )}
-          {loading ? t('dailyTasks.generateTasksLoading') : t('dailyTasks.generateTasks')}
-        </Button>
+        </div>
       </div>
 
       {batches.length === 0 && !loading && (
@@ -981,7 +771,7 @@ export default function DailyTasksPage() {
         batches.forEach(batch => {
           const readyTasksInBatch: DailyTask[] = [];
           batch.tasks.forEach(task => {
-            if (checkTaskReadiness(task, batch.batchIndex, batches, currentTime, accountScheduledTime, accountCompletionRecords, accountStartStates)) {
+            if (checkTaskReadiness(task, batch.batchIndex, batches, currentTime, accountCompletionRecords, accountStartStates)) {
               readyTasksInBatch.push(task);
             } else {
               deferredTasks.push({ task, batchIndex: batch.batchIndex });
@@ -1029,8 +819,6 @@ export default function DailyTasksPage() {
                           task={task}
                           onCompleteTask={completeTask}
                           onCopyRequest={copyToClipboard}
-                          accountLastRequestTime={accountLastRequestTime}
-                          accountScheduledTime={accountScheduledTime}
                           accountCompletionRecords={accountCompletionRecords}
                           accountTaskAssignments={accountTaskAssignments}
                           accountStartStates={accountStartStates}
@@ -1063,48 +851,7 @@ export default function DailyTasksPage() {
               ))}
             </div>
 
-            {/* Deferred Tasks Section */}
-            {deferredTasks.length > 0 && (
-              <div className="pt-8 border-t-2 border-primary/20">
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                    <Clock className="h-6 w-6" />
-                    {t('dailyTasks.deferredTasksTitle', 'Deferred Tasks')}
-                  </h2>
-                  <p className="text-muted-foreground">
-                    {t('dailyTasks.deferredTasksSubtitle', 'These tasks are waiting for their scheduled time or cooldown period.')}
-                  </p>
-                </div>
-
-                <div className="space-y-6">
-                  {deferredTasks.map((item, idx) => (
-                    <div key={`deferred-${item.task.account.id}-${idx}`}>
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-muted-foreground">
-                          {idx + 1}- {item.task.account.name}
-                        </span>
-                        <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
-                          {t('dailyTasks.originalBatch', { batch: item.batchIndex + 1 })}
-                        </Badge>
-                      </div>
-                      <TaskItem
-                        task={item.task}
-                        onCompleteTask={completeTask}
-                        onCopyRequest={copyToClipboard}
-                        accountLastRequestTime={accountLastRequestTime}
-                        accountScheduledTime={accountScheduledTime}
-                        accountCompletionRecords={accountCompletionRecords}
-                        accountTaskAssignments={accountTaskAssignments}
-                        accountStartStates={accountStartStates}
-                        batchIndex={item.batchIndex}
-                        allBatches={batches}
-                        currentTime={currentTime}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Deferred Tasks Section Removed - Moved to separate page */}
           </div>
         );
       })()}
