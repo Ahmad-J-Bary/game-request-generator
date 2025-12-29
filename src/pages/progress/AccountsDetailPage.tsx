@@ -309,7 +309,17 @@ export default function AccountsDetailPage() {
         <CardContent className="overflow-auto">
           <ProgressProvider accounts={accounts}>
             {({ levelsProgress, purchaseProgress }) => {
-              const matrix = accounts.map((acc) => {
+              // Sort accounts by start date in ascending order
+              const sortedAccounts = [...accounts].sort((a, b) => {
+                const dateA = parseDate(a.start_date);
+                const dateB = parseDate(b.start_date);
+                if (!dateA && !dateB) return 0;
+                if (!dateA) return 1;
+                if (!dateB) return -1;
+                return dateA.getTime() - dateB.getTime();
+              });
+
+              const matrix = sortedAccounts.map((acc) => {
                 const start = parseDate(acc.start_date);
                 return columns.map((c) => {
                   if (c.kind === 'level' && start) {
@@ -332,7 +342,7 @@ export default function AccountsDetailPage() {
               return (
                 <>
                   <AccountsDataTable
-                    accounts={accounts}
+                    accounts={sortedAccounts}
                     columns={columns}
                     matrix={matrix}
                     layout={layout}
