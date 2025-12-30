@@ -35,32 +35,111 @@ export class TaskCompletionHandler {
       if (!foundTask) return;
 
       const request = foundTask.requests[requestIndex];
-      if (!request.level_id) {
+
+      // Handle purchase events differently (they don't have level_id)
+      // Purchase events have event_token set and level_id as null
+      const isPurchaseEvent = request.event_token && request.event_token.trim() !== '' && request.level_id == null;
+
+      if (!request.level_id && !isPurchaseEvent) {
+        console.error('Task completion error: request missing level_id and not identified as purchase event', {
+          requestType: request.request_type,
+          eventToken: request.event_token,
+          levelId: request.level_id,
+          hasEventToken: !!request.event_token,
+          eventTokenLength: request.event_token ? request.event_token.length : 0
+        });
         throw new Error('Task completion error');
       }
 
-      // Ensure progress record exists, then update it
-      const createRequest = {
-        account_id: accountId,
-        level_id: request.level_id,
-      };
+      let result;
 
-      try {
-        await TauriService.createLevelProgress(createRequest);
-      } catch (error) {
-        console.warn('Failed to create level progress (likely FK constraint for session event), proceeding to update:', error);
+      if (isPurchaseEvent) {
+        // Handle purchase event completion
+        if (!request.event_token) {
+          throw new Error('Purchase event token is missing');
+        }
+
+        // Get account details to find the game ID
+        const account = await TauriService.getAccountById(accountId);
+        if (!account) {
+          throw new Error('Account not found');
+        }
+
+        // Get purchase events for this game to find the one with matching event_token
+        const gamePurchaseEvents = await TauriService.getGamePurchaseEvents(account.game_id);
+        const purchaseEventDetails = gamePurchaseEvents.find(pe => pe.event_token === request.event_token);
+
+        if (!purchaseEventDetails) {
+          throw new Error('Purchase event not found in game configuration');
+        }
+
+        // Ensure purchase event progress exists, create if necessary
+        let purchaseEventProgress = await TauriService.getAccountPurchaseEventProgress(accountId);
+        let purchaseEvent = purchaseEventProgress.find(pe => pe.purchase_event_id === purchaseEventDetails.id);
+
+        if (!purchaseEvent) {
+          // Try to create the purchase event progress first
+          try {
+            const createRequest = {
+              account_id: accountId,
+              purchase_event_id: purchaseEventDetails.id,
+              days_offset: purchaseEventDetails.days_offset || 0,
+              time_spent: 0, // Will be updated when the task is completed
+            };
+            await TauriService.createPurchaseEventProgress(createRequest);
+
+            // Refresh the progress list
+            purchaseEventProgress = await TauriService.getAccountPurchaseEventProgress(accountId);
+            purchaseEvent = purchaseEventProgress.find(pe => pe.purchase_event_id === purchaseEventDetails.id);
+          } catch (createError) {
+            console.warn('Failed to create purchase event progress, it may already exist:', createError);
+            // Try one more time to get the progress
+            purchaseEventProgress = await TauriService.getAccountPurchaseEventProgress(accountId);
+            purchaseEvent = purchaseEventProgress.find(pe => pe.purchase_event_id === purchaseEventDetails.id);
+          }
+        }
+
+        if (!purchaseEvent) {
+          throw new Error('Purchase event progress not found and could not be created');
+        }
+
+        // Update purchase event progress
+        const updateRequest = {
+          account_id: accountId,
+          purchase_event_id: purchaseEvent.purchase_event_id,
+          is_completed: true,
+        };
+
+        result = await TauriService.updatePurchaseEventProgress(updateRequest);
+      } else {
+        // Handle level event completion
+        // Ensure progress record exists, then update it
+        if (!request.level_id) {
+          throw new Error('Level ID is required for level event completion');
+        }
+
+        const createRequest = {
+          account_id: accountId,
+          level_id: request.level_id,
+        };
+
+        try {
+          await TauriService.createLevelProgress(createRequest);
+        } catch (error) {
+          console.warn('Failed to create level progress (likely FK constraint for session event), proceeding to update:', error);
+        }
+
+        // Now update the progress
+        const updateRequest = {
+          account_id: accountId,
+          level_id: request.level_id,
+          is_completed: true,
+        };
+
+        result = await ApiService.updateLevelProgress(updateRequest);
       }
 
-      // Now update the progress
-      const updateRequest = {
-        account_id: accountId,
-        level_id: request.level_id,
-        is_completed: true,
-      };
-
-      const result = await ApiService.updateLevelProgress(updateRequest);
-
-      if (result.success) {
+      if (result === true || (typeof result === 'object' && result.success)) {
         const now = Date.now();
 
         // Update task completion status
@@ -99,7 +178,7 @@ export class TaskCompletionHandler {
                 accountId,
                 timeSpent: group.time_spent,
                 completionTime: now,
-                levelId: request.level_id,
+                levelId: request.level_id!,
                 eventToken: group.event_token,
               };
 
@@ -186,7 +265,8 @@ export class TaskCompletionHandler {
         // Dispatch progress-updated event to refresh other components
         window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
       } else {
-        throw new Error(result.error || 'Failed to update progress');
+        const errorMessage = typeof result === 'object' && result.error ? result.error : 'Failed to update progress';
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error(error);

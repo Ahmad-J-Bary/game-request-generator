@@ -137,33 +137,38 @@ export default function AccountsDetailPage() {
       return [...levels, ...purchases];
     }
 
-    // Group entries by daysOffset to handle multiple entries per day
-    const entriesByDay: { [day: number]: any[] } = {};
-    numeric.forEach(entry => {
-      if (!entriesByDay[entry.daysOffset]) {
-        entriesByDay[entry.daysOffset] = [];
+    // Separate levels and purchase events
+    const levelEntries = numeric.filter(entry => entry.kind === 'level');
+    const purchaseEntries = numeric.filter(entry => entry.kind === 'purchase');
+
+    // Group level entries by daysOffset to handle multiple entries per day
+    const levelEntriesByDay: { [day: number]: any[] } = {};
+    levelEntries.forEach(entry => {
+      if (!levelEntriesByDay[entry.daysOffset]) {
+        levelEntriesByDay[entry.daysOffset] = [];
       }
-      entriesByDay[entry.daysOffset].push(entry);
+      levelEntriesByDay[entry.daysOffset].push(entry);
     });
 
-    let minDay = numeric.length > 0 ? numeric[0].daysOffset : 0;
-    let maxDay = numeric.length > 0 ? numeric[numeric.length - 1].daysOffset : 0;
+    let minDay = levelEntries.length > 0 ? levelEntries[0].daysOffset : 0;
+    let maxDay = levelEntries.length > 0 ? levelEntries[levelEntries.length - 1].daysOffset : 0;
 
-    if (numeric.length > 0 && minDay > 0) {
+    if (levelEntries.length > 0 && minDay > 0) {
       minDay = 0;
     }
 
     const result: any[] = [];
 
+    // Process levels first (including synthetic levels for missing days)
     for (let day = minDay; day <= maxDay; day++) {
-      if (entriesByDay[day]) {
-        result.push(...entriesByDay[day]);
+      if (levelEntriesByDay[day]) {
+        result.push(...levelEntriesByDay[day]);
       } else {
         // Find the next real level after this day
         let nextRealLevel = null;
         for (let d = day + 1; d <= maxDay; d++) {
-          if (entriesByDay[d]) {
-            const nonSyntheticLevels = entriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
+          if (levelEntriesByDay[d]) {
+            const nonSyntheticLevels = levelEntriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
             if (nonSyntheticLevels.length > 0) {
               nextRealLevel = nonSyntheticLevels[0];
               break;
@@ -175,7 +180,7 @@ export default function AccountsDetailPage() {
         let token = '';
 
         if (nextRealLevel) {
-          const realLevelDays = numeric
+          const realLevelDays = levelEntries
             .filter(entry => entry.kind === 'level' && !entry.synthetic)
             .map(entry => entry.daysOffset);
 
@@ -189,8 +194,8 @@ export default function AccountsDetailPage() {
           } else {
             let prevRealLevel = null;
             for (let d = day - 1; d >= minDay; d--) {
-              if (entriesByDay[d]) {
-                const nonSyntheticLevels = entriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
+              if (levelEntriesByDay[d]) {
+                const nonSyntheticLevels = levelEntriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
                 if (nonSyntheticLevels.length > 0) {
                   prevRealLevel = nonSyntheticLevels[nonSyntheticLevels.length - 1];
                   break;
@@ -223,6 +228,15 @@ export default function AccountsDetailPage() {
         }
       }
     }
+
+    // Add purchase events at the end
+    purchaseEntries.sort((a, b) => {
+      if (a.daysOffset === b.daysOffset) return 0;
+      if (a.daysOffset == null) return 1;
+      if (b.daysOffset == null) return -1;
+      return a.daysOffset - b.daysOffset;
+    });
+    result.push(...purchaseEntries);
 
     const numericIds = new Set(numeric.map((c: any) => c.id));
     const nonNumeric = allCols.filter((c: any) => !numericIds.has(c.id));

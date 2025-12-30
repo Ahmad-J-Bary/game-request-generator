@@ -1,8 +1,9 @@
 // src/utils/taskGenerator.ts
 import { TauriService } from '../services/tauri.service';
-import { getInterpolatedTimeSpent, calculateFirstRequestAllowedTime } from './daily-tasks.utils';
+import { calculateFirstRequestAllowedTime } from './daily-tasks.utils';
 import type { DailyRequestsResponse } from '../types';
 import type { DailyTask, GameBatch, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '../types/daily-tasks.types';
+import type { AccountPurchaseEventProgress } from '../types/progress.types';
 
 interface RequestGroup {
   event_token: string;
@@ -39,54 +40,178 @@ export class TaskGenerator {
 
         for (const account of accounts) {
           try {
-            const response = await TauriService.getDailyRequests(account.id, today);
+            // Get purchase progress for this account
+            const purchaseProgress = await TauriService.getAccountPurchaseEventProgress(account.id);
 
-            // Calculate midpoint time_spent for purchase events
-            const datePart = account.start_date.includes('T') ? account.start_date.split('T')[0] : account.start_date;
-            const start = new Date(datePart);
-            const target = new Date(today);
-            if (start && !isNaN(target.getTime())) {
-              const currentDay = Math.round((target.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-              const timeToday = getInterpolatedTimeSpent(currentDay, gameLevels);
-              const timeTomorrow = getInterpolatedTimeSpent(currentDay + 1, gameLevels);
+            // Calculate current day for this account
+            const accountStartDate = account.start_date.includes('T') ? account.start_date.split('T')[0] : account.start_date;
+            const accountStart = new Date(accountStartDate);
+            const todayDate = new Date(today);
+            const currentDay = Math.round((todayDate.getTime() - accountStart.getTime()) / (1000 * 60 * 60 * 24));
 
-              if (timeToday > 0 || timeTomorrow > 0) {
-                const variation = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
-                const midpointTimeSpent = Math.round((timeToday + timeTomorrow) / 2) + variation;
+            // Find purchase events that should be scheduled for today and are not completed
+            const todaysPurchaseEvents = gamePurchaseEvents.filter(purchaseEvent => {
+              const progress = purchaseProgress.find((pp: AccountPurchaseEventProgress) => pp.purchase_event_id === purchaseEvent.id);
+              const scheduledDay = progress ? progress.days_offset : purchaseEvent.days_offset;
+              const isCompleted = progress ? progress.is_completed : false;
+              return scheduledDay === currentDay && !isCompleted;
+            });
 
-                const newRequests: any[] = [];
-                for (const req of response.requests) {
-                  const isLevel = gameLevels.some(l => l.event_token === req.event_token);
-                  const isPurchase = gamePurchaseEvents.some(p => p.event_token === req.event_token);
+            // Generate requests for today's purchase events
+            const purchaseRequests: any[] = [];
+            for (const purchaseEvent of todaysPurchaseEvents) {
+              // Calculate the time spent for this purchase event based on the account's level progress
+              // Use the same interpolation logic as used in the account detail page
+              const progress = purchaseProgress.find((pp: AccountPurchaseEventProgress) => pp.purchase_event_id === purchaseEvent.id);
+              const scheduledDay = progress ? progress.days_offset : purchaseEvent.days_offset;
 
-                  // Only generate requests for events that actually exist
-                  if (isLevel || isPurchase) {
-                    if (isPurchase) {
-                      // Ensure both Session and Event exist for purchase
-                      // We create a pair with the same token and midpoint time_spent
-                      const sessionReq = { ...req, request_type: 'session', time_spent: midpointTimeSpent };
-                      const eventReq = { ...req, request_type: 'event', time_spent: midpointTimeSpent };
-                      newRequests.push(sessionReq, eventReq);
-                    } else {
-                      newRequests.push(req);
+              // Calculate base time spent using the same logic as account detail page
+              let basePurchaseTimeSpent = 0;
+              if (scheduledDay != null) {
+                const numericLevels = gameLevels
+                  .filter(l => typeof l.days_offset === 'number' && l.days_offset !== null)
+                  .sort((a, b) => a.days_offset - b.days_offset);
+
+                if (numericLevels.length > 0) {
+                  // Find all levels on the same day as the purchase event
+                  const sameDayLevels = numericLevels.filter(l => (l.days_offset as number) === scheduledDay);
+                  // Find the next level after the purchase event day
+                  const nextLevel = numericLevels.find(l => (l.days_offset as number) > scheduledDay);
+
+                  const levelsToAverage = [...sameDayLevels];
+                  if (nextLevel) {
+                    levelsToAverage.push(nextLevel);
+                  }
+
+                  if (levelsToAverage.length > 0) {
+                    const totalTimeSpent = levelsToAverage.reduce((sum, level) => sum + (level.time_spent || 0), 0);
+                    basePurchaseTimeSpent = Math.round(totalTimeSpent / levelsToAverage.length);
+                  } else {
+                    // Fallback: use the last available level's time_spent
+                    const lastLevel = numericLevels[numericLevels.length - 1];
+                    if (lastLevel) {
+                      basePurchaseTimeSpent = lastLevel.time_spent;
                     }
                   }
-                  // Skip requests for events that don't exist anymore
                 }
-                // Remove duplicates if the backend already returned both (though unlikely given the user's report)
-                // We group by type, token, and time_spent to be safe
-                const uniqueRequests: any[] = [];
-                const seen = new Set();
-                for (const r of newRequests) {
-                  const key = `${r.request_type}_${r.event_token}_${r.time_spent}`;
-                  if (!seen.has(key)) {
-                    uniqueRequests.push(r);
-                    seen.add(key);
-                  }
+              }
+
+              // Ensure we have a minimum base time spent
+              if (basePurchaseTimeSpent <= 0) {
+                // Check if there's a specific time_spent for this purchase event in progress
+                const purchaseProgressEntry = purchaseProgress.find((pp: AccountPurchaseEventProgress) => pp.purchase_event_id === purchaseEvent.id);
+                if (purchaseProgressEntry && purchaseProgressEntry.time_spent > 0) {
+                  basePurchaseTimeSpent = purchaseProgressEntry.time_spent;
+                } else {
+                  basePurchaseTimeSpent = 243; // Default fallback value (same as shown in the table)
                 }
-                response.requests = uniqueRequests;
+              }
+
+              // Convert to proper time_spent range (242000-244999 seconds instead of 242-244 seconds)
+              const purchaseTimeSpent = basePurchaseTimeSpent * 1000 + Math.floor(Math.random() * 3000) - 1500;
+
+              // Get the account's request template and generate purchase event requests
+              try {
+                // Get the account details to access the request template
+                const accountDetails = await TauriService.getAccountById(account.id);
+                if (!accountDetails) {
+                  throw new Error('Account not found');
+                }
+                const requestTemplate = accountDetails.request_template;
+
+                if (requestTemplate && requestTemplate.trim()) {
+                  // Process the request template similar to how level events are processed
+                  // Replace placeholders with actual values
+                  let sessionContent = requestTemplate
+                    .replace(/\{event_token\}/g, purchaseEvent.event_token)
+                    .replace(/\{time_spent\}/g, purchaseTimeSpent.toString());
+
+                  // Create session request
+                  const sessionReq = {
+                    event_token: purchaseEvent.event_token,
+                    request_type: 'session',
+                    time_spent: purchaseTimeSpent,
+                    level_id: null,
+                    content: sessionContent
+                  };
+
+                  // For event request, modify the template for event endpoint
+                  let eventContent = requestTemplate
+                    .replace(/\/session/g, '/event')
+                    .replace(/\{event_token\}/g, purchaseEvent.event_token)
+                    .replace(/\{time_spent\}/g, purchaseTimeSpent.toString());
+
+                  const eventReq = {
+                    event_token: purchaseEvent.event_token,
+                    request_type: 'event',
+                    time_spent: purchaseTimeSpent,
+                    level_id: null,
+                    content: eventContent
+                  };
+
+                  console.log('Generated purchase event requests:', {
+                    purchaseEvent: purchaseEvent.event_token,
+                    scheduledDay,
+                    basePurchaseTimeSpent,
+                    purchaseTimeSpent,
+                    sessionReq: {
+                      event_token: sessionReq.event_token,
+                      request_type: sessionReq.request_type,
+                      level_id: sessionReq.level_id
+                    },
+                    eventReq: {
+                      event_token: eventReq.event_token,
+                      request_type: eventReq.request_type,
+                      level_id: eventReq.level_id
+                    }
+                  });
+
+                  purchaseRequests.push(sessionReq, eventReq);
+                } else {
+                  throw new Error('No request template available');
+                }
+              } catch (error) {
+                console.warn(`Failed to get request template for purchase event ${purchaseEvent.event_token}, falling back to basic template:`, error);
+
+                // Fallback to basic template if request template fails
+                const sessionReq = {
+                  event_token: purchaseEvent.event_token,
+                  request_type: 'session',
+                  time_spent: purchaseTimeSpent,
+                  level_id: null,
+                  content: `POST /session HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\n\nevent_token=${purchaseEvent.event_token}&time_spent=${purchaseTimeSpent}`
+                };
+
+                const eventReq = {
+                  event_token: purchaseEvent.event_token,
+                  request_type: 'event',
+                  time_spent: purchaseTimeSpent,
+                  level_id: null,
+                  content: `POST /event HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\n\nevent_token=${purchaseEvent.event_token}&time_spent=${purchaseTimeSpent}`
+                };
+
+                purchaseRequests.push(sessionReq, eventReq);
               }
             }
+
+            // Get regular daily requests for level events
+            const response = await TauriService.getDailyRequests(account.id, today);
+
+            // Combine level requests with purchase requests
+            response.requests = [...response.requests, ...purchaseRequests];
+
+            // Filter out requests for events that don't exist
+            const validRequests: any[] = [];
+            for (const req of response.requests) {
+              const isLevel = gameLevels.some(l => l.event_token === req.event_token);
+              const isPurchase = gamePurchaseEvents.some(p => p.event_token === req.event_token);
+
+              // Only include requests for events that actually exist
+              if (isLevel || isPurchase) {
+                validRequests.push(req);
+              }
+            }
+            response.requests = validRequests;
 
             if (response.requests.length > 0) {
               // Find the first event (smallest time_spent)
