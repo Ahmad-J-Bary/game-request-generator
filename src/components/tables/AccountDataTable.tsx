@@ -1,5 +1,7 @@
 // src/components/tables/AccountDataTable.tsx
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -8,6 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
+import { Button } from '../ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { useSettings, useColorStyle } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { DataTableCell } from './DataTableCell';
@@ -28,7 +32,8 @@ interface AccountDataTableProps {
     purchases: { [key: number]: boolean };
   };
   onProgressChange?: (type: 'level' | 'purchase', id: number | string, completed: boolean) => void;
-  onPurchaseDateChange?: (purchaseId: number, dateStr: string) => void;
+  onPurchaseDateChange?: (purchaseId: number, date: Date | null) => void;
+  tempPurchaseDates?: { [key: number]: Date | null };
   levels?: any[];
   mode?: 'event-only' | 'all';
 }
@@ -43,11 +48,135 @@ export function AccountDataTable({
   tempProgress = { levels: {}, purchases: {} },
   onProgressChange,
   onPurchaseDateChange,
+  tempPurchaseDates = {},
   levels = [],
   mode = 'event-only'
 }: AccountDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
+
+  // Simple Calendar Component
+  const SimpleCalendar = ({
+    selectedDate,
+    onDateSelect,
+    onClose
+  }: {
+    selectedDate: Date | null;
+    onDateSelect: (date: Date) => void;
+    onClose: () => void;
+  }) => {
+    const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+    const getDaysInMonth = (date: Date) => {
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const daysInMonth = lastDay.getDate();
+      const startingDayOfWeek = firstDay.getDay();
+
+      const days = [];
+
+      // Add empty cells for days before the first day of the month
+      for (let i = 0; i < startingDayOfWeek; i++) {
+        days.push(null);
+      }
+
+      // Add days of the month
+      for (let day = 1; day <= daysInMonth; day++) {
+        days.push(new Date(year, month, day));
+      }
+
+      return days;
+    };
+
+    const handleDateClick = (date: Date) => {
+      onDateSelect(date);
+      onClose();
+    };
+
+    const navigateMonth = (direction: 'prev' | 'next') => {
+      setCurrentMonth(prev => {
+        const newMonth = new Date(prev);
+        if (direction === 'prev') {
+          newMonth.setMonth(prev.getMonth() - 1);
+        } else {
+          newMonth.setMonth(prev.getMonth() + 1);
+        }
+        return newMonth;
+      });
+    };
+
+    const days = getDaysInMonth(currentMonth);
+
+    return (
+      <div className="p-3 bg-popover border rounded-lg shadow-lg w-64">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigateMonth('prev')}
+            className="h-6 w-6 p-0"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="font-semibold text-sm">
+            {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigateMonth('next')}
+            className="h-6 w-6 p-0"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Day headers */}
+        <div className="grid grid-cols-7 gap-1 mb-2">
+          {dayNames.map(day => (
+            <div key={day} className="text-center text-xs font-medium text-muted-foreground py-1">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        <div className="grid grid-cols-7 gap-1">
+          {days.map((date, index) => (
+            <div key={index} className="text-center">
+              {date ? (
+                <Button
+                  variant={
+                    selectedDate &&
+                    date.toDateString() === selectedDate.toDateString()
+                      ? "default"
+                      : "ghost"
+                  }
+                  size="sm"
+                  onClick={() => handleDateClick(date)}
+                  className="h-8 w-8 p-0 text-xs hover:bg-accent"
+                >
+                  {date.getDate()}
+                </Button>
+              ) : (
+                <div className="h-8 w-8"></div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
   const { theme } = useTheme();
   const getColorStyle = useColorStyle();
 
@@ -73,14 +202,31 @@ export function AccountDataTable({
       case 'accountDate':
         const dateStr = idx !== undefined ? computedLevelDates[idx] : '-';
         if (isEditMode && col.kind === 'purchase' && onPurchaseDateChange) {
+          // Use the Date object from tempPurchaseDates if available
+          const currentDate = tempPurchaseDates[col.id as number];
+
           return (
-            <input
-              type="text"
-              value={dateStr === '-' ? '' : dateStr}
-              onChange={(e) => onPurchaseDateChange(col.id as number, e.target.value)}
-              className="w-16 bg-transparent border-b border-primary/30 focus:border-primary outline-none text-center"
-              placeholder="DD-Mon"
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-16 h-6 p-0 text-xs hover:bg-accent justify-center"
+                >
+                  <Calendar className="h-3 w-3 mr-1" />
+                  {dateStr === '-' ? 'Pick' : dateStr}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <SimpleCalendar
+                  selectedDate={currentDate}
+                  onDateSelect={(date) => {
+                    onPurchaseDateChange(col.id as number, date);
+                  }}
+                  onClose={() => {}} // Popover handles closing
+                />
+              </PopoverContent>
+            </Popover>
           );
         }
         return dateStr;

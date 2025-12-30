@@ -588,7 +588,15 @@ fn get_daily_requests(
     for p in purchase_progress {
         if p.days_offset as i64 == days_passed && !p.is_completed {
             if let Some(event) = purchase_events_map.get(&p.purchase_event_id) {
-                let time_spent = p.time_spent;
+                // Apply the same time_spent conversion as level events
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                let offset = rng.gen_range(-1..=1); // -1, 0, or 1
+                let adjusted_time = (p.time_spent as i32) + offset;
+                let multiplied_time = adjusted_time * 1000;
+                let random_addition = rng.gen_range(0..1000);
+                let time_spent = multiplied_time + random_addition;
+
                 let clean_event_token = &event.event_token;
 
                 // Use the account's request template for purchase events

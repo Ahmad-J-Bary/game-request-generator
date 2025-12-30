@@ -100,7 +100,7 @@ export default function AccountDetailPage() {
     levels: {},
     purchases: {},
   });
-  const [tempPurchaseDates, setTempPurchaseDates] = useState<{ [key: number]: string }>({});
+  const [tempPurchaseDates, setTempPurchaseDates] = useState<{ [key: number]: Date | null }>({});
 
   const handleEditToggle = () => {
     setIsEditMode(!isEditMode);
@@ -116,10 +116,10 @@ export default function AccountDetailPage() {
     }));
   };
 
-  const handlePurchaseDateChange = (purchaseId: number, dateStr: string) => {
+  const handlePurchaseDateChange = (purchaseId: number, date: Date | null) => {
     setTempPurchaseDates(prev => ({
       ...prev,
-      [purchaseId]: dateStr
+      [purchaseId]: date
     }));
   };
 
@@ -233,35 +233,66 @@ export default function AccountDetailPage() {
       // Save purchase event progress - create records for all purchase events that have been modified
       for (const [purchaseId, isCompleted] of Object.entries(tempProgress.purchases)) {
         const purchaseIdNum = parseInt(purchaseId);
-        const dateStr = tempPurchaseDates[purchaseIdNum];
+        const selectedDate = tempPurchaseDates[purchaseIdNum];
         let daysOffset = 0;
+        let calculatedTimeSpent = 0;
 
-        if (dateStr && dateStr !== '-') {
-          const dateObj = parseDateFlexible(dateStr);
-          if (dateObj) {
-            const diffTime = dateObj.getTime() - startDateObj.getTime();
-            daysOffset = Math.round(diffTime / (1000 * 60 * 60 * 24));
+        if (selectedDate) {
+          const diffTime = selectedDate.getTime() - startDateObj.getTime();
+          daysOffset = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+          // Calculate the correct time_spent for this purchase event based on surrounding levels
+          const numericLevels = levels
+            .filter(l => typeof l.days_offset === 'number' && l.days_offset !== null)
+            .sort((a, b) => (a.days_offset as number) - (b.days_offset as number));
+
+          if (numericLevels.length > 0) {
+            // Find all levels on the same day as the purchase event
+            const sameDayLevels = numericLevels.filter(l => (l.days_offset as number) === daysOffset);
+            // Find the next level after the purchase event day
+            const nextLevel = numericLevels.find(l => (l.days_offset as number) > daysOffset);
+
+            const levelsToAverage = [...sameDayLevels];
+            if (nextLevel) {
+              levelsToAverage.push(nextLevel);
+            }
+
+            if (levelsToAverage.length > 0) {
+              const totalTimeSpent = levelsToAverage.reduce((sum, level) => sum + (level.time_spent || 0), 0);
+              calculatedTimeSpent = Math.round(totalTimeSpent / levelsToAverage.length);
+            }
+          }
+
+          // If no levels found for averaging, use the existing time_spent or a fallback
+          if (calculatedTimeSpent <= 0) {
+            const existingProgress = purchaseProgress.find(p => p.purchase_event_id === purchaseIdNum);
+            if (existingProgress && existingProgress.time_spent > 0) {
+              calculatedTimeSpent = existingProgress.time_spent;
+            } else {
+              calculatedTimeSpent = 243; // Default fallback value
+            }
           }
         }
 
         const existingProgress = purchaseProgress.find(p => p.purchase_event_id === purchaseIdNum);
 
         if (existingProgress) {
-          // Update existing progress
+          // Update existing progress with calculated time_spent
           const request = {
             account_id: accountId,
             purchase_event_id: purchaseIdNum,
             is_completed: isCompleted,
             days_offset: daysOffset,
+            time_spent: calculatedTimeSpent,
           };
           await TauriService.updatePurchaseEventProgress(request);
         } else {
-          // Create new progress record
+          // Create new progress record with calculated time_spent
           const createRequest = {
             account_id: accountId,
             purchase_event_id: purchaseIdNum,
             days_offset: daysOffset,
-            time_spent: 0,
+            time_spent: calculatedTimeSpent,
           };
           await TauriService.createPurchaseEventProgress(createRequest);
 
@@ -488,7 +519,7 @@ export default function AccountDetailPage() {
     if (isEditMode) {
       const levelProgress: { [key: number | string]: boolean } = {};
       const purchaseProgressMap: { [key: number]: boolean } = {};
-      const purchaseDatesMap: { [key: number]: string } = {};
+      const purchaseDatesMap: { [key: number]: Date | null } = {};
 
       // Initialize ALL level columns (including synthetic ones) with their current progress status
       columns.filter(col => col.kind === 'level').forEach(col => {
@@ -509,7 +540,8 @@ export default function AccountDetailPage() {
 
         const daysOffset = existingProgress?.days_offset ?? 0;
         const date = addDays(startDateObj, daysOffset);
-        purchaseDatesMap[purchase.id] = existingProgress ? formatDateShort(date) : '-';
+        // Store Date object instead of formatted string
+        purchaseDatesMap[purchase.id] = existingProgress ? date : null;
       });
 
       setTempProgress({
@@ -528,7 +560,8 @@ export default function AccountDetailPage() {
         return formatDateShort(dd);
       } else if (col.kind === 'purchase') {
         if (isEditMode && tempPurchaseDates[col.id as number]) {
-          return tempPurchaseDates[col.id as number];
+          const tempDate = tempPurchaseDates[col.id as number];
+          return tempDate ? formatDateShort(tempDate) : '-';
         }
         const dd = addDays(startDateObj, Number(col.daysOffset || 0));
         return formatDateShort(dd);
@@ -657,6 +690,7 @@ export default function AccountDetailPage() {
             tempProgress={tempProgress}
             onProgressChange={handleProgressChange}
             onPurchaseDateChange={handlePurchaseDateChange}
+            tempPurchaseDates={tempPurchaseDates}
             levels={levels}
             mode={mode}
           />
