@@ -12,6 +12,7 @@ export interface CompletedDailyTask {
     completionTime: number; // actual computer clock time (timestamp)
     completionDate: string; // YYYY-MM-DD
     levelId?: number;
+    requestType?: 'session' | 'event' | 'purchase_event'; // Type of request that was completed
 }
 
 export interface DailyTasksStorage {

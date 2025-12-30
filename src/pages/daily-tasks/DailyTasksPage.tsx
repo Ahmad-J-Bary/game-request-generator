@@ -28,7 +28,6 @@ export default function DailyTasksPage() {
   } = useDailyTasks();
 
 
-
   // Generate today's tasks on mount and when games change
   useEffect(() => {
     if (games.length === 0) return;

@@ -12,6 +12,7 @@ export interface UseDailyTasksReturn {
   loading: boolean;
   games: any[];
   currentTime: number;
+  completedTasks: any[];
 
   // Account state
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
@@ -20,7 +21,7 @@ export interface UseDailyTasksReturn {
 
   // Actions
   generateTodaysTasks: () => Promise<void>;
-  completeTask: (accountId: number, requestIndex: number) => Promise<void>;
+  completeTask: (accountId: number, requestIndex: number, batchIndex: number) => Promise<void>;
   copyToClipboard: (content: string, eventToken?: string, timeSpent?: number) => void;
 
   // Utilities
@@ -37,6 +38,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   const [accountCompletionRecords, setAccountCompletionRecords] = useState<{ [accountId: number]: AccountCompletionRecord }>({});
   const [accountTaskAssignments, setAccountTaskAssignments] = useState<{ [accountId: number]: AccountTaskAssignment[] }>({});
   const [accountStartStates, setAccountStartStates] = useState<{ [accountId: number]: AccountStartState }>({});
+  const [completedTasks, setCompletedTasks] = useState<any[]>([]);
 
   // Update current time every second
   useEffect(() => {
@@ -106,6 +108,13 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       if (savedStartStates) {
         const parsedStartStates = JSON.parse(savedStartStates);
         setAccountStartStates(parsedStartStates);
+      }
+
+      // Load completed tasks
+      const today = new Date().toISOString().split('T')[0];
+      const savedCompleted = localStorage.getItem(`dailyTasks_completed_${today}`);
+      if (savedCompleted) {
+        setCompletedTasks(JSON.parse(savedCompleted));
       }
     } catch (error) {
       console.error('Error loading account data:', error);
@@ -180,7 +189,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   }, [games, accountCompletionRecords, accountStartStates]);
 
   // Complete a task using the TaskCompletionHandler utility
-  const completeTask = useCallback(async (accountId: number, requestIndex: number) => {
+  const completeTask = useCallback(async (accountId: number, requestIndex: number, batchIndex: number) => {
     try {
       const completionHandler = new TaskCompletionHandler({
         batches,
@@ -191,7 +200,14 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
         setAccountTaskAssignments,
       });
 
-      await completionHandler.completeTask(accountId, requestIndex);
+      await completionHandler.completeTask(accountId, requestIndex, batchIndex);
+
+      // Refresh completed tasks from localStorage
+      const today = new Date().toISOString().split('T')[0];
+      const savedCompleted = localStorage.getItem(`dailyTasks_completed_${today}`);
+      if (savedCompleted) {
+        setCompletedTasks(JSON.parse(savedCompleted));
+      }
     } catch (error) {
       console.error('Error completing task:', error);
     }
@@ -211,6 +227,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
     loading,
     games,
     currentTime,
+    completedTasks,
 
     // Account state
     accountCompletionRecords,

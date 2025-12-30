@@ -180,6 +180,7 @@
     "pauseMessage": "Take a moment to update your proxy configuration.",
     "deferredTasksTitle": "Deferred Tasks",
     "deferredTasksSubtitle": "These tasks are waiting for their scheduled time or cooldown period.",
+    "noDeferredTasks": "No deferred tasks.",
     "originalBatch": "Original Batch {{batch}}",
     "batchWaitMessage": "Wait {{seconds}}s before proceeding to this batch",
     "batchReady": "Ready to process",
@@ -197,7 +198,14 @@
     "cannotCompleteUntilTimer": "Cannot complete request until timer reaches zero",
     "copyingNotAllowed": "Copying not allowed",
     "completionNotAllowed": "Completion not allowed",
-    "accountInitializing": "Account initializing - first request available {{time}}"
+    "accountInitializing": "Account initializing - first request available {{time}}",
+    "completedToday": "Completed Today",
+    "noCompletedTasks": "No Completed Tasks",
+    "noCompletedTasksDescription": "Complete tasks to see them here",
+    "clearCompleted": "Clear Completed",
+    "viewDeferred": "View Deferred Tasks",
+    "waitingPrevious": "Pending Previous",
+    "blockedByPrevious": "Waiting for previous task to complete"
   },
   "purchaseEvents": {
     "title": "Purchase Events",
@@ -284,8 +292,6 @@
     "requestTemplatesPartial": "{{errors}} templates had errors",
     "example": "Example:",
     "templatesTitle": "Import Request Templates",
-    "templatesDescription": "Import request templates from text files. Files should be named after account names (without .txt extension).",
-    "templatesInstructions": "Select text files (.txt) or a folder containing request templates. Each file should be named after an account (e.g., \"Account Name.txt\").",
     "templatesSuccess": "Successfully imported {{count}} templates",
     "filesFound": "{{count}} template files found",
     "accountsMatched": "{{count}} matched existing accounts",

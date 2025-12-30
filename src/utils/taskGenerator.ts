@@ -65,7 +65,7 @@ export class TaskGenerator {
               const progress = purchaseProgress.find((pp: AccountPurchaseEventProgress) => pp.purchase_event_id === purchaseEvent.id);
               const scheduledDay = progress ? progress.days_offset : purchaseEvent.days_offset;
 
-              // Calculate base time spent using the same logic as account detail page
+              // Calculate base time spent using FIXED logic
               let basePurchaseTimeSpent = 0;
               if (scheduledDay != null) {
                 const numericLevels = gameLevels
@@ -75,22 +75,23 @@ export class TaskGenerator {
                 if (numericLevels.length > 0) {
                   // Find all levels on the same day as the purchase event
                   const sameDayLevels = numericLevels.filter(l => (l.days_offset as number) === scheduledDay);
-                  // Find the next level after the purchase event day
-                  const nextLevel = numericLevels.find(l => (l.days_offset as number) > scheduledDay);
 
-                  const levelsToAverage = [...sameDayLevels];
-                  if (nextLevel) {
-                    levelsToAverage.push(nextLevel);
-                  }
-
-                  if (levelsToAverage.length > 0) {
-                    const totalTimeSpent = levelsToAverage.reduce((sum, level) => sum + (level.time_spent || 0), 0);
-                    basePurchaseTimeSpent = Math.round(totalTimeSpent / levelsToAverage.length);
+                  // FIXED: Only average same-day levels, do NOT include next level
+                  if (sameDayLevels.length > 0) {
+                    // Average only the levels on the same day
+                    const totalTimeSpent = sameDayLevels.reduce((sum, level) => sum + (level.time_spent || 0), 0);
+                    basePurchaseTimeSpent = Math.round(totalTimeSpent / sameDayLevels.length);
                   } else {
-                    // Fallback: use the last available level's time_spent
-                    const lastLevel = numericLevels[numericLevels.length - 1];
-                    if (lastLevel) {
-                      basePurchaseTimeSpent = lastLevel.time_spent;
+                    // Fallback: No levels on the same day, use the next level as reference
+                    const nextLevel = numericLevels.find(l => (l.days_offset as number) > scheduledDay);
+                    if (nextLevel) {
+                      basePurchaseTimeSpent = nextLevel.time_spent;
+                    } else {
+                      // Ultimate fallback: use the last available level's time_spent
+                      const lastLevel = numericLevels[numericLevels.length - 1];
+                      if (lastLevel) {
+                        basePurchaseTimeSpent = lastLevel.time_spent;
+                      }
                     }
                   }
                 }

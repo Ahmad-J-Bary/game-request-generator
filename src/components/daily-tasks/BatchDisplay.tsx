@@ -11,7 +11,7 @@ interface BatchDisplayProps {
   accountTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
   accountStartStates: { [accountId: number]: AccountStartState };
   currentTime: number;
-  onCompleteTask: (accountId: number, requestIndex: number) => void;
+  onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   showProxyNotice?: boolean;
   isLastBatch?: boolean;

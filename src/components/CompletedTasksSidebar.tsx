@@ -38,6 +38,7 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
         const storageKey = `dailyTasks_completed_${today}`;
         const stored = localStorage.getItem(storageKey);
 
+
         if (stored) {
             try {
                 const tasks: CompletedDailyTask[] = JSON.parse(stored);
@@ -74,17 +75,23 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
         });
     };
 
-    // Group tasks by game
+    // Group tasks by game, then by eventToken within each game
     const tasksByGame = completedTasks.reduce((acc, task) => {
         if (!acc[task.gameId]) {
             acc[task.gameId] = {
                 gameName: task.gameName,
-                tasks: []
+                eventTokens: {}
             };
         }
-        acc[task.gameId].tasks.push(task);
+
+        const eventToken = task.eventToken || 'No Token';
+        if (!acc[task.gameId].eventTokens[eventToken]) {
+            acc[task.gameId].eventTokens[eventToken] = [];
+        }
+
+        acc[task.gameId].eventTokens[eventToken].push(task);
         return acc;
-    }, {} as Record<number, { gameName: string; tasks: CompletedDailyTask[] }>);
+    }, {} as Record<number, { gameName: string; eventTokens: Record<string, CompletedDailyTask[]> }>);
 
     const formatTime = (timestamp: number) => {
         return new Date(timestamp).toLocaleTimeString([], {
@@ -130,53 +137,77 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {Object.entries(tasksByGame).map(([gameId, { gameName, tasks }]) => (
-                                <Card key={gameId}>
-                                    <CardHeader
-                                        className="cursor-pointer hover:bg-accent/50 transition-colors p-3"
-                                        onClick={() => toggleGameExpanded(Number(gameId))}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <CardTitle className="text-sm font-medium flex items-center gap-2">
-                                                {expandedGames.has(Number(gameId)) ? (
-                                                    <ChevronDown className="h-4 w-4" />
-                                                ) : (
-                                                    <ChevronRight className="h-4 w-4" />
-                                                )}
-                                                {gameName}
-                                            </CardTitle>
-                                            <Badge variant="outline" className="text-xs">
-                                                {tasks.length}
-                                            </Badge>
-                                        </div>
-                                    </CardHeader>
+                            {Object.entries(tasksByGame).map(([gameId, { gameName, eventTokens }]) => {
+                                const totalTasks = Object.values(eventTokens).reduce((sum, tasks) => sum + tasks.length, 0);
+                                return (
+                                    <Card key={gameId}>
+                                        <CardHeader
+                                            className="cursor-pointer hover:bg-accent/50 transition-colors p-3"
+                                            onClick={() => toggleGameExpanded(Number(gameId))}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                                                    {expandedGames.has(Number(gameId)) ? (
+                                                        <ChevronDown className="h-4 w-4" />
+                                                    ) : (
+                                                        <ChevronRight className="h-4 w-4" />
+                                                    )}
+                                                    {gameName}
+                                                </CardTitle>
+                                                <Badge variant="outline" className="text-xs">
+                                                    {totalTasks}
+                                                </Badge>
+                                            </div>
+                                        </CardHeader>
 
-                                    {expandedGames.has(Number(gameId)) && (
-                                        <CardContent className="p-3 pt-0 space-y-2">
-                                            {tasks.map((task) => (
-                                                <div
-                                                    key={task.id}
-                                                    className="border rounded-lg p-3 bg-muted/30 space-y-1"
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="font-medium text-sm">{task.accountName}</span>
-                                                        <Badge variant="secondary" className="text-xs">
-                                                            {task.eventToken}
-                                                        </Badge>
+                                        {expandedGames.has(Number(gameId)) && (
+                                            <CardContent className="p-3 pt-0 space-y-3">
+                                                {Object.entries(eventTokens).map(([eventToken, tasks]) => (
+                                                    <div key={eventToken} className="space-y-2">
+                                                        <div className="flex items-center gap-2 px-2">
+                                                            <Badge variant="secondary" className="text-xs font-medium">
+                                                                Event Token: {eventToken}
+                                                            </Badge>
+                                                            <Badge variant="outline" className="text-xs">
+                                                                {tasks.length}
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="space-y-1 ml-4">
+                                                            {tasks.map((task) => (
+                                                                <div
+                                                                    key={task.id}
+                                                                    className="border rounded-lg p-3 bg-muted/30 space-y-1"
+                                                                >
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="font-medium text-sm">{task.accountName}</span>
+                                                                            <Badge
+                                                                                variant={task.requestType === 'session' ? 'default' : 'secondary'}
+                                                                                className="text-xs"
+                                                                            >
+                                                                                {task.requestType === 'session' ? 'Session' :
+                                                                                 task.requestType === 'event' ? 'Event' :
+                                                                                 task.requestType === 'purchase_event' ? 'Purchase' : 'Unknown'}
+                                                                            </Badge>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                                                        <span className="flex items-center gap-1">
+                                                                            <Clock className="h-3 w-3" />
+                                                                            {formatTime(task.completionTime)}
+                                                                        </span>
+                                                                        <span>{task.timeSpent}s</span>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                                        <span className="flex items-center gap-1">
-                                                            <Clock className="h-3 w-3" />
-                                                            {formatTime(task.completionTime)}
-                                                        </span>
-                                                        <span>{task.timeSpent}s</span>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </CardContent>
-                                    )}
-                                </Card>
-                            ))}
+                                                ))}
+                                            </CardContent>
+                                        )}
+                                    </Card>
+                                );
+                            })}
                         </div>
                     )}
                 </ScrollArea>

@@ -1,6 +1,7 @@
 // src/utils/taskCompletion.ts
 import { ApiService } from '../services/api.service';
 import { TauriService } from '../services/tauri.service';
+import type { ApiResponse } from '../services/api.service';
 import type { DailyTask, GameBatch, AccountCompletionRecord, CompletedDailyTask } from '../types/daily-tasks.types';
 
 export interface TaskCompletionOptions {
@@ -19,7 +20,7 @@ export class TaskCompletionHandler {
     this.options = options;
   }
 
-  async completeTask(accountId: number, requestIndex: number): Promise<void> {
+  async completeTask(accountId: number, requestIndex: number, batchIndex: number): Promise<void> {
     try {
       // Find the task across all batches
       let foundTask: DailyTask | null = null;
@@ -51,7 +52,7 @@ export class TaskCompletionHandler {
         throw new Error('Task completion error');
       }
 
-      let result;
+      let result: boolean | ApiResponse;
 
       if (isPurchaseEvent) {
         // Handle purchase event completion
@@ -111,6 +112,64 @@ export class TaskCompletionHandler {
         };
 
         result = await TauriService.updatePurchaseEventProgress(updateRequest);
+
+        // Record completed purchase event
+        const completedTask: CompletedDailyTask = {
+          id: `${accountId}_${request.event_token}_${Date.now()}`,
+          accountId,
+          accountName: account.name,
+          gameId: account.game_id,
+          gameName: this.options.games.find(g => g.id === account.game_id)?.name || 'Unknown',
+          eventToken: request.event_token!,
+          timeSpent: request.time_spent || 0, // Use the request's time_spent
+          completionTime: Date.now(),
+          completionDate: new Date().toISOString().split('T')[0],
+          levelId: undefined, // Purchase events don't have level IDs
+          requestType: 'purchase_event',
+        };
+
+        // Save to localStorage
+        const completedDate = new Date().toISOString().split('T')[0];
+        const completedKey = `dailyTasks_completed_${completedDate}`;
+        const existingCompleted = localStorage.getItem(completedKey);
+        const completedList: CompletedDailyTask[] = existingCompleted ? JSON.parse(existingCompleted) : [];
+        completedList.push(completedTask);
+        localStorage.setItem(completedKey, JSON.stringify(completedList));
+
+
+        // Dispatch event to update sidebar
+        window.dispatchEvent(new CustomEvent('daily-task-completed'));
+
+        // Remove this task from the specific batch it was in
+        const updatedBatches = this.options.batches.map(batch => {
+          if (batch.batchIndex === batchIndex) {
+            return {
+              ...batch,
+              tasks: batch.tasks.filter(task => task.account.id !== accountId)
+            };
+          }
+          return batch;
+        }).filter(batch => batch.tasks.length > 0);
+
+        this.options.setBatches(updatedBatches);
+
+        // Update localStorage with filtered batches
+        const serializedFilteredBatches = updatedBatches.map(batch => ({
+          ...batch,
+          tasks: batch.tasks.map(task => ({
+            ...task,
+            completedTasks: Array.from(task.completedTasks)
+          }))
+        }));
+        localStorage.setItem(`dailyTasks_batches_${completedDate}`, JSON.stringify({
+          batches: serializedFilteredBatches,
+          accountScheduledTime: {} // This would need to be passed in or managed differently
+        }));
+
+        // Dispatch progress-updated event
+        window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
+
+        return; // Exit early since we've handled everything for purchase events
       } else {
         // Handle level event completion
         // Ensure progress record exists, then update it
@@ -139,8 +198,41 @@ export class TaskCompletionHandler {
         result = await ApiService.updateLevelProgress(updateRequest);
       }
 
-      if (result === true || (typeof result === 'object' && result.success)) {
+      // Check if the operation was successful (handles both boolean and ApiResponse results)
+      // @ts-ignore - TypeScript has trouble with union type checking here
+      const success = result === true || (result && typeof result === 'object' && result.success);
+
+      if (success) {
         const now = Date.now();
+
+        // Create individual completion records for all level events
+        // The pair completion logic will clean up duplicates for Session+Event pairs
+        if (!isPurchaseEvent && request.level_id) {
+          const levelCompletedTask: CompletedDailyTask = {
+            id: `${accountId}_level_${request.level_id}_${now}`,
+            accountId,
+            accountName: foundTask!.account.name,
+            gameId: foundTask!.account.game_id,
+            gameName: this.options.games.find(g => g.id === foundTask!.account.game_id)?.name || 'Unknown',
+            eventToken: request.event_token || '',
+            timeSpent: request.time_spent || 0,
+            completionTime: now,
+            completionDate: new Date().toISOString().split('T')[0],
+            levelId: request.level_id,
+            requestType: request.request_type as 'session' | 'event',
+          };
+
+          // Save to localStorage
+          const completedDate = new Date().toISOString().split('T')[0];
+          const completedKey = `dailyTasks_completed_${completedDate}`;
+          const existingCompleted = localStorage.getItem(completedKey);
+          const completedList: CompletedDailyTask[] = existingCompleted ? JSON.parse(existingCompleted) : [];
+          completedList.push(levelCompletedTask);
+          localStorage.setItem(completedKey, JSON.stringify(completedList));
+
+          // Dispatch event to update sidebar
+          window.dispatchEvent(new CustomEvent('daily-task-completed'));
+        }
 
         // Update task completion status
         const updatedBatches = this.options.batches.map(batch => ({
@@ -172,12 +264,11 @@ export class TaskCompletionHandler {
             );
 
             if (allGroupCompleted && groupIndices.includes(requestIndex)) {
-              // Record the completion of this Session+Event pair
-
+              // Record the completion of this Session+Event pair with accurate timestamp
               const completionRecord: AccountCompletionRecord = {
                 accountId,
                 timeSpent: group.time_spent,
-                completionTime: now,
+                completionTime: now, // Use current timestamp for accurate cooldown calculation
                 levelId: request.level_id!,
                 eventToken: group.event_token,
               };
@@ -193,8 +284,25 @@ export class TaskCompletionHandler {
                 [accountId]: []
               }));
 
-              // Add to completed tasks
-              const completedTask: CompletedDailyTask = {
+              // For Session+Event pairs, ensure we only have one completion record
+              // Remove any existing individual completion records for this pair
+              const completedDate = new Date().toISOString().split('T')[0];
+              const completedKey = `dailyTasks_completed_${completedDate}`;
+              const existingCompleted = localStorage.getItem(completedKey);
+              let completedList: CompletedDailyTask[] = existingCompleted ? JSON.parse(existingCompleted) : [];
+
+              // Remove any individual completions for this pair's requests
+              completedList = completedList.filter(task => {
+                // Keep records that don't match this pair's requests
+                const isPairSession = task.id.startsWith(`${accountId}_level_`) &&
+                  group.requests.some(req => req.level_id === task.levelId && req.request_type === 'session');
+                const isPairEvent = task.eventToken === group.event_token &&
+                  task.id.includes(`_${group.event_token}_`);
+                return !isPairSession && !isPairEvent;
+              });
+
+              // Add the single pair completion record
+              const pairCompletedTask: CompletedDailyTask = {
                 id: `${accountId}_${group.event_token}_${now}`,
                 accountId,
                 accountName: foundTask!.account.name,
@@ -203,30 +311,31 @@ export class TaskCompletionHandler {
                 eventToken: group.event_token,
                 timeSpent: group.time_spent,
                 completionTime: now,
-                completionDate: new Date().toISOString().split('T')[0],
+                completionDate: completedDate,
                 levelId: request.level_id,
+                requestType: 'event', // Pair completions represent the event part of the pair
               };
 
-              // Save to localStorage
-              const completedDate = new Date().toISOString().split('T')[0];
-              const completedKey = `dailyTasks_completed_${completedDate}`;
-              const existingCompleted = localStorage.getItem(completedKey);
-              const completedList: CompletedDailyTask[] = existingCompleted ? JSON.parse(existingCompleted) : [];
-              completedList.push(completedTask);
+              completedList.push(pairCompletedTask);
               localStorage.setItem(completedKey, JSON.stringify(completedList));
 
               // Dispatch event to update sidebar
               window.dispatchEvent(new CustomEvent('daily-task-completed'));
 
-              // Remove this task from batches
-              const filteredBatches = updatedBatches.map(batch => ({
-                ...batch,
-                tasks: batch.tasks.filter(task => task.account.id !== accountId)
-              })).filter(batch => batch.tasks.length > 0);
+              // Remove this task from the specific batch it was in
+              const filteredBatches = updatedBatches.map(batch => {
+                if (batch.batchIndex === batchIndex) {
+                  return {
+                    ...batch,
+                    tasks: batch.tasks.filter(task => task.account.id !== accountId)
+                  };
+                }
+                return batch;
+              }).filter(batch => batch.tasks.length > 0);
 
               this.options.setBatches(filteredBatches);
 
-              // Update localStorage
+              // Update localStorage with filtered batches
               const serializedFilteredBatches = filteredBatches.map(batch => ({
                 ...batch,
                 tasks: batch.tasks.map(task => ({
@@ -247,19 +356,7 @@ export class TaskCompletionHandler {
           }
         }
 
-        // Check if the current batch is complete
-        const currentBatch = updatedBatches.find(b => b.batchIndex === foundBatch!.batchIndex);
-        if (currentBatch) {
-          const isBatchComplete = currentBatch.tasks.every(task =>
-            task.requests.every((_, idx) => task.completedTasks.has(idx.toString()))
-          );
-
-          if (isBatchComplete) {
-            // Batch completed - user can manually regenerate tasks to see next ready batch
-            // Automatic regeneration is disabled to prevent issues with already completed tasks
-          }
-        }
-
+        // If we get here, the task was partially completed (only one request in a pair)
         this.options.setBatches(updatedBatches);
 
         // Dispatch progress-updated event to refresh other components

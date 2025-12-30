@@ -1,6 +1,7 @@
 // src/utils/daily-tasks.utils.ts
 import { Account } from '../types';
 import { DailyTask, GameBatch, AccountCompletionRecord, AccountStartState } from '../types/daily-tasks.types';
+import { calculateTimerState } from './timer.utils';
 
 export const calculateFirstRequestAllowedTime = (account: Account, firstEventTimeSpent: number): number => {
     try {
@@ -26,6 +27,10 @@ export const calculateFirstRequestAllowedTime = (account: Account, firstEventTim
     }
 };
 
+/**
+ * Check if a task is ready to be executed
+ * This is a simplified wrapper around calculateTimerState for backward compatibility
+ */
 export const checkTaskReadiness = (
     task: DailyTask,
     batchIndex: number,
@@ -34,52 +39,21 @@ export const checkTaskReadiness = (
     accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
     accountStartStates: { [accountId: number]: AccountStartState }
 ): boolean => {
-    const accountId = task.account.id;
-    const completionRecord = accountCompletionRecords[accountId];
-
-    // 1. Check for sequential dependency (Blocked)
-    const isBlocked = allBatches.some(b =>
-        b.batchIndex < batchIndex &&
-        b.tasks.some(t => t.account.id === accountId)
+    const timerState = calculateTimerState(
+        task,
+        batchIndex,
+        allBatches,
+        currentTime,
+        accountCompletionRecords,
+        accountStartStates
     );
-
-    if (isBlocked) return false;
-
-    // 2. Check completion record readiness (Cooldown)
-    let isCompletionReady = true;
-    if (completionRecord) {
-        const currentGroup = task.requestGroups?.[0] || { time_spent: task.requests[0]?.time_spent || 0 };
-        const diff = Math.max(0, currentGroup.time_spent - completionRecord.timeSpent);
-        const requiredCooldown = diff * 1000;
-        const timeSinceCompletion = currentTime - completionRecord.completionTime;
-        isCompletionReady = timeSinceCompletion >= requiredCooldown;
-    }
-
-    // 3. Check account start state
-    const startState = accountStartStates[accountId];
-    let isStartReady = true;
-
-    if (!completionRecord) {
-        let firstRequestAllowedAt = startState?.firstRequestAllowedAt;
-
-        if (!firstRequestAllowedAt && task.requests.length > 0) {
-            const firstEvent = task.requests
-                .filter(r => r.request_type === 'session' || r.request_type === 'event')
-                .sort((a, b) => a.time_spent - b.time_spent)[0];
-
-            if (firstEvent) {
-                firstRequestAllowedAt = calculateFirstRequestAllowedTime(task.account, firstEvent.time_spent);
-            }
-        }
-
-        if (firstRequestAllowedAt) {
-            isStartReady = currentTime >= firstRequestAllowedAt;
-        }
-    }
-
-    return isCompletionReady && isStartReady;
+    return timerState.isReady;
 };
 
+/**
+ * Get detailed readiness information for a task
+ * This provides more information than just a boolean
+ */
 export const getTaskReadinessDetails = (
     task: DailyTask,
     batchIndex: number,
@@ -88,67 +62,27 @@ export const getTaskReadinessDetails = (
     accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
     accountStartStates: { [accountId: number]: AccountStartState }
 ) => {
-    const accountId = task.account.id;
-    const completionRecord = accountCompletionRecords[accountId];
-
-    // 1. Blocked
-    const isBlocked = allBatches.some(b =>
-        b.batchIndex < batchIndex &&
-        b.tasks.some(t => t.account.id === accountId)
+    const timerState = calculateTimerState(
+        task,
+        batchIndex,
+        allBatches,
+        currentTime,
+        accountCompletionRecords,
+        accountStartStates
     );
 
-    // 2. Cooldown
-    let isCompletionReady = true;
-    let completionRemainingTime = 0;
-    let completionComeBackTime: Date | null = null;
-
-    if (completionRecord) {
-        const currentGroup = task.requestGroups?.[0] || { time_spent: task.requests[0]?.time_spent || 0 };
-        const diff = Math.max(0, currentGroup.time_spent - completionRecord.timeSpent);
-        const requiredCooldown = diff * 1000;
-        const timeSinceCompletion = currentTime - completionRecord.completionTime;
-        isCompletionReady = timeSinceCompletion >= requiredCooldown;
-
-        if (!isCompletionReady) {
-            completionRemainingTime = Math.ceil((requiredCooldown - timeSinceCompletion) / 1000);
-            completionComeBackTime = new Date(currentTime + (requiredCooldown - timeSinceCompletion));
-        }
-    }
-
-    // 3. Start State
-    const startState = accountStartStates[accountId];
-    let isStartReady = true;
-    let startRemainingTime = 0;
-    let startComeBackTime: Date | null = null;
-
-    if (!completionRecord) {
-        let firstRequestAllowedAt = startState?.firstRequestAllowedAt;
-
-        if (!firstRequestAllowedAt && task.requests.length > 0) {
-            const firstEvent = task.requests
-                .filter(r => r.request_type === 'session' || r.request_type === 'event')
-                .sort((a, b) => a.time_spent - b.time_spent)[0];
-
-            if (firstEvent) {
-                firstRequestAllowedAt = calculateFirstRequestAllowedTime(task.account, firstEvent.time_spent);
-            }
-        }
-        if (firstRequestAllowedAt) {
-            isStartReady = currentTime >= firstRequestAllowedAt;
-            if (!isStartReady) {
-                startRemainingTime = Math.ceil((firstRequestAllowedAt - currentTime) / 1000);
-                startComeBackTime = new Date(firstRequestAllowedAt);
-            }
-        }
-    }
-
-    const isReady = !isBlocked && isCompletionReady && isStartReady;
-    const remainingTime = Math.max(completionRemainingTime, startRemainingTime);
-    const comeBackTime = startComeBackTime || completionComeBackTime;
-
-    return { isReady, isBlocked, remainingTime, comeBackTime };
+    return {
+        isReady: timerState.isReady,
+        isBlocked: timerState.isBlocked,
+        remainingTime: timerState.remainingTime,
+        comeBackTime: timerState.comeBackTime
+    };
 };
 
+/**
+ * Get interpolated time_spent for a given day
+ * Used for calculating purchase event timing
+ */
 export const getInterpolatedTimeSpent = (day: number, gameLevels: any[]): number => {
     if (gameLevels.length === 0) return 0;
 
