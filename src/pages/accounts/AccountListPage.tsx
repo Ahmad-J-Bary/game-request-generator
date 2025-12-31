@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
+import { formatTimeAMPM } from '../../services/excel/excel-date-utils';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { GameSelector } from '../../components/molecules/GameSelector';
@@ -148,7 +149,7 @@ export default function AccountListPage() {
                 </p>
                 <p className="text-sm">
                   <span className="font-medium">{t('accounts.startTime')}:</span>{' '}
-                  {account.start_time}
+                  {formatTimeAMPM(account.start_time)}
                 </p>
               </CardContent>
             </Card>

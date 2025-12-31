@@ -269,7 +269,7 @@ export function AccountsDataTable({
           <TableRow key={acc.id}>
             <TableCell style={dataRowStyle}>{acc.name}</TableCell>
             <TableCell style={dataRowStyle}>{formatDateShort(acc.start_date)}</TableCell>
-            <TableCell style={dataRowStyle}>{acc.start_time}</TableCell>
+            <TableCell style={dataRowStyle}>{formatTimeAMPM(acc.start_time)}</TableCell>
 
             {columns.map((c, colIdx) => {
               return (
@@ -296,4 +296,23 @@ function formatDateShort(input?: string): string {
   if (Number.isNaN(d.getTime())) return '-';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${d.getDate()}-${months[d.getMonth()]}`;
+}
+
+function formatTimeAMPM(timeStr?: string): string {
+  if (!timeStr) return '-';
+
+  // Check if it's already in AM/PM format
+  if (timeStr.match(/\s*(AM|PM)$/i)) return timeStr;
+
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+
+  let hour = parseInt(parts[0], 10);
+  const minute = parts[1];
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+
+  hour = hour % 12;
+  if (hour === 0) hour = 12;
+
+  return `${String(hour).padStart(2, '0')}:${minute} ${ampm}`;
 }

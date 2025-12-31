@@ -11,7 +11,7 @@ import { saveExcelFile } from './excel/excel-file-operations';
 import { parseExcelFile } from './excel/excel-parser';
 import { importFromExcel } from './excel/excel-import';
 import { getCellStyle } from './excel/excel-styling';
-import { formatDateShort, parseDate, addDays } from './excel/excel-date-utils';
+import { formatDateShort, parseDate, addDays, formatTimeAMPM } from './excel/excel-date-utils';
 import { buildColumns, createDateMatrix, getColumnStyle } from './excel/excel-column-builder';
 
 export interface ImportData {
@@ -29,7 +29,7 @@ export interface ExportData {
 
 export class ExcelService {
   // ===== Private Helper Methods (delegated to modules) =====
-  
+
   private static async saveFile(filename: string, buffer: any): Promise<boolean> {
     return saveExcelFile(filename, buffer);
   }
@@ -84,7 +84,7 @@ export class ExcelService {
         const accountRows = data.accounts.map(account => [
           account.name,
           account.start_date,
-          account.start_time
+          formatTimeAMPM(account.start_time)
         ]);
         const accountSheet = XLSX.utils.aoa_to_sheet([accountHeaders, ...accountRows]);
         XLSX.utils.book_append_sheet(workbook, accountSheet, 'Accounts');
@@ -221,7 +221,7 @@ export class ExcelService {
       wsData.push(headerRow1, headerRow2, headerRow3, headerRow4, headerRow5);
 
       accounts.forEach((acc, accIdx) => {
-        const row = [acc.name, formatDateShort(acc.start_date), acc.start_time];
+        const row = [acc.name, formatDateShort(acc.start_date), formatTimeAMPM(acc.start_time)];
         matrix[accIdx].forEach(date => row.push(date));
         wsData.push(row);
       });
@@ -869,7 +869,7 @@ export class ExcelService {
     }
   }
   // ===== Styling Methods (delegated to styling module) =====
-  
+
   private static getCellStyle(backgroundColor: string, theme: 'light' | 'dark', isHeader: boolean = false, isSynthetic: boolean = false) {
     return getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
   }

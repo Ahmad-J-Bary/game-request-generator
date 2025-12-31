@@ -258,7 +258,7 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
 
       // Only add levels that have required fields
       if (level.event_token && level.level_name && level.level_name !== '-' &&
-          level.days_offset != null && level.time_spent != null) {
+        level.days_offset != null && level.time_spent != null) {
         levels.push(level);
       }
     }
@@ -347,27 +347,30 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
       }
     }
 
-    // Parse start time - handle various formats and store in standardized 24-hour HH:MM:SS format
+    // Parse start time - handle various formats and store in standardized 24-hour HH:mm:ss format
     if (startTimeStr) {
       let parsedTime = startTimeStr.trim();
       let finalTime = '';
 
       // Handle AM/PM formats and convert to 24-hour format
+      // Matches: "03:40 PM", "3:40 PM", "03:40:00 PM", "15:40"
       const timeMatch = parsedTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
       if (timeMatch) {
-        let hours = parseInt(timeMatch[1]);
+        let hours = parseInt(timeMatch[1], 10);
         const minutes = timeMatch[2];
         const seconds = timeMatch[3] || '00';
         const ampm = timeMatch[4]?.toUpperCase();
 
-        // Convert to 24-hour format
-        if (ampm === 'PM' && hours !== 12) {
-          hours += 12;
-        } else if (ampm === 'AM' && hours === 12) {
-          hours = 0;
+        if (ampm) {
+          // Convert to 24-hour format
+          if (ampm === 'PM' && hours !== 12) {
+            hours += 12;
+          } else if (ampm === 'AM' && hours === 12) {
+            hours = 0;
+          }
         }
 
-        // Store in standardized HH:MM:SS format
+        // Store in standardized HH:mm:ss format
         finalTime = `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
       } else if (parsedTime.match(/^(\d{1,2}):(\d{2})$/)) {
         // Already in HH:MM format, add seconds
@@ -458,8 +461,8 @@ export function parseVerticalLayoutData(rows: any[][]): { levels: Partial<Level>
 
       // Determine if it's a bonus level (simple heuristic - check if level name contains bonus indicators)
       level.is_bonus = levelName.toLowerCase().includes('bonus') ||
-                      levelName.toLowerCase().includes('extra') ||
-                      levelName.match(/\+\d+/) !== null; // Contains +number
+        levelName.toLowerCase().includes('extra') ||
+        levelName.match(/\+\d+/) !== null; // Contains +number
 
       // Only add levels that have meaningful data
       if (level.level_name && level.level_name !== '-') {
