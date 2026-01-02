@@ -1,7 +1,8 @@
 // src/pages/accounts/AccountDetailPage.tsx
 
-import { useMemo, useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+// Force reload
+import { useMemo, useState, useEffect } from 'react';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '../../components/ui/card';
 import { LayoutToggle, Layout } from '../../components/molecules/LayoutToggle';
@@ -9,7 +10,7 @@ import { BackButton } from '../../components/molecules/BackButton';
 import { ImportDialog } from '../../components/molecules/ImportDialog';
 import { ExportDialog } from '../../components/molecules/ExportDialog';
 import { Button } from '../../components/ui/button';
-import { Download, Upload, Edit3, Save, X, CheckSquare } from 'lucide-react';
+import { Download, Upload, Edit3, Save, X, CheckSquare, ArrowLeft, ArrowRight } from 'lucide-react';
 import { Level, Account } from '../../types';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
@@ -67,6 +68,7 @@ export default function AccountDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
   const { colors } = useSettings();
   const { theme } = useTheme();
 
@@ -74,12 +76,59 @@ export default function AccountDetailPage() {
   const stateAccount: Account | undefined = state.account;
   const stateLevels: Level[] | undefined = state.levels;
 
-  const { accounts } = useAccounts(undefined as any);
-  const account = stateAccount ?? accounts?.find((a) => String(a.id) === String(id));
+  const [fetchedAccount, setFetchedAccount] = useState<Account | null>(null);
+
+  useEffect(() => {
+    if (!stateAccount && id) {
+      TauriService.getAccountById(parseInt(id, 10))
+        .then(setFetchedAccount)
+        .catch(console.error);
+    }
+  }, [id, stateAccount]);
+
+  const account = stateAccount ?? fetchedAccount;
   const gameIdForLevels = account?.game_id ?? undefined;
+
+  const { accounts } = useAccounts(gameIdForLevels); // Now fetches siblings!
 
   const { levels: fetchedLevels = [] } = useLevels(gameIdForLevels);
   const { events: purchaseEvents = [] } = usePurchaseEvents(gameIdForLevels);
+
+  // Calculate previous and next accounts
+  const { prevAccount, nextAccount } = useMemo(() => {
+    if (!account || !accounts) return { prevAccount: null, nextAccount: null };
+
+    // Filter accounts for the same game
+    const gameAccounts = accounts.filter(a => a.game_id === account.game_id);
+
+    // Sort accounts by date/time (same logic as list page)
+    const sortedAccounts = [...gameAccounts].sort((a, b) => {
+      try {
+        const dateA = new Date(`${a.start_date}T${a.start_time}`);
+        const dateB = new Date(`${b.start_date}T${b.start_time}`);
+        
+        if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) {
+          if (a.start_date !== b.start_date) {
+            return a.start_date.localeCompare(b.start_date);
+          }
+          return a.start_time.localeCompare(b.start_time);
+        }
+        
+        return dateA.getTime() - dateB.getTime();
+      } catch (e) {
+        return 0;
+      }
+    });
+
+    const currentIndex = sortedAccounts.findIndex(a => a.id === account.id);
+    
+    if (currentIndex === -1) return { prevAccount: null, nextAccount: null };
+
+    return {
+      prevAccount: currentIndex > 0 ? sortedAccounts[currentIndex - 1] : null,
+      nextAccount: currentIndex < sortedAccounts.length - 1 ? sortedAccounts[currentIndex + 1] : null
+    };
+  }, [account, accounts]);
 
   // الحصول على بيانات التقدم
   const accountId = parseInt(id || '0', 10);
@@ -325,19 +374,6 @@ export default function AccountDetailPage() {
     return parseDateFlexible(account?.start_date ?? '') || new Date();
   }, [account]);
 
-  if (!account) {
-    return (
-      <div className="p-6">
-        <div className="mb-4">
-          <BackButton />
-        </div>
-        <Card>
-          <CardContent className="p-6 text-center">Account not found</CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const columns = useMemo(() => {
     const levelCols = levels.map((l) => ({
       kind: 'level' as const,
@@ -570,8 +606,22 @@ export default function AccountDetailPage() {
     });
   }, [columns, startDateObj, isEditMode, tempPurchaseDates, purchaseProgress]);
 
+  if (!account) {
+    return (
+      <div className="p-6">
+        <div className="mb-4">
+          <BackButton />
+        </div>
+        <Card>
+          <CardContent className="p-6 text-center">Account not found</CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
+      <div className="flex-1">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold">{account.name}</h2>
@@ -717,6 +767,39 @@ export default function AccountDetailPage() {
         levelsProgress={levelsProgress}
         purchaseProgress={purchaseProgress}
       />
+      </div>
+
+      {/* Account Navigation Arrows */}
+      {(prevAccount || nextAccount) && (
+        <div className="sticky bottom-0 w-[calc(100%+3rem)] -ml-6 -mb-6 bg-gray-100 border-t border-gray-200 p-4 flex justify-between items-center z-40 mt-auto">
+          <div>
+            {prevAccount && (
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/accounts/${prevAccount.id}`)}
+                className="flex items-center gap-2"
+                title={`${t('common.previous', 'Previous')}: ${prevAccount.name}`}
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">{prevAccount.name}</span>
+              </Button>
+            )}
+          </div>
+          <div>
+            {nextAccount && (
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/accounts/${nextAccount.id}`)}
+                className="flex items-center gap-2"
+                title={`${t('common.next', 'Next')}: ${nextAccount.name}`}
+              >
+                <span className="hidden sm:inline">{nextAccount.name}</span>
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

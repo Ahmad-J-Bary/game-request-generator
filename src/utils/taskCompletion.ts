@@ -125,7 +125,8 @@ export class TaskCompletionHandler {
           completionTime: Date.now(),
           completionDate: new Date().toISOString().split('T')[0],
           levelId: undefined, // Purchase events don't have level IDs
-          requestType: 'purchase_event',
+          requestType: request.request_type as 'session' | 'event',
+          isPurchase: true,
         };
 
         // Save to localStorage
@@ -140,31 +141,68 @@ export class TaskCompletionHandler {
         // Dispatch event to update sidebar
         window.dispatchEvent(new CustomEvent('daily-task-completed'));
 
-        // Remove this task from the specific batch it was in
-        const updatedBatches = this.options.batches.map(batch => {
-          if (batch.batchIndex === batchIndex) {
-            return {
-              ...batch,
-              tasks: batch.tasks.filter(task => task.account.id !== accountId)
-            };
-          }
-          return batch;
-        }).filter(batch => batch.tasks.length > 0);
+        // Update task completion status
+        const updatedBatches = this.options.batches.map(batch => ({
+          ...batch,
+          tasks: batch.tasks.map(task => {
+            if (task.account.id === accountId) {
+              const newCompletedTasks = new Set(task.completedTasks);
+              newCompletedTasks.add(requestIndex.toString());
+              return { ...task, completedTasks: newCompletedTasks };
+            }
+            return task;
+          })
+        }));
 
         this.options.setBatches(updatedBatches);
 
-        // Update localStorage with filtered batches
-        const serializedFilteredBatches = updatedBatches.map(batch => ({
-          ...batch,
-          tasks: batch.tasks.map(task => ({
-            ...task,
-            completedTasks: Array.from(task.completedTasks)
-          }))
-        }));
-        localStorage.setItem(`dailyTasks_batches_${completedDate}`, JSON.stringify({
-          batches: serializedFilteredBatches,
-          accountScheduledTime: {} // This would need to be passed in or managed differently
-        }));
+        // Check if all requests for this account in this batch are completed
+        const currentBatch = updatedBatches.find(b => b.batchIndex === batchIndex);
+        const taskInBatch = currentBatch?.tasks.find(t => t.account.id === accountId);
+        const allCompleted = taskInBatch && taskInBatch.requests.every((_, idx) => 
+          taskInBatch.completedTasks.has(idx.toString())
+        );
+
+        if (allCompleted) {
+          // Remove this task from the specific batch it was in
+          const filteredBatches = updatedBatches.map(batch => {
+            if (batch.batchIndex === batchIndex) {
+              return {
+                ...batch,
+                tasks: batch.tasks.filter(task => task.account.id !== accountId)
+              };
+            }
+            return batch;
+          }).filter(batch => batch.tasks.length > 0);
+
+          this.options.setBatches(filteredBatches);
+
+          // Update localStorage with filtered batches
+          const serializedFilteredBatches = filteredBatches.map(batch => ({
+            ...batch,
+            tasks: batch.tasks.map(task => ({
+              ...task,
+              completedTasks: Array.from(task.completedTasks)
+            }))
+          }));
+          localStorage.setItem(`dailyTasks_batches_${completedDate}`, JSON.stringify({
+            batches: serializedFilteredBatches,
+            accountScheduledTime: {}
+          }));
+        } else {
+          // Update localStorage with partially completed task
+          const serializedBatches = updatedBatches.map(batch => ({
+            ...batch,
+            tasks: batch.tasks.map(task => ({
+              ...task,
+              completedTasks: Array.from(task.completedTasks)
+            }))
+          }));
+          localStorage.setItem(`dailyTasks_batches_${completedDate}`, JSON.stringify({
+            batches: serializedBatches,
+            accountScheduledTime: {}
+          }));
+        }
 
         // Dispatch progress-updated event
         window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
@@ -220,6 +258,7 @@ export class TaskCompletionHandler {
             completionDate: new Date().toISOString().split('T')[0],
             levelId: request.level_id,
             requestType: request.request_type as 'session' | 'event',
+            isPurchase: false,
           };
 
           // Save to localStorage
@@ -314,6 +353,7 @@ export class TaskCompletionHandler {
                 completionDate: completedDate,
                 levelId: request.level_id,
                 requestType: 'event', // Pair completions represent the event part of the pair
+                isPurchase: false,
               };
 
               completedList.push(pairCompletedTask);

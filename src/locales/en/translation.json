@@ -199,6 +199,7 @@
     "copyingNotAllowed": "Copying not allowed",
     "completionNotAllowed": "Completion not allowed",
     "accountInitializing": "Account initializing - first request available {{time}}",
+    "requestAvailable": "Request available {{time}}",
     "completedToday": "Completed Today",
     "noCompletedTasks": "No Completed Tasks",
     "noCompletedTasksDescription": "Complete tasks to see them here",

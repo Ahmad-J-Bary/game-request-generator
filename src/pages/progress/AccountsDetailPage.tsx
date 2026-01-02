@@ -19,6 +19,12 @@ import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
 import { ProgressProvider } from '../../components/progress/ProgressProvider';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useGames } from '../../hooks/useGames';
+import { TauriService } from '../../services/tauri.service';
+import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Plus } from 'lucide-react';
 
 import type { PurchaseEvent } from '../../types';
 
@@ -57,6 +63,27 @@ export default function AccountsDetailPage() {
   const { accounts = [] } = useAccounts(selectedGameId);
   const { levels = [] } = useLevels(selectedGameId);
   const { events: purchaseEvents = [] } = usePurchaseEvents(selectedGameId);
+  const { games } = useGames();
+  
+  const [isCreatingGame, setIsCreatingGame] = useState(false);
+  const [newGameName, setNewGameName] = useState('');
+
+  const handleCreateGame = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!newGameName.trim()) return;
+
+    try {
+        const newId = await TauriService.addGame({ name: newGameName });
+        if (newId) {
+            setNewGameName('');
+            setIsCreatingGame(false);
+            window.dispatchEvent(new CustomEvent('games-updated', { detail: { id: newId } }));
+            setSelectedGameId(newId);
+        }
+    } catch (error) {
+        console.error('Failed to create game:', error);
+    }
+  };
 
 
   const columns = useMemo(() => {
@@ -246,7 +273,8 @@ export default function AccountsDetailPage() {
 
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-4 min-h-[calc(100vh-4rem)] relative flex flex-col">
+      <div className="flex-1">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Accounts Detail</h2>
 
@@ -388,6 +416,65 @@ export default function AccountsDetailPage() {
         onOpenChange={setShowImportDialog}
         gameId={selectedGameId}
       />
+      </div>
+
+      {/* Excel-like Game Tabs Navigation */}
+      <div className="sticky bottom-0 w-[calc(100%+3rem)] -ml-6 -mb-6 bg-gray-200 border-t border-gray-300 h-10 flex items-end px-2 z-40 overflow-x-auto mt-auto">
+        {games.map((g) => {
+          const isActive = g.id === selectedGameId;
+          return (
+            <div
+              key={g.id}
+              onClick={() => setSelectedGameId(g.id)}
+              className={`
+                flex items-center gap-2 px-4 py-1.5 min-w-[120px] max-w-[200px] text-sm cursor-pointer select-none border-r border-gray-300 transition-colors
+                ${isActive 
+                  ? 'bg-white font-bold text-green-700 border-t-2 border-t-green-600 rounded-t-sm shadow-[0_-2px_4px_rgba(0,0,0,0.05)] h-[34px] relative top-[1px]' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-50 h-[30px] mb-[1px]'
+                }
+              `}
+              title={g.name}
+            >
+              <span className="truncate">{g.name}</span>
+            </div>
+          );
+        })}
+        
+        {/* Add New Game Popover */}
+        <Popover open={isCreatingGame} onOpenChange={setIsCreatingGame}>
+          <PopoverTrigger asChild>
+            <div 
+                className="flex items-center justify-center w-8 h-[30px] mb-[1px] bg-gray-300 hover:bg-gray-400 text-gray-600 cursor-pointer rounded-tr-sm ml-1"
+                title={t('games.addGame', 'Add New Game')}
+            >
+                <Plus className="h-4 w-4" />
+            </div>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 p-4 mb-2" side="top" align="start">
+            <form onSubmit={handleCreateGame} className="space-y-4">
+              <div className="space-y-2">
+                <h4 className="font-medium leading-none">{t('games.newGame', 'New Game')}</h4>
+                <p className="text-sm text-muted-foreground">
+                  {t('games.enterName', 'Enter the name for the new game sheet.')}
+                </p>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="name" className="sr-only">Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Game Name"
+                  value={newGameName}
+                  onChange={(e) => setNewGameName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <Button type="submit" size="sm" className="w-full">
+                {t('common.create', 'Create')}
+              </Button>
+            </form>
+          </PopoverContent>
+        </Popover>
+      </div>
     </div>
   );
 }

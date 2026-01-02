@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, CheckCircle, Clock, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { cn } from '../lib/utils';
@@ -18,7 +18,7 @@ interface CompletedTasksSidebarProps {
 export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebarProps) {
     const { t } = useTranslation();
     const [completedTasks, setCompletedTasks] = useState<CompletedDailyTask[]>([]);
-    const [expandedGames, setExpandedGames] = useState<Set<number>>(new Set());
+    const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
 
     // Load completed tasks from localStorage
     useEffect(() => {
@@ -44,9 +44,8 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                 const tasks: CompletedDailyTask[] = JSON.parse(stored);
                 setCompletedTasks(tasks);
 
-                // Auto-expand all games by default
-                const gameIds = new Set(tasks.map(t => t.gameId));
-                setExpandedGames(gameIds);
+                // Note: We no longer auto-expand everything. 
+                // New completions will naturally be collapsed (capped).
             } catch (error) {
                 console.error('Error loading completed tasks:', error);
                 setCompletedTasks([]);
@@ -61,37 +60,41 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
         const storageKey = `dailyTasks_completed_${today}`;
         localStorage.removeItem(storageKey);
         setCompletedTasks([]);
+        setExpandedAccounts(new Set());
     };
 
-    const toggleGameExpanded = (gameId: number) => {
-        setExpandedGames(prev => {
+    const toggleAccountExpanded = (gameId: number, accountId: number) => {
+        const key = `${gameId}-${accountId}`;
+        setExpandedAccounts(prev => {
             const newSet = new Set(prev);
-            if (newSet.has(gameId)) {
-                newSet.delete(gameId);
+            if (newSet.has(key)) {
+                newSet.delete(key);
             } else {
-                newSet.add(gameId);
+                newSet.add(key);
             }
             return newSet;
         });
     };
 
-    // Group tasks by game, then by eventToken within each game
+    // Group tasks by game, then by account within each game
     const tasksByGame = completedTasks.reduce((acc, task) => {
         if (!acc[task.gameId]) {
             acc[task.gameId] = {
                 gameName: task.gameName,
-                eventTokens: {}
+                accounts: {}
             };
         }
 
-        const eventToken = task.eventToken || 'No Token';
-        if (!acc[task.gameId].eventTokens[eventToken]) {
-            acc[task.gameId].eventTokens[eventToken] = [];
+        if (!acc[task.gameId].accounts[task.accountId]) {
+            acc[task.gameId].accounts[task.accountId] = {
+                accountName: task.accountName,
+                tasks: []
+            };
         }
 
-        acc[task.gameId].eventTokens[eventToken].push(task);
+        acc[task.gameId].accounts[task.accountId].tasks.push(task);
         return acc;
-    }, {} as Record<number, { gameName: string; eventTokens: Record<string, CompletedDailyTask[]> }>);
+    }, {} as Record<number, { gameName: string; accounts: Record<number, { accountName: string; tasks: CompletedDailyTask[] }> }>);
 
     const formatTime = (timestamp: number) => {
         return new Date(timestamp).toLocaleTimeString([], {
@@ -136,78 +139,94 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                             </p>
                         </div>
                     ) : (
-                        <div className="space-y-4">
-                            {Object.entries(tasksByGame).map(([gameId, { gameName, eventTokens }]) => {
-                                const totalTasks = Object.values(eventTokens).reduce((sum, tasks) => sum + tasks.length, 0);
-                                return (
-                                    <Card key={gameId}>
-                                        <CardHeader
-                                            className="cursor-pointer hover:bg-accent/50 transition-colors p-3"
-                                            onClick={() => toggleGameExpanded(Number(gameId))}
-                                        >
-                                            <div className="flex items-center justify-between">
-                                                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                                                    {expandedGames.has(Number(gameId)) ? (
-                                                        <ChevronDown className="h-4 w-4" />
-                                                    ) : (
-                                                        <ChevronRight className="h-4 w-4" />
-                                                    )}
-                                                    {gameName}
-                                                </CardTitle>
-                                                <Badge variant="outline" className="text-xs">
-                                                    {totalTasks}
-                                                </Badge>
-                                            </div>
-                                        </CardHeader>
-
-                                        {expandedGames.has(Number(gameId)) && (
-                                            <CardContent className="p-3 pt-0 space-y-3">
-                                                {Object.entries(eventTokens).map(([eventToken, tasks]) => (
-                                                    <div key={eventToken} className="space-y-2">
-                                                        <div className="flex items-center gap-2 px-2">
-                                                            <Badge variant="secondary" className="text-xs font-medium">
-                                                                Event Token: {eventToken}
-                                                            </Badge>
-                                                            <Badge variant="outline" className="text-xs">
+                        <div className="space-y-6">
+                            {Object.entries(tasksByGame).map(([gameId, { gameName, accounts }]) => (
+                                <div key={gameId} className="space-y-3">
+                                    <div className="flex items-center gap-2 px-2">
+                                        <Badge variant="outline" className="text-xs font-bold uppercase tracking-wider bg-primary/5">
+                                            {gameName}
+                                        </Badge>
+                                    </div>
+                                    
+                                    <div className="space-y-2">
+                                        {Object.entries(accounts).map(([accountId, { accountName, tasks }]) => {
+                                            const isExpanded = expandedAccounts.has(`${gameId}-${accountId}`);
+                                            const latestTask = tasks[tasks.length - 1];
+                                            
+                                            return (
+                                                <Card key={accountId} className="overflow-hidden border-muted">
+                                                    <div 
+                                                        className="p-3 cursor-pointer hover:bg-accent/50 transition-colors flex items-center justify-between"
+                                                        onClick={() => toggleAccountExpanded(Number(gameId), Number(accountId))}
+                                                    >
+                                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                            {isExpanded ? (
+                                                                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                            ) : (
+                                                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                            )}
+                                                            <span className="font-semibold text-sm truncate">{accountName}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                                                            {!isExpanded && (
+                                                                <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+                                                                    {latestTask.timeSpent}s
+                                                                </span>
+                                                            )}
+                                                            <Badge variant="secondary" className="text-[10px] px-1.5">
                                                                 {tasks.length}
                                                             </Badge>
                                                         </div>
-                                                        <div className="space-y-1 ml-4">
+                                                    </div>
+
+                                                    {isExpanded && (
+                                                        <CardContent className="p-3 pt-0 space-y-2 border-t bg-muted/10">
                                                             {tasks.map((task) => (
                                                                 <div
                                                                     key={task.id}
-                                                                    className="border rounded-lg p-3 bg-muted/30 space-y-1"
+                                                                    className={cn(
+                                                                        "border rounded-md p-2.5 space-y-1 text-sm transition-colors",
+                                                                        task.isPurchase 
+                                                                            ? "bg-amber-500/10 border-amber-500/20" 
+                                                                            : "bg-background border-border"
+                                                                    )}
                                                                 >
                                                                     <div className="flex items-center justify-between">
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className="font-medium text-sm">{task.accountName}</span>
                                                                             <Badge
                                                                                 variant={task.requestType === 'session' ? 'default' : 'secondary'}
-                                                                                className="text-xs"
+                                                                                className={cn(
+                                                                                    "text-[10px] h-4 px-1.5",
+                                                                                    task.isPurchase && task.requestType === 'session' && "bg-amber-600 hover:bg-amber-600",
+                                                                                    task.isPurchase && task.requestType === 'event' && "bg-amber-100 text-amber-900 border-amber-200"
+                                                                                )}
                                                                             >
-                                                                                {task.requestType === 'session' ? 'Session' :
-                                                                                 task.requestType === 'event' ? 'Event' :
-                                                                                 task.requestType === 'purchase_event' ? 'Purchase' : 'Unknown'}
+                                                                                {task.requestType === 'session' ? 'Session' : 'Event'}
                                                                             </Badge>
+                                                                            {task.eventToken && (
+                                                                                <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[120px]">
+                                                                                    {task.eventToken}
+                                                                                </span>
+                                                                            )}
                                                                         </div>
-                                                                    </div>
-                                                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                                                        <span className="flex items-center gap-1">
-                                                                            <Clock className="h-3 w-3" />
-                                                                            {formatTime(task.completionTime)}
+                                                                        <span className="text-[10px] font-medium text-muted-foreground">
+                                                                            {task.timeSpent}s
                                                                         </span>
-                                                                        <span>{task.timeSpent}s</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
+                                                                        <Clock className="h-3 w-3" />
+                                                                        {formatTime(task.completionTime)}
                                                                     </div>
                                                                 </div>
                                                             ))}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </CardContent>
-                                        )}
-                                    </Card>
-                                );
-                            })}
+                                                        </CardContent>
+                                                    )}
+                                                </Card>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </ScrollArea>

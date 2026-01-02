@@ -23,20 +23,20 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy 
             case 'event':
                 return 'Event';
             case 'purchase_event':
-                return 'Purchase Event';
+                return 'Purchase'; // Fallback for existing data if any
             default:
                 return type;
         }
     };
 
-    const getRequestTypeBadgeVariant = (type: string): 'default' | 'secondary' | 'destructive' => {
+    const getRequestTypeBadgeVariant = (type: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
         switch (type) {
             case 'session':
                 return 'default';
             case 'event':
                 return 'secondary';
             case 'purchase_event':
-                return 'destructive';
+                return 'outline';
             default:
                 return 'default';
         }

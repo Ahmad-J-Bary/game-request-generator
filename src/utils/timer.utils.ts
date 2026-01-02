@@ -4,7 +4,6 @@
  */
 
 import type { DailyTask, GameBatch, AccountCompletionRecord, AccountStartState } from '../types/daily-tasks.types';
-import { calculateFirstRequestAllowedTime } from './daily-tasks.utils';
 
 export interface TimerState {
   isReady: boolean;
@@ -20,7 +19,7 @@ export interface TimerState {
  */
 export const calculateTimerState = (
   task: DailyTask,
-  batchIndex: number,
+  _batchIndex: number,
   allBatches: GameBatch[],
   currentTime: number,
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
@@ -28,83 +27,107 @@ export const calculateTimerState = (
 ): TimerState => {
   const accountId = task.account.id;
   const completionRecord = accountCompletionRecords[accountId];
-
-  // 1. Check for sequential dependency (Blocked by previous batch)
-  const isBlocked = allBatches.some(b =>
-    b.batchIndex < batchIndex &&
-    b.tasks.some(t => t.account.id === accountId)
-  );
-
-  if (isBlocked) {
-    return {
-      isReady: false,
-      isBlocked: true,
-      remainingTime: 0,
-      comeBackTime: null,
-      reason: 'blocked'
-    };
-  }
-
-  // 2. Check completion record readiness (Cooldown after completing previous task)
-  if (completionRecord) {
-    const currentGroup = task.requestGroups?.[0] || { time_spent: task.requests[0]?.time_spent || 0 };
-    const diff = Math.max(0, currentGroup.time_spent - completionRecord.timeSpent);
-    const requiredCooldown = diff * 1000; // Convert to milliseconds
-
-    const timeSinceCompletion = currentTime - completionRecord.completionTime;
-    const isCompletionReady = timeSinceCompletion >= requiredCooldown;
-
-    if (!isCompletionReady) {
-      const remainingTime = Math.ceil((requiredCooldown - timeSinceCompletion) / 1000);
-      const comeBackTime = new Date(currentTime + (requiredCooldown - timeSinceCompletion));
-
-      return {
-        isReady: false,
-        isBlocked: false,
-        remainingTime,
-        comeBackTime,
-        reason: 'cooldown'
-      };
-    }
-  }
-
-  // 3. Check account start state (Initial delay before first request)
   const startState = accountStartStates[accountId];
 
-  // Only check start state if there's no completion record (first task)
-  if (!completionRecord) {
-    let firstRequestAllowedAt = startState?.firstRequestAllowedAt;
+  // flattened list of all tasks for this account in order to find previous task
+  let previousTask: DailyTask | null = null;
+  let foundCurrent = false;
 
-    // Calculate if not already set
-    if (!firstRequestAllowedAt && task.requests.length > 0) {
-      const firstEvent = task.requests
-        .filter(r => r.request_type === 'session' || r.request_type === 'event')
-        .sort((a, b) => a.time_spent - b.time_spent)[0];
-
-      if (firstEvent) {
-        firstRequestAllowedAt = calculateFirstRequestAllowedTime(task.account, firstEvent.time_spent);
+  for (const batch of allBatches) {
+      for (const t of batch.tasks) {
+          if (t.account.id === accountId) {
+              if (t === task || (t.account.id === task.account.id && t.requests[0]?.event_token === task.requests[0]?.event_token && t.requests[0]?.level_id === task.requests[0]?.level_id)) { 
+                  // Matching generic object identity or ID/Token/Level combo for safety
+                  foundCurrent = true;
+                  break;
+              }
+              previousTask = t;
+          }
       }
-    }
+      if (foundCurrent) break;
+  }
+  
+  // Helper to get timeSpent of a task
+  const getTaskTimeSpent = (t: DailyTask): number => {
+       return t.requestGroups?.[0]?.time_spent || t.requests[0]?.time_spent || 0;
+  };
+  
+  // Helper to check if a task is completed
+  const isTaskCompleted = (t: DailyTask): boolean => {
+      // Check if all requests in the task are completed
+      if (!t.requests || t.requests.length === 0) return true;
+      return t.requests.every((_, idx) => t.completedTasks.has(idx.toString()));
+  };
 
-    if (firstRequestAllowedAt) {
-      const isStartReady = currentTime >= firstRequestAllowedAt;
+  // 1. Check for sequential dependency (Pending Previous)
+  // If there is a previous task and it is NOT completed, this task is blocked.
+  if (previousTask && !isTaskCompleted(previousTask)) {
+    // Fallback: Check if we have a completion record for this "incomplete" previous task
+    // This handles cases where state might be out of sync or task removal logic is complex
+    // If completionRecord exists and matches the previous task's identity, we assume it's done.
+    const prevGroup = previousTask.requestGroups?.[0];
+    const prevToken = prevGroup?.event_token || previousTask.requests[0]?.event_token;
+    
+    // Note: completionRecord.eventToken might be sufficient matching
+    const matchesRecord = completionRecord && (
+        (prevToken && completionRecord.eventToken === prevToken)
+    );
 
-      if (!isStartReady) {
-        const remainingTime = Math.ceil((firstRequestAllowedAt - currentTime) / 1000);
-        const comeBackTime = new Date(firstRequestAllowedAt);
-
+    if (!matchesRecord) {
         return {
+        isReady: false,
+        isBlocked: true,
+        remainingTime: 0,
+        comeBackTime: null,
+        reason: 'blocked'
+        };
+    }
+  }
+
+  // 2. Check Wait Time (Cooldown or Initialization)
+  let targetTime = 0;
+  let reason: TimerState['reason'] = 'cooldown';
+
+  // We prioritize completionRecord logic if it exists, as it represents the authoritative last action.
+  // This works even if previousTask was removed (e.g. Purchase Event).
+  if (completionRecord) {
+        // Calculate target based on Last Completion + Delta
+        // We need Current Task TimeSpent.
+        // We also need Previous Task TimeSpent. 
+        // If previousTask exists, use it. 
+        // If NOT (removed), use completionRecord.timeSpent (which stores the timeSpent of the completed task).
+        
+        const currentTimeSpent = getTaskTimeSpent(task);
+        const prevTimeSpent = previousTask ? getTaskTimeSpent(previousTask) : completionRecord.timeSpent;
+        
+        // Formula: Target = PrevCompletion + (CurrentTimeSpent - PrevTimeSpent)
+        const deltaSeconds = Math.max(0, currentTimeSpent - prevTimeSpent);
+        targetTime = completionRecord.completionTime + (deltaSeconds * 1000);
+  } else if (startState && startState.startTime) {
+      // 3. First Task / Initializing Logic (No completion record found)
+      reason = 'initializing';
+      // Parse start time
+      const baseTime = new Date(startState.startTime).getTime();
+      
+      if (!isNaN(baseTime)) {
+            const timeSpent = getTaskTimeSpent(task);
+            targetTime = baseTime + (timeSpent * 1000);
+      }
+  }
+
+  // Check if we need to wait
+  if (targetTime > 0 && currentTime < targetTime) {
+       const remainingTime = Math.ceil((targetTime - currentTime) / 1000);
+       return {
           isReady: false,
           isBlocked: false,
           remainingTime,
-          comeBackTime,
-          reason: 'initializing'
-        };
-      }
-    }
+          comeBackTime: new Date(targetTime),
+          reason: reason
+       };
   }
 
-  // Task is ready
+  // 3. Task is ready
   return {
     isReady: true,
     isBlocked: false,
@@ -144,11 +167,13 @@ export const getTimerMessage = (
   }
 
   if (timerState.isBlocked) {
-    return t('dailyTasks.waitingPrevious');
+    return t('dailyTasks.blockedByPrevious');
   }
 
-  if (timerState.reason === 'cooldown') {
-    return t('dailyTasks.waitingTime', { seconds: timerState.remainingTime });
+  if (timerState.reason === 'cooldown' && timerState.comeBackTime) {
+    return t('dailyTasks.requestAvailable', { 
+        time: timerState.comeBackTime.toLocaleString() 
+    });
   }
 
   if (timerState.reason === 'initializing' && timerState.comeBackTime) {

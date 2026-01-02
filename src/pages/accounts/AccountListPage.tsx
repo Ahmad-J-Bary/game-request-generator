@@ -108,7 +108,28 @@ export default function AccountListPage() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {accounts.map((account) => (
+          {[...accounts]
+            .sort((a, b) => {
+              try {
+                // Combine date and time for comparison
+                // Assuming start_date is YYYY-MM-DD and start_time is HH:mm or HH:mm:ss
+                const dateA = new Date(`${a.start_date}T${a.start_time}`);
+                const dateB = new Date(`${b.start_date}T${b.start_time}`);
+                
+                if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) {
+                  // Fallback to simple string comparison if parsing fails
+                  if (a.start_date !== b.start_date) {
+                    return a.start_date.localeCompare(b.start_date);
+                  }
+                  return a.start_time.localeCompare(b.start_time);
+                }
+                
+                return dateA.getTime() - dateB.getTime();
+              } catch (e) {
+                return 0;
+              }
+            })
+            .map((account) => (
             <Card key={account.id}>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">

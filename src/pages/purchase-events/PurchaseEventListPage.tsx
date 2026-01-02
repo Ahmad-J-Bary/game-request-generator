@@ -26,11 +26,14 @@ export default function PurchaseEventListPage() {
   const location = useLocation();
   const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
 
-  // Handle navigation state for pre-selected game
+  // Handle navigation state for pre-selected game and create mode
   useEffect(() => {
-    const state = location.state as { selectedGameId?: number };
+    const state = location.state as { selectedGameId?: number; createMode?: boolean };
     if (state?.selectedGameId) {
       setSelectedGameId(state.selectedGameId);
+    }
+    if (state?.createMode) {
+      setShowForm(true);
     }
   }, [location.state]);
   const [layout, setLayout] = useState<Layout>('vertical');

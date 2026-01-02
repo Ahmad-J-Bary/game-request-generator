@@ -13,6 +13,7 @@ export interface CompletedDailyTask {
     completionDate: string; // YYYY-MM-DD
     levelId?: number;
     requestType?: 'session' | 'event' | 'purchase_event'; // Type of request that was completed
+    isPurchase?: boolean;
 }
 
 export interface DailyTasksStorage {

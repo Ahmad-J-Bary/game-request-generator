@@ -35,14 +35,17 @@ export default function LevelListPage() {
   const [mode, setMode] = useState<Mode>('event-only');
   const { levels = [], loading, deleteLevel } = useLevels(selectedGameId);
 
-  // Handle navigation state for pre-selected game
+  // Handle navigation state for pre-selected game and create mode
+  const [showForm, setShowForm] = useState(false);
   useEffect(() => {
-    const state = location.state as { selectedGameId?: number };
+    const state = location.state as { selectedGameId?: number; createMode?: boolean };
     if (state?.selectedGameId) {
       setSelectedGameId(state.selectedGameId);
     }
+    if (state?.createMode) {
+      setShowForm(true);
+    }
   }, [location.state]);
-  const [showForm, setShowForm] = useState(false);
   const [editingLevel, setEditingLevel] = useState<Level | null>(null);
   const [deletingLevel, setDeletingLevel] = useState<Level | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);

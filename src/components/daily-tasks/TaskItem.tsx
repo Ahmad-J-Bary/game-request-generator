@@ -2,8 +2,9 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { RequestItem } from './RequestItem';
-import { calculateFirstRequestAllowedTime } from '../../utils/daily-tasks.utils';
+import { calculateTimerState, getTimerMessage, formatRemainingTime } from '../../utils/timer.utils';
 import { TaskItemProps } from '../../types/daily-tasks.types';
+import { cn } from '../../lib/utils';
 
 export function TaskItem({ task, onCompleteTask, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, currentTime }: TaskItemProps & { currentTime: number }) {
   const { t } = useTranslation();
@@ -11,83 +12,20 @@ export function TaskItem({ task, onCompleteTask, onCopyRequest, accountCompletio
   const accountId = task.account.id;
   const completionRecord = accountCompletionRecords[accountId];
 
-  // 1. Check for sequential dependency (Blocked)
-  const isBlocked = allBatches.some(b =>
-    b.batchIndex < batchIndex &&
-    b.tasks.some(t => t.account.id === accountId)
+  // Determine if this is a purchase task (level_id is null for all requests in a purchase event)
+  const isPurchaseTask = task.requests.some(req => req.level_id === null || req.level_id === undefined);
+
+  // Use centralized timer logic
+  const timerState = calculateTimerState(
+    task,
+    batchIndex,
+    allBatches,
+    currentTime,
+    accountCompletionRecords,
+    accountStartStates
   );
 
-  // 2. Check completion record readiness (Cooldown)
-  let isCompletionReady = true;
-  let completionRemainingTime = 0;
-  let completionComeBackTime: Date | null = null;
-
-  if (completionRecord) {
-    const currentGroup = task.requestGroups?.[0] || { time_spent: task.requests[0]?.time_spent || 0 };
-    const diff = Math.max(0, currentGroup.time_spent - completionRecord.timeSpent);
-    const requiredCooldown = diff * 1000;
-
-    const timeSinceCompletion = currentTime - completionRecord.completionTime;
-    isCompletionReady = timeSinceCompletion >= requiredCooldown;
-
-    if (!isCompletionReady) {
-      completionRemainingTime = Math.ceil((requiredCooldown - timeSinceCompletion) / 1000);
-      completionComeBackTime = new Date(currentTime + (requiredCooldown - timeSinceCompletion));
-    }
-  }
-
-  // 3. Check account start state
-  const startState = accountStartStates[accountId];
-  let isStartReady = true;
-  let startRemainingTime = 0;
-  let startComeBackTime: Date | null = null;
-
-  if (!completionRecord) {
-    let firstRequestAllowedAt = startState?.firstRequestAllowedAt;
-
-    if (!firstRequestAllowedAt && task.requests.length > 0) {
-      const firstEvent = task.requests
-        .filter(r => r.request_type === 'session' || r.request_type === 'event')
-        .sort((a, b) => a.time_spent - b.time_spent)[0];
-
-      if (firstEvent) {
-        firstRequestAllowedAt = calculateFirstRequestAllowedTime(task.account, firstEvent.time_spent);
-      }
-    }
-
-    if (firstRequestAllowedAt) {
-      isStartReady = currentTime >= firstRequestAllowedAt;
-
-      if (!isStartReady) {
-        startRemainingTime = Math.ceil((firstRequestAllowedAt - currentTime) / 1000);
-        startComeBackTime = new Date(firstRequestAllowedAt);
-      }
-    }
-  }
-
-  const isReady = !isBlocked && isCompletionReady && isStartReady;
-
-  const remainingTime = Math.max(
-    completionRemainingTime,
-    startRemainingTime
-  );
-
-  const comeBackTime = startComeBackTime || completionComeBackTime;
-
-  // Format time for display
-  const formatWaitTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${secs}s`;
-    } else {
-      return `${secs}s`;
-    }
-  };
+  const { isReady, isBlocked, remainingTime } = timerState;
 
   // Determine status badge
   const getStatusBadge = () => {
@@ -110,13 +48,20 @@ export function TaskItem({ task, onCompleteTask, onCopyRequest, accountCompletio
     // Waiting status (cooldown or initial delay)
     return (
       <Badge variant="secondary" className="text-xs bg-amber-500 text-white">
-        {t('dailyTasks.waiting', 'Wait')} {formatWaitTime(remainingTime)}
+        {t('dailyTasks.waiting', 'Wait')} {formatRemainingTime(remainingTime)}
       </Badge>
     );
   };
 
   return (
-    <Card key={task.account.id} className={!isReady ? "border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10" : ""}>
+    <Card 
+        key={task.account.id} 
+        className={cn(
+            isPurchaseTask 
+                ? "bg-amber-500/5 border-amber-500/20" 
+                : !isReady ? "border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10" : ""
+        )}
+    >
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -140,16 +85,14 @@ export function TaskItem({ task, onCompleteTask, onCopyRequest, accountCompletio
                   })}
                 </span>
               )}
-              {!isReady && comeBackTime && !isBlocked && (
+              {!isReady && !isBlocked && (
                 <span className="mt-1 text-xs text-amber-600 dark:text-amber-400 font-bold bg-amber-100 dark:bg-amber-900/30 p-2 rounded border border-amber-200 dark:border-amber-800 block">
-                  {!isStartReady && startComeBackTime ? t('dailyTasks.accountInitializing', {
-                    time: startComeBackTime.toLocaleString()
-                  }) : t('dailyTasks.returnAt', 'Return at') + ' ' + comeBackTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {getTimerMessage(timerState, t)}
                 </span>
               )}
               {isBlocked && (
                 <span className="mt-1 text-xs text-amber-600 dark:text-amber-400 font-bold block">
-                  {t('dailyTasks.blockedByPrevious', 'Waiting for previous task to complete')}
+                   {getTimerMessage(timerState, t)}
                 </span>
               )}
             </CardDescription>

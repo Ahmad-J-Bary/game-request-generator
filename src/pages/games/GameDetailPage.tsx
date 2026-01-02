@@ -11,6 +11,13 @@ import { ImportDialog } from '../../components/molecules/ImportDialog';
 import { ExportDialog } from '../../components/molecules/ExportDialog';
 import { Button } from '../../components/ui/button';
 import { Download, Upload, Plus, Edit3, Save, X } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../../components/ui/popover';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
 
 import { useGames } from '../../hooks/useGames';
 import { useLevels } from '../../hooks/useLevels';
@@ -18,6 +25,7 @@ import { usePurchaseEvents } from '../../hooks/usePurchaseEvents';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { TauriService } from '../../services/tauri.service';
+import { Level, PurchaseEvent } from '../../types';
 
 type Mode = 'all' | 'event-only';
 
@@ -38,8 +46,30 @@ export default function GameDetailPage() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [editedLevels, setEditedLevels] = useState<any[]>([]);
-  const [editedPurchaseEvents, setEditedPurchaseEvents] = useState<any[]>([]);
+  // Game Creation State
+  const [isCreatingGame, setIsCreatingGame] = useState(false);
+  const [newGameName, setNewGameName] = useState('');
+  
+  // Edit State
+  const [editedLevels, setEditedLevels] = useState<Level[]>([]);
+  const [editedPurchaseEvents, setEditedPurchaseEvents] = useState<PurchaseEvent[]>([]);
+
+  const handleCreateGame = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!newGameName.trim()) return;
+
+    try {
+        const newId = await TauriService.addGame({ name: newGameName });
+        if (newId) {
+            setNewGameName('');
+            setIsCreatingGame(false);
+            window.dispatchEvent(new CustomEvent('games-updated', { detail: { id: newId } }));
+            navigate(`/games/${newId}`);
+        }
+    } catch (error) {
+        console.error('Failed to create game:', error);
+    }
+  };
 
   useEffect(() => {
     setLayout('vertical');
@@ -117,7 +147,7 @@ export default function GameDetailPage() {
   const handleDeleteLevel = async (levelId: number) => {
     try {
       await TauriService.deleteLevel(levelId);
-      setEditedLevels(prev => prev.filter(l => l.id !== levelId));
+      setEditedLevels((prev: Level[]) => prev.filter((l: Level) => l.id !== levelId));
     } catch (error) {
       console.error('Error deleting level:', error);
     }
@@ -126,20 +156,20 @@ export default function GameDetailPage() {
   const handleDeletePurchaseEvent = async (eventId: number) => {
     try {
       await TauriService.deletePurchaseEvent(eventId);
-      setEditedPurchaseEvents(prev => prev.filter(e => e.id !== eventId));
+      setEditedPurchaseEvents((prev: PurchaseEvent[]) => prev.filter((e: PurchaseEvent) => e.id !== eventId));
     } catch (error) {
       console.error('Error deleting purchase event:', error);
     }
   };
 
   const handleUpdateLevel = (levelId: number, field: string, value: any) => {
-    setEditedLevels(prev => prev.map(level =>
+    setEditedLevels((prev: Level[]) => prev.map((level: Level) =>
       level.id === levelId ? { ...level, [field]: value } : level
     ));
   };
 
   const handleUpdatePurchaseEvent = (eventId: number, field: string, value: any) => {
-    setEditedPurchaseEvents(prev => prev.map(event =>
+    setEditedPurchaseEvents((prev: PurchaseEvent[]) => prev.map((event: PurchaseEvent) =>
       event.id === eventId ? { ...event, [field]: value } : event
     ));
   };
@@ -238,14 +268,15 @@ export default function GameDetailPage() {
     // Group entries by daysOffset to handle multiple entries per day
     const entriesByDay: { [day: number]: any[] } = {};
     numeric.forEach(entry => {
-      if (!entriesByDay[entry.daysOffset]) {
-        entriesByDay[entry.daysOffset] = [];
+      const day = entry.daysOffset as number;
+      if (!entriesByDay[day]) {
+        entriesByDay[day] = [];
       }
-      entriesByDay[entry.daysOffset].push(entry);
+      entriesByDay[day].push(entry);
     });
 
-    let minDay = numeric.length > 0 ? numeric[0].daysOffset : 0;
-    let maxDay = numeric.length > 0 ? numeric[numeric.length - 1].daysOffset : 0;
+    let minDay: number = numeric.length > 0 ? (numeric[0].daysOffset as number) : 0;
+    let maxDay: number = numeric.length > 0 ? (numeric[numeric.length - 1].daysOffset as number) : 0;
 
     if (numeric.length > 0 && minDay > 0) {
       minDay = 0;
@@ -275,7 +306,7 @@ export default function GameDetailPage() {
         if (nextRealLevel) {
           const realLevelDays = numeric
             .filter(entry => entry.kind === 'level' && !entry.synthetic)
-            .map(entry => entry.daysOffset);
+            .map(entry => entry.daysOffset as number);
 
           const firstRealDay = Math.min(...realLevelDays);
           const isBeforeFirstReal = day < firstRealDay;
@@ -328,7 +359,8 @@ export default function GameDetailPage() {
   }, [baseColumns, mode]);
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
+      <div className="flex-1">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">
@@ -438,7 +470,7 @@ export default function GameDetailPage() {
       {!isEditMode && (
         <div className="flex flex-wrap gap-4 mt-6">
           <Button
-            onClick={() => navigate('/levels', { state: { selectedGameId: gameId } })}
+            onClick={() => navigate('/levels', { state: { selectedGameId: gameId, createMode: true } })}
             className="flex items-center gap-2"
           >
             <Plus className="h-4 w-4" />
@@ -446,7 +478,7 @@ export default function GameDetailPage() {
           </Button>
 
           <Button
-            onClick={() => navigate('/purchase-events', { state: { selectedGameId: gameId } })}
+            onClick={() => navigate('/purchase-events', { state: { selectedGameId: gameId, createMode: true } })}
             className="flex items-center gap-2"
           >
             <Plus className="h-4 w-4" />
@@ -480,7 +512,68 @@ export default function GameDetailPage() {
         source="game-detail"
         data={columns}
       />
+      </div>
+
+      {/* Excel-like Game Tabs Navigation */}
+      <div className="sticky bottom-0 w-[calc(100%+3rem)] -ml-6 -mb-6 bg-gray-200 border-t border-gray-300 h-10 flex items-end px-2 z-40 overflow-x-auto mt-auto">
+        {games.map((g) => {
+          const isActive = g.id === gameId;
+          return (
+            <div
+              key={g.id}
+              onClick={() => navigate(`/games/${g.id}`)}
+              className={`
+                flex items-center gap-2 px-4 py-1.5 min-w-[120px] max-w-[200px] text-sm cursor-pointer select-none border-r border-gray-300 transition-colors
+                ${isActive 
+                  ? 'bg-white font-bold text-green-700 border-t-2 border-t-green-600 rounded-t-sm shadow-[0_-2px_4px_rgba(0,0,0,0.05)] h-[34px] relative top-[1px]' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-50 h-[30px] mb-[1px]'
+                }
+              `}
+              title={g.name}
+            >
+              <span className="truncate">{g.name}</span>
+            </div>
+          );
+        })}
+        
+        {/* Add New Game Popover */}
+        <Popover open={isCreatingGame} onOpenChange={setIsCreatingGame}>
+          <PopoverTrigger asChild>
+            <div 
+                className="flex items-center justify-center w-8 h-[30px] mb-[1px] bg-gray-300 hover:bg-gray-400 text-gray-600 cursor-pointer rounded-tr-sm ml-1"
+                title={t('games.addGame', 'Add New Game')}
+            >
+                <Plus className="h-4 w-4" />
+            </div>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 p-4 mb-2" side="top" align="start">
+            <form onSubmit={handleCreateGame} className="space-y-4">
+              <div className="space-y-2">
+                <h4 className="font-medium leading-none">{t('games.newGame', 'New Game')}</h4>
+                <p className="text-sm text-muted-foreground">
+                  {t('games.enterName', 'Enter the name for the new game sheet.')}
+                </p>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="name" className="sr-only">Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Game Name"
+                  value={newGameName}
+                  onChange={(e) => setNewGameName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <Button type="submit" size="sm" className="w-full">
+                {t('common.create', 'Create')}
+              </Button>
+            </form>
+          </PopoverContent>
+        </Popover>
+      </div>
     </div>
   );
 }
+
+
 

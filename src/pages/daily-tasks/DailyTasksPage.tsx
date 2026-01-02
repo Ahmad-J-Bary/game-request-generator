@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { EmptyState } from '../../components/daily-tasks/EmptyState';
 import { BatchDisplay } from '../../components/daily-tasks/BatchDisplay';
+import { TaskItem } from '../../components/daily-tasks/TaskItem';
 import { useDailyTasks } from '../../hooks/useDailyTasks';
 import { checkTaskReadiness } from '../../utils/daily-tasks.utils';
 import type { GameBatch, DailyTask } from '../../types/daily-tasks.types';
@@ -104,7 +105,30 @@ export default function DailyTasksPage() {
                   ))}
                 </div>
 
-                {/* Deferred Tasks Section Removed - Moved to separate page */}
+                {/* Deferred Tasks Section */}
+                {deferredTasks.length > 0 && (
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2 border-b pb-2">
+                        <Clock className="h-5 w-5 text-amber-500" />
+                        <h2 className="text-xl font-semibold">{t('dailyTasks.deferredTasksTitle', 'Deferred Tasks')}</h2>
+                    </div>
+                    
+                    {deferredTasks.map(({ task, batchIndex }) => (
+                      <TaskItem
+                        key={`${task.account.id}-${batchIndex}`}
+                        task={task}
+                        batchIndex={batchIndex}
+                        allBatches={batches}
+                        currentTime={currentTime}
+                        accountCompletionRecords={accountCompletionRecords}
+                        accountStartStates={accountStartStates}
+                        accountTaskAssignments={accountTaskAssignments}
+                        onCompleteTask={completeTask}
+                        onCopyRequest={copyToClipboard}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}
