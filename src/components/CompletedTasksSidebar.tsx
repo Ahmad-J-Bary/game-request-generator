@@ -152,7 +152,7 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                                         {Object.entries(accounts).map(([accountId, { accountName, tasks }]) => {
                                             const isExpanded = expandedAccounts.has(`${gameId}-${accountId}`);
                                             const latestTask = tasks[tasks.length - 1];
-                                            
+
                                             return (
                                                 <Card key={accountId} className="overflow-hidden border-muted">
                                                     <div 
@@ -185,23 +185,29 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                                                                 <div
                                                                     key={task.id}
                                                                     className={cn(
-                                                                        "border rounded-md p-2.5 space-y-1 text-sm transition-colors",
-                                                                        task.isPurchase 
-                                                                            ? "bg-amber-500/10 border-amber-500/20" 
-                                                                            : "bg-background border-border"
+                                                                        "border rounded-md p-4 space-y-1 text-sm transition-colors",
+                                                                        task.isPurchase
+                                                                            ? "bg-amber-500/10 border-amber-500/20"
+                                                                            : task.requestType === 'Level Session'
+                                                                                ? "bg-blue-50 border-blue-300 dark:bg-blue-900/20 dark:border-blue-700"
+                                                                                : task.requestType === 'Session Only'
+                                                                                    ? "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-600"
+                                                                                    : "bg-background border-border"
                                                                     )}
                                                                 >
                                                                     <div className="flex items-center justify-between">
                                                                         <div className="flex items-center gap-2">
                                                                             <Badge
-                                                                                variant={task.requestType === 'session' ? 'default' : 'secondary'}
+                                                                                variant={(task.requestType as string).includes('Session') ? 'default' : 'secondary'}
                                                                                 className={cn(
                                                                                     "text-[10px] h-4 px-1.5",
-                                                                                    task.isPurchase && task.requestType === 'session' && "bg-amber-600 hover:bg-amber-600",
-                                                                                    task.isPurchase && task.requestType === 'event' && "bg-amber-100 text-amber-900 border-amber-200"
+                                                                                    task.isPurchase && (task.requestType as string).includes('Session') && "bg-amber-600 hover:bg-amber-600",
+                                                                                    task.isPurchase && (task.requestType as string).includes('Event') && "bg-amber-100 text-amber-900 border-amber-200",
+                                                                                    !task.isPurchase && task.requestType === 'Level Session' && "bg-blue-600 hover:bg-blue-600 text-white",
+                                                                                    !task.isPurchase && task.requestType === 'Session Only' && "bg-gray-600 hover:bg-gray-600 text-white"
                                                                                 )}
                                                                             >
-                                                                                {task.requestType === 'session' ? 'Session' : 'Event'}
+                                                                                {(task.requestType as string).includes('Session') ? 'Session' : 'Event'}
                                                                             </Badge>
                                                                             {task.eventToken && (
                                                                                 <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[120px]">

@@ -15,6 +15,9 @@ export function TaskItem({ task, onCompleteTask, onCopyRequest, accountCompletio
   // Determine if this is a purchase task (level_id is null for all requests in a purchase event)
   const isPurchaseTask = task.requests.some(req => req.level_id === null || req.level_id === undefined);
 
+  // Determine if this is a Session Only task (all requests are Session Only)
+  const isSessionOnlyTask = task.requests.every(req => req.request_type === 'Session Only');
+
   // Use centralized timer logic
   const timerState = calculateTimerState(
     task,
@@ -54,12 +57,14 @@ export function TaskItem({ task, onCompleteTask, onCopyRequest, accountCompletio
   };
 
   return (
-    <Card 
-        key={task.account.id} 
+    <Card
+        key={task.account.id}
         className={cn(
-            isPurchaseTask 
-                ? "bg-amber-500/5 border-amber-500/20" 
-                : !isReady ? "border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10" : ""
+            isPurchaseTask
+                ? "bg-amber-500/5 border-amber-500/20"
+                : isSessionOnlyTask
+                    ? "bg-green-500/3 border-green-500/10"
+                    : !isReady ? "border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10" : ""
         )}
     >
       <CardHeader>

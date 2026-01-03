@@ -8,6 +8,16 @@ export interface ImportData {
   levels: Partial<Level>[];
   purchaseEvents: Partial<PurchaseEvent>[];
   accounts: Partial<Account>[];
+  progress: {
+    gameName?: string;
+    accountName: string;
+    levelName?: string;
+    purchaseToken?: string;
+    token: string; // The specific event token for matching
+    isCompleted: boolean;
+  }[];
+  fullCompletionUpToDate?: string;
+  completedToday?: any[];
 }
 
 /**
@@ -26,54 +36,221 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
     const result: ImportData = {
       levels: [],
       purchaseEvents: [],
-      accounts: []
+      accounts: [],
+      progress: []
     };
 
-    // Try to parse levels sheet (horizontal format)
-    const levelsSheet = workbook.Sheets['Levels'];
-    if (levelsSheet) {
-      const levelsData = XLSX.utils.sheet_to_json(levelsSheet, { header: 1 }) as any[][];
-      result.levels = parseLevelsData(levelsData);
-    }
+    // Try to parse data from all sheets
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      if (sheetName === 'Completion_Info') {
+        const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        
+        // Parse Full Completion Up To Date
+        const fullCompletionRow = rows.find(r => r[0] === 'Full Completion Up To Date');
+        if (fullCompletionRow && fullCompletionRow[1]) {
+          result.fullCompletionUpToDate = fullCompletionRow[1].toString().trim();
+        }
 
-    // Try to parse purchase events sheet (horizontal format)
-    const purchaseSheet = workbook.Sheets['Purchase Events'];
-    if (purchaseSheet) {
-      const purchaseData = XLSX.utils.sheet_to_json(purchaseSheet, { header: 1 }) as any[][];
-      result.purchaseEvents = parsePurchaseEventsData(purchaseData);
-    }
+        // Parse Completed Today Records
+        const startIndex = rows.findIndex(r => r[0] === '--- Completed Today Records ---');
+        if (startIndex !== -1 && rows.length > startIndex + 2) {
+          const records: any[] = [];
+          const header = rows[startIndex + 1] as string[];
+          for (let i = startIndex + 2; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length === 0 || !row[0]) continue;
 
-    // Try to parse accounts sheet (horizontal format)
-    const accountsSheet = workbook.Sheets['Accounts'];
-    if (accountsSheet) {
-      const accountsData = XLSX.utils.sheet_to_json(accountsSheet, { header: 1 }) as any[][];
-      result.accounts = parseAccountsData(accountsData);
-    }
+            const record: any = {};
+            header.forEach((h, idx) => {
+              const val = row[idx];
+              if (h === 'ID') record.id = val;
+              else if (h === 'Account Name') record.accountName = val;
+              else if (h === 'Game Name') record.gameName = val;
+              else if (h === 'Event Token') record.eventToken = val;
+              else if (h === 'Level Name') record.levelName = val;
+              else if (h === 'Time Spent') record.timeSpent = val;
+              else if (h === 'Completion Time') record.rawTime = val;
+              else if (h === 'Completion Date') record.completionDate = val;
+              else if (h === 'Level ID') record.levelId = val;
+              else if (h === 'Request Type') record.requestType = val;
+              else if (h === 'Is Purchase') record.isPurchase = val === 'Yes';
+            });
 
-    // If no data found in horizontal sheets, try parsing vertical layout formats
-    if (result.levels.length === 0 && result.purchaseEvents.length === 0 && result.accounts.length === 0) {
-      // Try to parse the first sheet as vertical layout (from GameDetailPage export)
-      const firstSheetName = workbook.SheetNames[0];
-      if (firstSheetName) {
-        const verticalSheet = workbook.Sheets[firstSheetName];
-        if (verticalSheet) {
-          const verticalData = XLSX.utils.sheet_to_json(verticalSheet, { header: 1 }) as any[][];
+            // Convert human-readable time back to timestamp if possible
+            if (record.rawTime && record.completionDate) {
+              try {
+                const dateStr = record.completionDate.toString().split('T')[0];
+                const timeStr = record.rawTime.toString();
+                const fullDate = new Date(`${dateStr} ${timeStr}`);
+                if (!isNaN(fullDate.getTime())) {
+                  record.completionTime = fullDate.getTime();
+                } else {
+                  record.completionTime = Date.now(); // Fallback
+                }
+              } catch (e) {
+                record.completionTime = Date.now();
+              }
+            } else {
+              record.completionTime = Date.now();
+            }
+            delete record.rawTime;
 
-          // Check if this is accounts detail format (has account rows)
-          if (isAccountsDetailFormat(verticalData)) {
-            const parsedData = parseAccountsDetailVerticalLayout(verticalData);
-            result.levels = parsedData.levels;
-            result.purchaseEvents = parsedData.purchaseEvents;
-            result.accounts = parsedData.accounts;
-          } else {
-            // Try game detail vertical format
-            const parsedData = parseVerticalLayoutData(verticalData);
-            result.levels = parsedData.levels;
-            result.purchaseEvents = parsedData.purchaseEvents;
+            records.push(record);
+          }
+          result.completedToday = records;
+        }
+        continue;
+      }
+
+      if (!sheet) continue;
+
+      // Detect game name from sheet name
+      // Logic: SheetName, SheetName_Lvl, or SheetName_Evt
+      let gameName = sheetName;
+      if (sheetName.endsWith('_Lvl')) {
+        gameName = sheetName.substring(0, sheetName.length - 4);
+        const levelsData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        const parsedLevels = parseLevelsData(levelsData);
+        parsedLevels.forEach(l => (l as any).gameName = gameName);
+        result.levels.push(...parsedLevels);
+      } else if (sheetName.endsWith('_Evt')) {
+        gameName = sheetName.substring(0, sheetName.length - 4);
+        const purchaseData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        const parsedEvents = parsePurchaseEventsData(purchaseData);
+        parsedEvents.forEach(e => (e as any).gameName = gameName);
+        result.purchaseEvents.push(...parsedEvents);
+      } else if (sheetName === 'Levels') {
+        const levelsData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        result.levels.push(...parseLevelsData(levelsData));
+      } else if (sheetName === 'Purchase Events') {
+        const purchaseData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        result.purchaseEvents.push(...parsePurchaseEventsData(purchaseData));
+      } else if (sheetName === 'Accounts') {
+        const accountsData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        result.accounts.push(...parseAccountsData(accountsData));
+      } else {
+        // Assume this is a matrix sheet with account progress
+        const matrixData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        if (isAccountsDetailFormat(matrixData)) {
+          const parsedData = parseAccountsDetailVerticalLayout(matrixData);
+          
+          // Tag everything with game name
+          parsedData.accounts.forEach(a => (a as any).gameName = gameName);
+          
+          // Add to overall results
+          result.accounts.push(...parsedData.accounts);
+          
+          // For matrix sheets, if it's the only sheet or dedicated ones are missing, 
+          // we might want results from it. However, with the new 3-sheet format,
+          // it's safer to only take accounts from here and definitions from _Lvl/_Evt.
+          if (workbook.SheetNames.length === 1) {
+            result.levels.push(...parsedData.levels);
+            result.purchaseEvents.push(...parsedData.purchaseEvents);
+          }
+
+          // Extract progress (completion markers)
+          // Matrix rows start after accountHeaderRow
+          let accountHeaderRow = -1;
+          for (let i = 4; i < matrixData.length; i++) {
+            if (matrixData[i] && matrixData[i][0] && matrixData[i][0].toString().toLowerCase().includes('account')) {
+              accountHeaderRow = i;
+              break;
+            }
+          }
+
+          if (accountHeaderRow !== -1) {
+            // Level/Event headers are in rows 0 and 1
+            const maxCols = Math.max(...matrixData.slice(0, accountHeaderRow).map(row => row.length));
+            const colHeaders: { name: string; isPurchase: boolean; token: string }[] = [];
+            
+            for (let col = 4; col < maxCols; col++) {
+              const token = matrixData[0] && matrixData[0][col] ? matrixData[0][col].toString().trim() : '';
+              const name = matrixData[1] && matrixData[1][col] ? matrixData[1][col].toString().trim() : '';
+              if (token) {
+                colHeaders.push({ name, token, isPurchase: name === '$$$' });
+              }
+            }
+
+            for (let i = accountHeaderRow + 1; i < matrixData.length; i++) {
+              const row = matrixData[i];
+              if (!row || !row[0]) continue;
+              const accountName = row[0].toString().trim();
+              
+              for (let col = 4; col < row.length; col++) {
+                const cellVal = row[col] ? row[col].toString().trim() : '';
+                if (cellVal.endsWith('(C)')) {
+                  const header = colHeaders[col - 4];
+                  if (header) {
+                    result.progress.push({
+                      gameName,
+                      accountName,
+                      levelName: header.isPurchase ? undefined : header.name,
+                      purchaseToken: header.isPurchase ? header.token : undefined,
+                      token: header.token,
+                      isCompleted: true
+                    });
+                  }
+                }
+              }
+            }
           }
         }
       }
     }
+
+    // Try to parse data from all sheets
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) continue;
+
+      // Detect game name from sheet name
+      // Logic: SheetName, SheetName_Lvl, or SheetName_Evt
+      let gameName = sheetName;
+      if (sheetName.endsWith('_Lvl')) {
+        gameName = sheetName.substring(0, sheetName.length - 4);
+        const levelsData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        const parsedLevels = parseLevelsData(levelsData);
+        parsedLevels.forEach(l => (l as any).gameName = gameName);
+        result.levels.push(...parsedLevels);
+      } else if (sheetName.endsWith('_Evt')) {
+        gameName = sheetName.substring(0, sheetName.length - 4);
+        const purchaseData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        const parsedEvents = parsePurchaseEventsData(purchaseData);
+        parsedEvents.forEach(e => (e as any).gameName = gameName);
+        result.purchaseEvents.push(...parsedEvents);
+      } else if (sheetName === 'Levels') {
+        const levelsData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        result.levels.push(...parseLevelsData(levelsData));
+      } else if (sheetName === 'Purchase Events') {
+        const purchaseData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        result.purchaseEvents.push(...parsePurchaseEventsData(purchaseData));
+      } else if (sheetName === 'Accounts') {
+        const accountsData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        result.accounts.push(...parseAccountsData(accountsData));
+      } else {
+        // Assume this is a matrix sheet with account progress
+        const matrixData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        if (isAccountsDetailFormat(matrixData)) {
+          const parsedData = parseAccountsDetailVerticalLayout(matrixData);
+          parsedData.accounts.forEach(a => (a as any).gameName = gameName);
+          // For matrix sheets, the levels/events are often just progress, 
+          // but if it's the only sheet, we take everything.
+          // If we have _Lvl/_Evt sheets, we prefer those for definitions.
+          result.accounts.push(...parsedData.accounts);
+          
+          // Only add levels/events from matrix if we haven't found dedicated sheets for this game
+          // OR if this is the only sheet.
+          if (workbook.SheetNames.length === 1) {
+            result.levels.push(...parsedData.levels);
+            result.purchaseEvents.push(...parsedData.purchaseEvents);
+          }
+        }
+      }
+    }
+
+    // Deduplicate any data if overlapping (simple approach)
+    // ... logic could be added here if needed ...
 
     console.log('Successfully parsed Excel file with data:', {
       levels: result.levels.length,
@@ -138,8 +315,8 @@ export function parseLevelsData(rows: any[][]): Partial<Level>[] {
         row[isBonusIndex] === 1;
     }
 
-    // Only add if we have at least event_token and level_name
-    if (level.event_token && level.level_name) {
+    // Only add if we have at least event_token
+    if (level.event_token) {
       levels.push(level);
     }
   }
@@ -191,7 +368,8 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
 
   // Parse levels and purchase events (rows 0-3 before account header)
   const maxCols = Math.max(...rows.slice(0, accountHeaderRow).map(row => row.length));
-  for (let col = 1; col < maxCols; col++) {
+  // Skip the first 4 columns (Account, Start Date, Start Time, Last Completed Token)
+  for (let col = 4; col < maxCols; col++) {
     const eventToken = rows[0] && rows[0][col] ? rows[0][col].toString().trim() : '';
     const levelName = rows[1] && rows[1][col] ? rows[1][col].toString().trim() : '';
     const daysOffsetCell = rows[2] && rows[2][col];
@@ -257,7 +435,7 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
       level.is_bonus = false; // As requested by user - import all as regular levels without bonus
 
       // Only add levels that have required fields
-      if (level.event_token && level.level_name && level.level_name !== '-' &&
+      if (level.event_token && level.level_name &&
         level.days_offset != null && level.time_spent != null) {
         levels.push(level);
       }
@@ -298,9 +476,10 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
 
     if (!accountName) continue;
 
-    const account: Partial<Account> = {
+    const account: Partial<Account> & { lastCompletedToken?: string } = {
       name: accountName,
       request_template: 'Needs to be filled in - imported from Excel export',
+      lastCompletedToken: row[3] ? row[3].toString().trim() : undefined,
     };
 
     // Parse start date - handle various formats and store in standardized YYYY-MM-DD format
@@ -327,17 +506,16 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
         }
       }
 
-      // Try DD-MMM format (e.g., "23-Dec")
+      // Try DD-MMM-YYYY format (e.g., "23-Dec-2025") - REQUIRES YEAR
       if (!parsedDate) {
-        const dashDateMatch = startDateStr.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+        const dashDateMatch = startDateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
         if (dashDateMatch) {
           const day = parseInt(dashDateMatch[1]);
           const monthStr = dashDateMatch[2].toLowerCase();
+          const year = parseInt(dashDateMatch[3]);
           const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
           const monthIndex = months.indexOf(monthStr);
           if (monthIndex >= 0) {
-            const now = new Date();
-            const year = now.getFullYear();
             parsedDate = new Date(year, monthIndex, day);
             if (!isNaN(parsedDate.getTime())) {
               account.start_date = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -465,7 +643,7 @@ export function parseVerticalLayoutData(rows: any[][]): { levels: Partial<Level>
         levelName.match(/\+\d+/) !== null; // Contains +number
 
       // Only add levels that have meaningful data
-      if (level.level_name && level.level_name !== '-') {
+      if (level.level_name) {
         levels.push(level);
       }
     }

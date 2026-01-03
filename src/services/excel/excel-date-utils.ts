@@ -12,6 +12,17 @@ export function formatDateShort(dateStr?: string): string {
 }
 
 /**
+ * Format date with year for export/import (e.g., "23-Dec-2025")
+ */
+export function formatDateWithYear(dateStr?: string): string {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '-';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${d.getDate()}-${months[d.getMonth()]}-${d.getFullYear()}`;
+}
+
+/**
  * Parse date string to Date object
  */
 export function parseDate(input?: string): Date | null {

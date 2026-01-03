@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { cn } from '../../lib/utils';
 import { CheckCircle, Copy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -17,6 +18,9 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy 
     const { t } = useTranslation();
 
     const getRequestTypeLabel = (type: string) => {
+        if (type.includes('Session')) return 'Session';
+        if (type.includes('Event')) return 'Event';
+        
         switch (type) {
             case 'session':
                 return 'Session';
@@ -30,6 +34,9 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy 
     };
 
     const getRequestTypeBadgeVariant = (type: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+        if (type.includes('Session')) return 'default';
+        if (type.includes('Event')) return 'secondary';
+
         switch (type) {
             case 'session':
                 return 'default';
@@ -42,8 +49,12 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy 
         }
     };
 
+
     return (
-        <div className={`border rounded-lg p-4 transition-all duration-300 ${!isReady ? "bg-gray-100/50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800 opacity-60 grayscale-[0.5]" : "bg-card border-border shadow-sm"}`}>
+        <div className={cn(
+            "border rounded-lg p-6 transition-all duration-300",
+            !isReady ? "bg-gray-100/50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800 opacity-60 grayscale-[0.5]" : "bg-card border-border shadow-sm"
+        )}>
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                     <Badge variant={getRequestTypeBadgeVariant(request.request_type)}>

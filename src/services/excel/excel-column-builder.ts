@@ -6,12 +6,14 @@ export interface ColumnData {
   kind: 'level' | 'purchase';
   id: number;
   token: string;
+  fullToken: string; // The complete event token for accurate matching
   name: string;
   daysOffset?: number | string | null;
   timeSpent?: number | string | null;
   isBonus?: boolean;
   isRestricted?: boolean;
   maxDaysOffset?: string;
+  uniqueKey: string; // Combination of token and name for unique identification (e.g., "7bqez2:-")
   synthetic?: boolean;
 }
 
@@ -23,10 +25,12 @@ export function buildColumns(levels: Level[], purchaseEvents: PurchaseEvent[]): 
     kind: 'level' as const,
     id: l.id,
     token: l.event_token,
+    fullToken: l.event_token,
     name: l.level_name,
     daysOffset: l.days_offset,
     timeSpent: l.time_spent,
     isBonus: l.is_bonus,
+    uniqueKey: `${l.event_token}:${l.level_name === '-' ? 'Session Only' : 'Level Event'}`,
     synthetic: false,
   }));
 
@@ -34,7 +38,9 @@ export function buildColumns(levels: Level[], purchaseEvents: PurchaseEvent[]): 
     kind: 'purchase' as const,
     id: p.id,
     token: p.event_token,
+    fullToken: p.event_token,
     name: '$$$',
+    uniqueKey: `${p.event_token}:Purchase Event`,
     isRestricted: (p as any).is_restricted ?? false,
     maxDaysOffset: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-',
     synthetic: false,

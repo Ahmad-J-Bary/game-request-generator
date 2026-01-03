@@ -9,7 +9,27 @@ export const calculateFirstRequestAllowedTime = (account: Account, firstEventTim
 
         if (account.start_date && account.start_time) {
             const datePart = account.start_date.includes('T') ? account.start_date.split('T')[0] : account.start_date;
-            baseDate = new Date(`${datePart}T${account.start_time}`);
+            
+            // Robust time parsing
+            let timeStr = account.start_time.trim();
+            const timeMatch = timeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+            
+            if (timeMatch) {
+                let hours = parseInt(timeMatch[1], 10);
+                const minutes = timeMatch[2];
+                const seconds = timeMatch[3] || '00';
+                const ampm = timeMatch[4]?.toUpperCase();
+
+                if (ampm) {
+                    if (ampm === 'PM' && hours !== 12) hours += 12;
+                    else if (ampm === 'AM' && hours === 12) hours = 0;
+                }
+                
+                const standardizedTime = `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
+                baseDate = new Date(`${datePart}T${standardizedTime}`);
+            } else {
+                baseDate = new Date(`${datePart}T${timeStr}`);
+            }
         } else {
             baseDate = new Date(account.start_date);
         }

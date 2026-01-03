@@ -19,7 +19,7 @@ export async function importFromExcel(): Promise<{ success: boolean; message: st
     console.log('Selected file:', selected);
 
     if (!selected || Array.isArray(selected)) {
-      return { success: false, message: 'No file selected', imported: { levels: [], purchaseEvents: [], accounts: [] } };
+      return { success: false, message: 'No file selected', imported: { levels: [], purchaseEvents: [], accounts: [], progress: [] } };
     }
 
     console.log('Parsing Excel file:', selected);
@@ -38,7 +38,7 @@ export async function importFromExcel(): Promise<{ success: boolean; message: st
     return {
       success: false,
       message: `Failed to import Excel file: ${errorMessage}`,
-      imported: { levels: [], purchaseEvents: [], accounts: [] }
+      imported: { levels: [], purchaseEvents: [], accounts: [], progress: [] }
     };
   }
 }

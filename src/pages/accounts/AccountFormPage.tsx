@@ -118,7 +118,7 @@ const SimpleCalendar = ({
               <Button
                 variant={
                   selectedDate &&
-                    date.toDateString() === selectedDate.toDateString()
+                  date.toDateString() === selectedDate.toDateString()
                     ? "default"
                     : "ghost"
                 }
@@ -148,42 +148,19 @@ const SimpleTimePicker = ({
   onTimeSelect: (time: string) => void;
   onClose: () => void;
 }) => {
-  // Parse current time (handles HH:mm, HH:mm:ss, and hh:mm AM/PM)
+  // Parse current time
   const parseTime = (timeStr: string) => {
-    if (!timeStr) return { hour: 12, minute: 0, ampm: 'PM' };
-
-    // Check if it's AM/PM format
-    const ampmMatch = timeStr.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
-    if (ampmMatch) {
-      return {
-        hour: parseInt(ampmMatch[1], 10),
-        minute: parseInt(ampmMatch[2], 10),
-        ampm: ampmMatch[3].toUpperCase()
-      };
-    }
-
-    // Fallback to 24h format
-    const [h, m] = timeStr.split(':').map(Number);
-    let hour = h || 0;
-    let ampm = 'AM';
-
-    if (hour >= 12) {
-      ampm = 'PM';
-      if (hour > 12) hour -= 12;
-    } else if (hour === 0) {
-      hour = 12;
-    }
-
-    return { hour, minute: m || 0, ampm };
+    if (!timeStr) return { hour: 12, minute: 0 };
+    const [hour, minute] = timeStr.split(':').map(Number);
+    return { hour: hour || 0, minute: minute || 0 };
   };
 
   const currentTime = parseTime(selectedTime);
   const [hour, setHour] = useState(currentTime.hour);
   const [minute, setMinute] = useState(currentTime.minute);
-  const [ampm, setAmpm] = useState(currentTime.ampm);
 
   const handleTimeSelect = () => {
-    const formattedTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} ${ampm}`;
+    const formattedTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     onTimeSelect(formattedTime);
     onClose();
   };
@@ -200,18 +177,18 @@ const SimpleTimePicker = ({
     <div className="p-4 bg-popover border rounded-lg shadow-lg w-72">
       <div className="text-center mb-4">
         <div className="text-2xl font-mono font-bold">
-          {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')} {ampm}
+          {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')}
         </div>
         <div className="text-sm text-muted-foreground">Selected Time</div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         {/* Hour Selector */}
         <div className="space-y-2">
           <Label className="text-sm font-medium">Hour</Label>
           <div className="max-h-32 overflow-y-auto border rounded p-2">
-            <div className="grid grid-cols-2 gap-1">
-              {generateOptions(1, 12).map((h) => (
+            <div className="grid grid-cols-4 gap-1">
+              {generateOptions(0, 23).map((h) => (
                 <Button
                   key={h}
                   variant={h === hour ? "default" : "ghost"}
@@ -230,7 +207,7 @@ const SimpleTimePicker = ({
         <div className="space-y-2">
           <Label className="text-sm font-medium">Minute</Label>
           <div className="max-h-32 overflow-y-auto border rounded p-2">
-            <div className="grid grid-cols-2 gap-1">
+            <div className="grid grid-cols-4 gap-1">
               {generateOptions(0, 59).map((m) => (
                 <Button
                   key={m}
@@ -245,24 +222,6 @@ const SimpleTimePicker = ({
             </div>
           </div>
         </div>
-
-        {/* AM/PM Selector */}
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">AM/PM</Label>
-          <div className="flex flex-col gap-2">
-            {['AM', 'PM'].map((p) => (
-              <Button
-                key={p}
-                variant={p === ampm ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setAmpm(p)}
-                className="h-10 w-full text-xs"
-              >
-                {p}
-              </Button>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* Common Time Presets */}
@@ -270,21 +229,21 @@ const SimpleTimePicker = ({
         <Label className="text-sm font-medium mb-2 block">Quick Select</Label>
         <div className="grid grid-cols-4 gap-1">
           {[
-            { label: '12:00 AM', h: 12, m: 0, p: 'AM' },
-            { label: '06:00 AM', h: 6, m: 0, p: 'AM' },
-            { label: '12:00 PM', h: 12, m: 0, p: 'PM' },
-            { label: '06:00 PM', h: 6, m: 0, p: 'PM' },
+            { label: '00:00', value: '00:00' },
+            { label: '06:00', value: '06:00' },
+            { label: '12:00', value: '12:00' },
+            { label: '18:00', value: '18:00' },
           ].map((preset) => (
             <Button
-              key={preset.label}
+              key={preset.value}
               variant="outline"
               size="sm"
               onClick={() => {
-                setHour(preset.h);
-                setMinute(preset.m);
-                setAmpm(preset.p);
+                const [h, m] = preset.value.split(':').map(Number);
+                setHour(h);
+                setMinute(m);
               }}
-              className="text-[10px] h-8 px-1"
+              className="text-xs h-8"
             >
               {preset.label}
             </Button>
@@ -319,8 +278,15 @@ export default function AccountFormPage() {
   const accountId = id ? parseInt(id, 10) : undefined;
   const account = isEditMode && accountId ? (stateAccount || accounts.find(a => a.id === accountId)) : undefined;
 
+  // Helper function to parse date strings without timezone issues
+  const parseDateString = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    // Create date using local timezone (month is 0-indexed in Date constructor)
+    return new Date(year, month - 1, day);
+  };
+
   const [name, setName] = useState(account?.name || '');
-  const [startDate, setStartDate] = useState<Date | null>(account?.start_date ? new Date(account.start_date) : null);
+  const [startDate, setStartDate] = useState<Date | null>(account?.start_date ? parseDateString(account.start_date) : null);
   const [startTime, setStartTime] = useState(account?.start_time || '');
   const [requestTemplate, setRequestTemplate] = useState(account?.request_template || '');
   const [loading, setLoading] = useState(false);
@@ -337,6 +303,8 @@ export default function AccountFormPage() {
   // Format date for API submission
   const formatDateForAPI = (date: Date | null): string => {
     if (!date) return '';
+    // Use the same formatting as display but ensure we don't have timezone issues
+    // by using local date components directly
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -346,18 +314,18 @@ export default function AccountFormPage() {
   useEffect(() => {
     if (account) {
       setName(account.name);
-      setStartDate(account.start_date ? new Date(account.start_date) : null);
+      setStartDate(account.start_date ? parseDateString(account.start_date) : null);
       setStartTime(account.start_time);
       setRequestTemplate(account.request_template);
     }
   }, [account]);
-
+  
   useEffect(() => {
     if (!account && accountId) {
       const foundAccount = accounts.find(a => a.id === accountId);
       if (foundAccount) {
         setName(foundAccount.name);
-        setStartDate(foundAccount.start_date ? new Date(foundAccount.start_date) : null);
+        setStartDate(foundAccount.start_date ? parseDateString(foundAccount.start_date) : null);
         setStartTime(foundAccount.start_time);
         setRequestTemplate(foundAccount.request_template);
       }
@@ -369,37 +337,37 @@ export default function AccountFormPage() {
 
     const currentGameId = account ? account.game_id : gameId;
     if (!currentGameId || !name.trim() || !startDate || !startTime.trim() || !requestTemplate.trim()) {
-      NotificationService.error("All fields are required");
-      return;
+        NotificationService.error("All fields are required");
+        return;
     }
 
     setLoading(true);
     try {
-      if (account) {
-        const request: UpdateAccountRequest = {
-          id: account.id,
-          name,
-          start_date: formatDateForAPI(startDate),
-          start_time: startTime,
-          request_template: requestTemplate,
-        };
-        await updateAccount(request);
-      } else {
-        const request: CreateAccountRequest = {
-          game_id: currentGameId,
-          name,
-          start_date: formatDateForAPI(startDate),
-          start_time: startTime,
-          request_template: requestTemplate,
-        };
-        await addAccount(request);
-      }
-      navigate('/accounts');
+        if (account) {
+            const request: UpdateAccountRequest = {
+                id: account.id,
+                name,
+                start_date: formatDateForAPI(startDate),
+                start_time: startTime,
+                request_template: requestTemplate,
+            };
+            await updateAccount(request);
+        } else {
+            const request: CreateAccountRequest = {
+                game_id: currentGameId,
+                name,
+                start_date: formatDateForAPI(startDate),
+                start_time: startTime,
+                request_template: requestTemplate,
+            };
+            await addAccount(request);
+        }
+        navigate('/accounts');
     } catch (error) {
-      console.error('Failed to save account:', error);
-      NotificationService.error("An error occurred while saving the account");
+        console.error('Failed to save account:', error);
+        NotificationService.error("An error occurred while saving the account");
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
   };
 
@@ -443,7 +411,7 @@ export default function AccountFormPage() {
                     <SimpleCalendar
                       selectedDate={startDate}
                       onDateSelect={setStartDate}
-                      onClose={() => { }} // Popover handles closing
+                      onClose={() => {}} // Popover handles closing
                     />
                   </PopoverContent>
                 </Popover>
@@ -465,7 +433,7 @@ export default function AccountFormPage() {
                     <SimpleTimePicker
                       selectedTime={startTime}
                       onTimeSelect={setStartTime}
-                      onClose={() => { }} // Popover handles closing
+                      onClose={() => {}} // Popover handles closing
                     />
                   </PopoverContent>
                 </Popover>

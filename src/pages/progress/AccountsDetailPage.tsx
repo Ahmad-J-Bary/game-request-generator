@@ -400,6 +400,7 @@ export default function AccountsDetailPage() {
                     colorSettings={colors}
                     theme={theme}
                     source="accounts-detail"
+                    mode={mode}
                     data={columns}
                     levelsProgress={levelsProgress}
                     purchaseProgress={purchaseProgress}

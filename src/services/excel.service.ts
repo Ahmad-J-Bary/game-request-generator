@@ -11,7 +11,7 @@ import { saveExcelFile } from './excel/excel-file-operations';
 import { parseExcelFile } from './excel/excel-parser';
 import { importFromExcel } from './excel/excel-import';
 import { getCellStyle } from './excel/excel-styling';
-import { formatDateShort, parseDate, addDays, formatTimeAMPM } from './excel/excel-date-utils';
+import { formatDateShort, formatDateWithYear, parseDate, addDays, formatTimeAMPM } from './excel/excel-date-utils';
 import { buildColumns, createDateMatrix, getColumnStyle } from './excel/excel-column-builder';
 
 export interface ImportData {
@@ -32,6 +32,29 @@ export class ExcelService {
 
   private static async saveFile(filename: string, buffer: any): Promise<boolean> {
     return saveExcelFile(filename, buffer);
+  }
+
+  /**
+   * Sort accounts by start date and time (oldest to newest)
+   */
+  private static sortAccountsByDate(accounts: Account[]): Account[] {
+    return [...accounts].sort((a, b) => {
+      try {
+        const dateA = new Date(`${a.start_date}T${a.start_time}`);
+        const dateB = new Date(`${b.start_date}T${b.start_time}`);
+        
+        if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) {
+          if (a.start_date !== b.start_date) {
+            return a.start_date.localeCompare(b.start_date);
+          }
+          return a.start_time.localeCompare(b.start_time);
+        }
+        
+        return dateA.getTime() - dateB.getTime();
+      } catch (e) {
+        return 0;
+      }
+    });
   }
 
   static async parseExcelFile(filePath: string): Promise<ImportData> {
@@ -204,11 +227,11 @@ export class ExcelService {
 
     if (layout === 'vertical') {
       // Vertical layout: Accounts as rows, Levels as columns
-      const headerRow1 = ['Event Token', '', ''];
-      const headerRow2 = ['Level Name', '', ''];
-      const headerRow3 = ['Days Offset', '', ''];
-      const headerRow4 = ['Time Spent (1000 seconds)', '', ''];
-      const headerRow5 = ['Account', 'Start Date', 'Start Time'];
+      const headerRow1 = ['Event Token', '', '', ''];
+      const headerRow2 = ['Level Name', '', '', ''];
+      const headerRow3 = ['Days Offset', '', '', ''];
+      const headerRow4 = ['Time Spent (1000 seconds)', '', '', ''];
+      const headerRow5 = ['Account', 'Start Date', 'Start Time', 'Last Completed Token'];
 
       columns.forEach((col) => {
         headerRow1.push(col.token);
@@ -221,8 +244,30 @@ export class ExcelService {
       wsData.push(headerRow1, headerRow2, headerRow3, headerRow4, headerRow5);
 
       accounts.forEach((acc, accIdx) => {
-        const row = [acc.name, formatDateShort(acc.start_date), formatTimeAMPM(acc.start_time)];
-        matrix[accIdx].forEach(date => row.push(date));
+        // Find last completed token
+        let lastCompletedToken = '';
+        const matrixRow = matrix[accIdx];
+        
+        // Iterate backwards from columns to find the last completed one
+        for (let colIdx = columns.length - 1; colIdx >= 0; colIdx--) {
+          const col = columns[colIdx];
+          const progressKey = `${acc.id}_${col.id}`;
+          const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
+          if (progress?.is_completed) {
+            lastCompletedToken = col.uniqueKey;
+            break;
+          }
+        }
+
+        const row = [acc.name, formatDateWithYear(acc.start_date), formatTimeAMPM(acc.start_time), lastCompletedToken];
+        matrixRow.forEach((date, colIdx) => {
+          const col = columns[colIdx];
+          const progressKey = `${acc.id}_${col.id}`;
+          const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
+          const isCompleted = progress?.is_completed ?? false;
+          
+          row.push(isCompleted ? `${date} (C)` : date);
+        });
         wsData.push(row);
       });
 
@@ -230,34 +275,34 @@ export class ExcelService {
 
       // Apply merging
       (worksheet as any)['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } },
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 2 } },
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 3 } },
       ];
 
       // Apply styling
       const headerStyle = getCellStyleLocal(colorSettings.headerColor, true);
       const dataRowStyle = getCellStyleLocal(colorSettings.dataRowColor);
 
-      for (let r = 0; r < wsData.length; r++) {
+    for (let r = 0; r < wsData.length; r++) {
         for (let c = 0; c < wsData[r].length; c++) {
           const cellAddress = XLSX.utils.encode_cell({ r, c });
           const cell = (worksheet as any)[cellAddress];
           if (!cell) continue;
 
           if (r < 5) {
-            if (c < 3) {
+            if (c < 4) {
               cell.s = headerStyle;
             } else {
-              const col = columns[c - 3];
+              const col = columns[c - 4];
               cell.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, true);
             }
           } else {
-            if (c < 3) {
+            if (c < 4) {
               cell.s = dataRowStyle;
             } else {
-              const col = columns[c - 3];
+              const col = columns[c - 4];
               const acc = accounts[r - 5];
               const progressKey = `${acc.id}_${col.id}`;
               const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
@@ -270,7 +315,7 @@ export class ExcelService {
       }
 
       (worksheet as any)['!cols'] = [
-        { wch: 20 }, { wch: 12 }, { wch: 10 },
+        { wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 25 },
         ...columns.map(() => ({ wch: 12 }))
       ];
 
@@ -279,7 +324,7 @@ export class ExcelService {
       // Horizontal layout: Levels as rows, Accounts as columns
       const headerRow = ['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)'];
       accounts.forEach(acc => {
-        headerRow.push(`${acc.name} (${formatDateShort(acc.start_date)})`);
+        headerRow.push(`${acc.name} (${formatDateWithYear(acc.start_date)})`);
       });
       wsData.push(headerRow);
 
@@ -425,7 +470,10 @@ export class ExcelService {
       const game = await TauriService.getGameById(gameId);
       const gameName = game?.name || 'Game';
 
-      return await this.exportToExcelMatrix(levels, purchaseEvents, accounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress);
+      // Sort accounts by date (oldest to newest)
+      const sortedAccounts = this.sortAccountsByDate(accounts);
+
+      return await this.exportToExcelMatrix(levels, purchaseEvents, sortedAccounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress);
     } catch (error) {
       console.error('Export game data error:', error);
       return false;
@@ -434,14 +482,14 @@ export class ExcelService {
 
   /**
    * Export all games data with matrix layout
-   * Each game sheet matches the "Export Game Accounts" format exactly
+   * Each game gets 3 sheets: accounts progress, levels definitions, and events definitions
    */
-  static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark'): Promise<boolean> {
+  static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<boolean> {
     try {
       const games = await TauriService.getGames();
       const workbook = XLSX.utils.book_new();
 
-      // Process each game and create a sheet matching "Export Game Accounts" format
+      // Process each game and create sheets
       for (const game of games) {
         const [levels, purchaseEvents, accounts] = await Promise.all([
           TauriService.getGameLevels(game.id),
@@ -454,11 +502,14 @@ export class ExcelService {
           continue;
         }
 
+        // Sort accounts by date (oldest to newest)
+        const sortedAccounts = this.sortAccountsByDate(accounts);
+
         // Fetch progress data for all accounts in this game
         const levelsProgress: Record<string, any> = {};
         const purchaseProgress: Record<string, any> = {};
 
-        for (const account of accounts) {
+        for (const account of sortedAccounts) {
           try {
             const [accountLevelsProgress, accountPurchaseProgress] = await Promise.all([
               TauriService.getAccountLevelProgress(account.id),
@@ -480,25 +531,29 @@ export class ExcelService {
           }
         }
 
-        // Build columns similar to AccountsDetailPage (event-only mode by default for "Export All Games")
-        // Filter out session-only levels (name === '-')
-        const levelCols = levels
-          .filter(l => l.level_name !== '-')
-          .map((l) => ({
-            kind: 'level' as const,
-            id: l.id,
-            token: l.event_token.split('_day')[0],
-            name: l.level_name,
-            daysOffset: l.days_offset,
-            timeSpent: l.time_spent,
-            isBonus: l.is_bonus,
-            synthetic: false,
-          }));
+        // Build columns based on the selected mode
+        let filteredLevels = levels;
+        if (mode === 'event-only') {
+          filteredLevels = levels.filter(l => l.level_name !== '-');
+        }
+
+        const levelCols = filteredLevels.map((l) => ({
+          kind: 'level' as const,
+          id: l.id,
+          token: l.event_token.split('_day')[0],
+          fullToken: l.event_token,
+          name: l.level_name,
+          daysOffset: l.days_offset,
+          timeSpent: l.time_spent,
+          isBonus: l.is_bonus,
+          synthetic: l.level_name === '-',
+        }));
 
         const peCols = purchaseEvents.map((p: PurchaseEvent) => ({
           kind: 'purchase' as const,
           id: p.id,
           token: p.event_token,
+          fullToken: p.event_token,
           name: '$$$',
           isRestricted: (p as any).is_restricted ?? false,
           maxDaysOffset: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-',
@@ -507,11 +562,11 @@ export class ExcelService {
 
         const columns = [...levelCols, ...peCols];
 
-        // Create worksheet using the same logic as exportToExcelMatrix
-        const worksheet = await this.createGameMatrixWorksheet(
+        // 1. Create accounts progress worksheet
+        const accountsWorksheet = await this.createGameMatrixWorksheet(
           levels,
           purchaseEvents,
-          accounts,
+          sortedAccounts,
           columns,
           layout,
           colorSettings,
@@ -520,9 +575,89 @@ export class ExcelService {
           purchaseProgress
         );
 
-        // Add worksheet to workbook with game name (Excel sheet names are limited to 31 characters)
-        XLSX.utils.book_append_sheet(workbook, worksheet, game.name.substring(0, 31));
+        // Add accounts worksheet (sheet names limited to 31 characters)
+        // Truncate base name to allow for _Lvl and _Evt suffixes (max 31 total)
+        const sheetBaseName = game.name.substring(0, 27);
+        XLSX.utils.book_append_sheet(workbook, accountsWorksheet, sheetBaseName);
+
+        // 2. Create Levels sheet
+        if (levels.length > 0) {
+          const levelHeaders = ['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)', 'Bonus'];
+          const levelRows = levels.map(level => [
+            level.event_token,
+            level.level_name,
+            level.days_offset,
+            level.time_spent,
+            level.is_bonus ? 'Yes' : 'No'
+          ]);
+          const levelSheet = XLSX.utils.aoa_to_sheet([levelHeaders, ...levelRows]);
+          XLSX.utils.book_append_sheet(workbook, levelSheet, `${sheetBaseName}_Lvl`);
+        }
+
+        // 3. Create Purchase Events sheet
+        if (purchaseEvents.length > 0) {
+          const purchaseHeaders = ['Event Token', 'Restricted', 'Max Days Offset'];
+          const purchaseRows = purchaseEvents.map(event => [
+            event.event_token,
+            event.is_restricted ? 'Yes' : 'No',
+            event.max_days_offset
+          ]);
+          const purchaseSheet = XLSX.utils.aoa_to_sheet([purchaseHeaders, ...purchaseRows]);
+          XLSX.utils.book_append_sheet(workbook, purchaseSheet, `${sheetBaseName}_Evt`);
+        }
       }
+
+      // 4. Create Completion Info sheet
+      const now = new Date();
+      const todayString = now.toISOString().split('T')[0];
+      
+      // Yesterday calculation
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayString = yesterday.toISOString().split('T')[0];
+
+      const completedKey = `dailyTasks_completed_${todayString}`;
+      const existingCompleted = localStorage.getItem(completedKey);
+      const todayCompletions = existingCompleted ? JSON.parse(existingCompleted) : [];
+
+      const infoRows = [
+        ['Field', 'Value', 'Description'],
+        ['Full Completion Up To Date', yesterdayString, 'All items before or on this date will be marked completed upon import (YYYY-MM-DD)'],
+        [''],
+        ['--- Completed Today Records ---'],
+        ['ID', 'Account Name', 'Game Name', 'Event Token', 'Level Name', 'Time Spent', 'Completion Time', 'Completion Date', 'Level ID', 'Request Type', 'Is Purchase']
+      ];
+
+      todayCompletions.forEach((c: any) => {
+        // Format timestamp to HH:mm:ss AM/PM
+        let formattedTime = '';
+        if (c.completionTime) {
+          const date = new Date(c.completionTime);
+          formattedTime = date.toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit', 
+            hour12: true 
+          });
+        }
+
+        infoRows.push([
+          c.id,
+          c.accountName,
+          c.gameName,
+          c.eventToken,
+          c.levelName || '-',
+          c.timeSpent,
+          formattedTime,
+          c.completionDate,
+          c.levelId || '',
+          c.requestType || '',
+          c.isPurchase ? 'Yes' : 'No'
+        ]);
+      });
+
+      const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
+      XLSX.utils.book_append_sheet(workbook, infoSheet, 'Completion_Info');
 
       // Save file
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
@@ -765,7 +900,7 @@ export class ExcelService {
           row2.push(item.name);
           row3.push(item.daysOffset !== null && item.daysOffset !== undefined ? item.daysOffset.toString() : '-');
           row4.push(item.kind === 'level' && item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-');
-          row5.push(item.dateStr);
+          row5.push(item.isCompleted ? `${item.dateStr} (C)` : item.dateStr);
         });
         wsData.push(row1, row2, row3, row4, row5);
       } else {
@@ -776,7 +911,7 @@ export class ExcelService {
             item.name,
             item.daysOffset !== null && item.daysOffset !== undefined ? item.daysOffset.toString() : '-',
             item.kind === 'level' && item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-',
-            item.dateStr
+            item.isCompleted ? `${item.dateStr} (C)` : item.dateStr
           ]);
         });
       }

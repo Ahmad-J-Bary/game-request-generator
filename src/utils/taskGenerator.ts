@@ -49,14 +49,50 @@ export class TaskGenerator {
             // Combine level requests with purchase requests
             response.requests = [...response.requests, ...purchaseRequests];
 
-            // Filter out requests for events that don't exist
+            // Filter out requests for events that don't exist and attach names/types
             const validRequests: any[] = [];
-            for (const req of response.requests) {
-              const isLevel = gameLevels.some(l => l.event_token === req.event_token);
-              const isPurchase = gamePurchaseEvents.some(p => p.event_token === req.event_token);
 
-              // Only include requests for events that actually exist
-              if (isLevel || isPurchase) {
+            // First pass: collect all valid requests to analyze pairings
+            const tempRequests: any[] = [];
+            for (const req of response.requests) {
+              const matchingLevel = gameLevels.find(l => l.event_token === req.event_token);
+              const matchingPurchase = gamePurchaseEvents.find(p => p.event_token === req.event_token);
+
+              if (matchingLevel || matchingPurchase) {
+                tempRequests.push(req);
+              }
+            }
+
+            // Second pass: determine session types based on whether they have corresponding events
+            for (const req of tempRequests) {
+              const matchingLevel = gameLevels.find(l => l.event_token === req.event_token);
+              const matchingPurchase = gamePurchaseEvents.find(p => p.event_token === req.event_token);
+
+              if (matchingLevel) {
+                req.level_name = matchingLevel.level_name;
+                const rawType = (req.request_type as string).toLowerCase();
+
+                if (rawType === 'session' || rawType === 'session only') {
+                  // Check if this session has a corresponding Level Event with the same event_token
+                  const hasCorrespondingEvent = tempRequests.some(r =>
+                    r.event_token === req.event_token &&
+                    (r.request_type as string).toLowerCase() === 'event' &&
+                    r.level_id === req.level_id // Same level_id for level events
+                  );
+
+                  req.request_type = hasCorrespondingEvent ? 'Level Session' : 'Session Only';
+                } else if (rawType === 'event') {
+                  req.request_type = 'Level Event';
+                }
+                validRequests.push(req);
+              } else if (matchingPurchase) {
+                req.level_name = '$$$';
+                const rawType = req.request_type as string;
+                if (rawType === 'session') {
+                   req.request_type = 'Purchase Session';
+                } else {
+                   req.request_type = 'Purchase Event';
+                }
                 validRequests.push(req);
               }
             }
@@ -65,7 +101,7 @@ export class TaskGenerator {
             if (response.requests.length > 0) {
               // Find the first event (smallest time_spent)
               const firstEvent = response.requests
-                .filter(r => r.request_type === 'session' || r.request_type === 'event')
+                .filter(r => (r.request_type as string).includes('Session') || (r.request_type as string).includes('Event'))
                 .sort((a, b) => a.time_spent - b.time_spent)[0];
 
               if (firstEvent) {

@@ -113,6 +113,11 @@ export class TaskCompletionHandler {
 
         result = await TauriService.updatePurchaseEventProgress(updateRequest);
 
+        const deriveType = (req: any): any => {
+           const raw = (req.request_type as string).toLowerCase();
+           return raw.includes('session') ? 'Purchase Session' : 'Purchase Event';
+        };
+
         // Record completed purchase event
         const completedTask: CompletedDailyTask = {
           id: `${accountId}_${request.event_token}_${Date.now()}`,
@@ -124,8 +129,9 @@ export class TaskCompletionHandler {
           timeSpent: request.time_spent || 0, // Use the request's time_spent
           completionTime: Date.now(),
           completionDate: new Date().toISOString().split('T')[0],
-          levelId: undefined, // Purchase events don't have level IDs
-          requestType: request.request_type as 'session' | 'event',
+          levelId: undefined, 
+          levelName: request.level_name || '$$$',
+          requestType: deriveType(request), 
           isPurchase: true,
         };
 
@@ -243,6 +249,32 @@ export class TaskCompletionHandler {
       if (success) {
         const now = Date.now();
 
+        const deriveFinalType = (req: any): any => {
+          const currentType = (req.request_type as string);
+
+          // If the type is already properly set from task generator, use it
+          if (currentType === 'Session Only' || currentType === 'Level Session' ||
+              currentType === 'Level Event' || currentType === 'Purchase Session' ||
+              currentType === 'Purchase Event') {
+            return currentType;
+          }
+
+          // Fallback logic for older or incorrectly set types
+          if (currentType.includes('Purchase')) {
+            return currentType.includes('Session') ? 'Purchase Session' : 'Purchase Event';
+          }
+
+          if (currentType.includes('Event')) {
+            return 'Level Event';
+          }
+
+          // For session types that aren't properly set, we can't determine without context
+          // Default to Session Only as it's the safer assumption
+          return 'Session Only';
+        };
+
+        const finalRequestType = deriveFinalType(request);
+
         // Create individual completion records for all level events
         // The pair completion logic will clean up duplicates for Session+Event pairs
         if (!isPurchaseEvent && request.level_id) {
@@ -257,7 +289,8 @@ export class TaskCompletionHandler {
             completionTime: now,
             completionDate: new Date().toISOString().split('T')[0],
             levelId: request.level_id,
-            requestType: request.request_type as 'session' | 'event',
+            levelName: (request.level_name?.trim() || '') || '-',
+            requestType: finalRequestType,
             isPurchase: false,
           };
 
@@ -334,11 +367,14 @@ export class TaskCompletionHandler {
               completedList = completedList.filter(task => {
                 // Keep records that don't match this pair's requests
                 const isPairSession = task.id.startsWith(`${accountId}_level_`) &&
-                  group.requests.some(req => req.level_id === task.levelId && req.request_type === 'session');
+                  group.requests.some(req => req.level_id === task.levelId && (req.request_type as string).includes('Session'));
                 const isPairEvent = task.eventToken === group.event_token &&
                   task.id.includes(`_${group.event_token}_`);
                 return !isPairSession && !isPairEvent;
               });
+
+              // Determine if this is a Purchase Event or Level Event pair
+              const isPurchasePair = group.requests.some(r => (r.request_type as string).includes('Purchase'));
 
               // Add the single pair completion record
               const pairCompletedTask: CompletedDailyTask = {
@@ -352,8 +388,9 @@ export class TaskCompletionHandler {
                 completionTime: now,
                 completionDate: completedDate,
                 levelId: request.level_id,
-                requestType: 'event', // Pair completions represent the event part of the pair
-                isPurchase: false,
+                levelName: (request.level_name?.trim() || '') || (isPurchasePair ? '$$$' : '-'),
+                requestType: isPurchasePair ? 'Purchase Event' : 'Level Event', 
+                isPurchase: isPurchasePair,
               };
 
               completedList.push(pairCompletedTask);
