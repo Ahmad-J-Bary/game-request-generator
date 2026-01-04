@@ -7,7 +7,6 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { MainLayout } from './components/templates/MainLayout';
 import Dashboard from './pages/Dashboard';
-import Events from './pages/Events';
 // Accounts
 import AccountListPage from './pages/accounts/AccountListPage';
 import AccountDetailPage from './pages/accounts/AccountDetailPage';
@@ -54,7 +53,6 @@ const App = () => (
                   <Route path="/daily-tasks/unready" element={<UnreadyDailyTasksPage />} />
                   <Route path="/purchase-events" element={<PurchaseEventListPage />} />
                   <Route path="/purchase-events/:id" element={<PurchaseEventDetailPage />} />
-                  <Route path="/events" element={<Events />} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Routes>
               </MainLayout>

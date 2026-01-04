@@ -37,7 +37,6 @@ export const calculateTimerState = (
       for (const t of batch.tasks) {
           if (t.account.id === accountId) {
               if (t === task || (t.account.id === task.account.id && t.requests[0]?.event_token === task.requests[0]?.event_token && t.requests[0]?.level_id === task.requests[0]?.level_id)) { 
-                  // Matching generic object identity or ID/Token/Level combo for safety
                   foundCurrent = true;
                   break;
               }
@@ -54,64 +53,40 @@ export const calculateTimerState = (
   
   // Helper to check if a task is completed
   const isTaskCompleted = (t: DailyTask): boolean => {
-      // Check if all requests in the task are completed
       if (!t.requests || t.requests.length === 0) return true;
       return t.requests.every((_, idx) => t.completedTasks.has(idx.toString()));
   };
 
   // 1. Check for sequential dependency (Pending Previous)
-  // If there is a previous task and it is NOT completed, this task is blocked.
   if (previousTask && !isTaskCompleted(previousTask)) {
-    // Fallback: Check if we have a completion record for this "incomplete" previous task
-    // This handles cases where state might be out of sync or task removal logic is complex
-    // If completionRecord exists and matches the previous task's identity, we assume it's done.
-    const prevGroup = previousTask.requestGroups?.[0];
-    const prevToken = prevGroup?.event_token || previousTask.requests[0]?.event_token;
-    
-    // Note: completionRecord.eventToken might be sufficient matching
-    const matchesRecord = completionRecord && (
-        (prevToken && completionRecord.eventToken === prevToken)
-    );
-
-    if (!matchesRecord) {
-        return {
-        isReady: false,
-        isBlocked: true,
-        remainingTime: 0,
-        comeBackTime: null,
-        reason: 'blocked'
-        };
-    }
+    return {
+      isReady: false,
+      isBlocked: true,
+      remainingTime: 0,
+      comeBackTime: null,
+      reason: 'blocked'
+    };
   }
 
-  // 2. Check Wait Time (Cooldown or Initialization)
+  // 2. Calculate Target Availability Time
   let targetTime = 0;
   let reason: TimerState['reason'] = 'cooldown';
 
-  // We prioritize completionRecord logic if it exists, as it represents the authoritative last action.
-  // This works even if previousTask was removed (e.g. Purchase Event).
+  const currentTimeSpent = getTaskTimeSpent(task);
+
   if (completionRecord) {
-        // Calculate target based on Last Completion + Delta
-        // We need Current Task TimeSpent.
-        // We also need Previous Task TimeSpent. 
-        // If previousTask exists, use it. 
-        // If NOT (removed), use completionRecord.timeSpent (which stores the timeSpent of the completed task).
-        
-        const currentTimeSpent = getTaskTimeSpent(task);
-        const prevTimeSpent = previousTask ? getTaskTimeSpent(previousTask) : completionRecord.timeSpent;
-        
-        // Formula: Target = PrevCompletion + (CurrentTimeSpent - PrevTimeSpent)
-        const deltaSeconds = Math.max(0, currentTimeSpent - prevTimeSpent);
-        targetTime = completionRecord.completionTime + (deltaSeconds * 1000);
+      // Subsequent tasks: Wait from the moment the previous unit was finished
+      // Target = Previous Completion Time + (Current Task TimeSpent - Previous Task TimeSpent)
+      const prevTimeSpent = completionRecord.timeSpent;
+      const waitDuration = Math.max(0, currentTimeSpent - prevTimeSpent);
+      targetTime = completionRecord.completionTime + (waitDuration * 1000);
   } else if (startState && startState.startTime) {
-      // 3. First Task / Initializing Logic (No completion record found)
+      // First Task: Wait from the account's configured start time (the "zero" reference)
+      // Target = Start Time + (Current Task TimeSpent - 0)
       reason = 'initializing';
-      // Parse start time
       const baseTime = new Date(startState.startTime).getTime();
-      
       if (!isNaN(baseTime)) {
-            const timeSpent = getTaskTimeSpent(task);
-            targetTime = baseTime + (timeSpent * 1000);
+          targetTime = baseTime + (currentTimeSpent * 1000);
       }
   }
 

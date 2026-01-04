@@ -75,9 +75,18 @@ export default function UnreadyDailyTasksPage() {
             })
         ).filter(item => !item.details.isReady)
             .sort((a, b) => {
+                const priorityA = (a.task.totalDailyRequests || 0) > 1;
+                const priorityB = (b.task.totalDailyRequests || 0) > 1;
+                if (priorityA && !priorityB) return -1;
+                if (!priorityA && priorityB) return 1;
+
                 if (a.details.isBlocked && !b.details.isBlocked) return 1;
                 if (!a.details.isBlocked && b.details.isBlocked) return -1;
-                return a.details.remainingTime - b.details.remainingTime;
+                if (a.details.remainingTime !== b.details.remainingTime) {
+                    return a.details.remainingTime - b.details.remainingTime;
+                }
+                // Secondary sort: More daily requests first
+                return (b.task.totalDailyRequests || 0) - (a.task.totalDailyRequests || 0);
             });
     }, [batches, currentTime, accountCompletionRecords, accountStartStates]);
 

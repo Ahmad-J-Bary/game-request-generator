@@ -1,7 +1,7 @@
 // src-tauri/src/services/account_service.rs
 
-use rusqlite::{params, OptionalExtension, Connection};
 use crate::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
+use rusqlite::{params, Connection, OptionalExtension};
 
 pub struct AccountService;
 
@@ -10,16 +10,21 @@ impl AccountService {
         AccountService
     }
 
-    pub fn create_account(&self, conn: &Connection, request: CreateAccountRequest) -> Result<i64, String> {
+    pub fn create_account(
+        &self,
+        conn: &Connection,
+        request: CreateAccountRequest,
+    ) -> Result<i64, String> {
         // التحقق من وجود اللعبة
-        let game_exists: i64 = conn.query_row(
-            "SELECT 1 FROM games WHERE id = ?1",
-            params![request.game_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e| format!("Failed to check game existence: {}", e))?
-        .unwrap_or(0);
+        let game_exists: i64 = conn
+            .query_row(
+                "SELECT 1 FROM games WHERE id = ?1",
+                params![request.game_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("Failed to check game existence: {}", e))?
+            .unwrap_or(0);
 
         if game_exists == 0 {
             return Err(format!("Game with ID {} not found", request.game_id));
@@ -41,25 +46,32 @@ impl AccountService {
         Ok(conn.last_insert_rowid())
     }
 
-    pub fn get_accounts_by_game(&self, conn: &Connection, game_id: i64) -> Result<Vec<Account>, String> {
-        let mut stmt = conn.prepare(
-            "SELECT id, game_id, name, start_date, start_time, request_template, created_at
-             FROM accounts WHERE game_id = ?1 ORDER BY created_at"
-        )
-        .map_err(|e| format!("Failed to prepare statement: {}", e))?;
+    pub fn get_accounts_by_game(
+        &self,
+        conn: &Connection,
+        game_id: i64,
+    ) -> Result<Vec<Account>, String> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, game_id, name, start_date, start_time, request_template, created_at
+             FROM accounts WHERE game_id = ?1 ORDER BY created_at",
+            )
+            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let accounts_iter = stmt.query_map(params![game_id], |row| {
-            Ok(Account {
-                id: row.get(0)?,
-                game_id: row.get(1)?,
-                name: row.get(2)?,
-                start_date: row.get(3)?,
-                start_time: row.get(4)?,
-                request_template: row.get(5)?,
-                created_at: row.get(6).ok(),
+        let accounts_iter = stmt
+            .query_map(params![game_id], |row| {
+                Ok(Account {
+                    id: row.get(0)?,
+                    game_id: row.get(1)?,
+                    name: row.get(2)?,
+                    start_date: row.get(3)?,
+                    start_time: row.get(4)?,
+                    request_template: row.get(5)?,
+                    created_at: row.get(6).ok(),
+                    total_daily_requests: None,
+                })
             })
-        })
-        .map_err(|e| format!("Failed to query accounts: {}", e))?;
+            .map_err(|e| format!("Failed to query accounts: {}", e))?;
 
         let mut accounts = Vec::new();
         for account in accounts_iter {
@@ -83,14 +95,19 @@ impl AccountService {
                     start_time: row.get(4)?,
                     request_template: row.get(5)?,
                     created_at: row.get(6).ok(),
+                    total_daily_requests: None,
                 })
-            }
+            },
         )
         .optional()
         .map_err(|e| format!("Failed to get account: {}", e))
     }
 
-    pub fn update_account(&self, conn: &Connection, request: UpdateAccountRequest) -> Result<bool, String> {
+    pub fn update_account(
+        &self,
+        conn: &Connection,
+        request: UpdateAccountRequest,
+    ) -> Result<bool, String> {
         let mut updates = Vec::new();
         let mut values = Vec::new();
 
@@ -122,14 +139,14 @@ impl AccountService {
         values.push(&request.id as &dyn rusqlite::ToSql);
 
         conn.execute(&sql, values.as_slice())
-        .map_err(|e| format!("Failed to update account: {}", e))?;
+            .map_err(|e| format!("Failed to update account: {}", e))?;
 
         Ok(conn.changes() > 0)
     }
 
     pub fn delete_account(&self, conn: &Connection, id: i64) -> Result<bool, String> {
         conn.execute("DELETE FROM accounts WHERE id = ?1", params![id])
-        .map_err(|e| format!("Failed to delete account: {}", e))?;
+            .map_err(|e| format!("Failed to delete account: {}", e))?;
 
         Ok(conn.changes() > 0)
     }

@@ -11,6 +11,7 @@ pub struct Account {
     pub start_time: String,
     pub request_template: String,
     pub created_at: Option<String>,
+    pub total_daily_requests: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]

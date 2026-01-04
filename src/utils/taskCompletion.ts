@@ -162,6 +162,18 @@ export class TaskCompletionHandler {
 
         this.options.setBatches(updatedBatches);
 
+        // Record the completion of this purchase event task for timing
+        this.options.setAccountCompletionRecords(prev => ({
+          ...prev,
+          [accountId]: {
+            accountId,
+            timeSpent: request.time_spent || 0,
+            completionTime: Date.now(),
+            levelId: 0, // Using 0 as levelId for purchase events to satisfy types
+            eventToken: request.event_token!,
+          }
+        }));
+
         // Check if all requests for this account in this batch are completed
         const currentBatch = updatedBatches.find(b => b.batchIndex === batchIndex);
         const taskInBatch = currentBatch?.tasks.find(t => t.account.id === accountId);
@@ -434,6 +446,18 @@ export class TaskCompletionHandler {
         }
 
         // If we get here, the task was partially completed (only one request in a pair)
+        // We still update the completion record for timing purposes
+        this.options.setAccountCompletionRecords(prev => ({
+          ...prev,
+          [accountId]: {
+            accountId,
+            timeSpent: request.time_spent || 0,
+            completionTime: now,
+            levelId: request.level_id!,
+            eventToken: request.event_token || '',
+          }
+        }));
+
         this.options.setBatches(updatedBatches);
 
         // Dispatch progress-updated event to refresh other components

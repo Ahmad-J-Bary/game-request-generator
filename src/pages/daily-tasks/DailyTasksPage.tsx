@@ -80,6 +80,8 @@ export default function DailyTasksPage() {
                 }
               });
               if (readyTasksInBatch.length > 0) {
+                // Explicitly sort tasks in the ready batch by totalDailyRequests (descending)
+                readyTasksInBatch.sort((a, b) => (b.totalDailyRequests || 0) - (a.totalDailyRequests || 0));
                 readyBatches.push({ ...batch, tasks: readyTasksInBatch });
               }
             });
@@ -113,7 +115,10 @@ export default function DailyTasksPage() {
                         <h2 className="text-xl font-semibold">{t('dailyTasks.deferredTasksTitle', 'Deferred Tasks')}</h2>
                     </div>
                     
-                    {deferredTasks.map(({ task, batchIndex }) => (
+                    {/* Sort deferred tasks by request count */}
+                    {deferredTasks
+                      .sort((a, b) => (b.task.totalDailyRequests || 0) - (a.task.totalDailyRequests || 0))
+                      .map(({ task, batchIndex }) => (
                       <TaskItem
                         key={`${task.account.id}-${batchIndex}`}
                         task={task}

@@ -150,6 +150,7 @@ export class TaskGenerator {
                 requestGroups, // Keep grouped structure for timing logic
                 targetDate: response.target_date,
                 completedTasks: new Set(),
+                totalDailyRequests: response.requests.length
               });
             }
           } catch (accountError) {
@@ -166,107 +167,110 @@ export class TaskGenerator {
     }
 
     // 2. Implement logical unit batching with timing constraints
-    const gameIds = Object.keys(gameTasksMap).map(id => parseInt(id));
     const batches: GameBatch[] = [];
-    let batchIndex = 0;
+    let currentBatchIndex = 0;
 
     // Track scheduled execution time for each account's request groups
     const scheduledTimes: { [accountId: number]: number[] } = {};
 
     // Pre-calculate scheduled times for all request groups based on timing constraints
-    for (const gameId of gameIds) {
-      const gameTasks = gameTasksMap[gameId];
-      if (gameTasks && gameTasks.length > 0) {
+    for (const gameId of Object.keys(gameTasksMap).map(Number)) {
+        const gameTasks = gameTasksMap[gameId];
         for (const task of gameTasks) {
-          const accountId = task.account.id;
-          if (task.requestGroups && task.requestGroups.length > 0) {
-            scheduledTimes[accountId] = [];
-            let currentScheduledTime = Date.now(); // Start from now
+            const accountId = task.account.id;
+            if (task.requestGroups && task.requestGroups.length > 0) {
+                scheduledTimes[accountId] = [];
+                let currentScheduledTime = Date.now();
 
-            for (let i = 0; i < task.requestGroups.length; i++) {
-              const group = task.requestGroups[i];
-
-              if (i > 0) {
-                const prevGroup = task.requestGroups[i - 1];
-                const timeDifference = group.time_spent - prevGroup.time_spent;
-                // Use full time difference
-                const minimumWaitTime = timeDifference * 1000;
-                currentScheduledTime += minimumWaitTime;
-              }
-
-              scheduledTimes[accountId].push(currentScheduledTime);
+                for (let i = 0; i < task.requestGroups.length; i++) {
+                    const group = task.requestGroups[i];
+                    if (i > 0) {
+                        const prevGroup = task.requestGroups[i - 1];
+                        const timeDifference = group.time_spent - prevGroup.time_spent;
+                        currentScheduledTime += timeDifference * 1000;
+                    }
+                    scheduledTimes[accountId].push(currentScheduledTime);
+                }
             }
-          }
         }
-      }
     }
 
-    // Track which request group index each account is on
+    // Sort accounts into priority (>1 request) and regular (1 request)
+    const allTasks: DailyTask[] = Object.values(gameTasksMap).flat();
+    const priorityTasks = allTasks.filter(t => (t.requestGroups?.length || 0) > 1);
+    const regularTasks = allTasks.filter(t => (t.requestGroups?.length || 0) <= 1);
+
     const accountGroupIndex: { [accountId: number]: number } = {};
 
-    // Continue until all request groups are assigned to batches
-    while (true) {
-      const currentBatchTasks: DailyTask[] = [];
-      let hasAnyGroups = false;
+    // Helper to add tasks to batches
+    const processAccountList = (taskList: DailyTask[]) => {
+        while (true) {
+            const currentBatchTasks: DailyTask[] = [];
+            let hasAnyGroups = false;
 
-      // Take one request group from each game/account for this batch
-      for (const gameId of gameIds) {
-        const gameTasks = gameTasksMap[gameId];
-        if (gameTasks && gameTasks.length > 0) {
-          // Find an account in this game that has an available request group
-          for (const task of gameTasks) {
-            const accountId = task.account.id;
-            const currentGroupIndex = accountGroupIndex[accountId] || 0;
+            // Sort task list by totalDailyRequests (DESC) then name
+            const sortedList = [...taskList].sort((a, b) => {
+                const countA = a.totalDailyRequests || 0;
+                const countB = b.totalDailyRequests || 0;
+                if (countB !== countA) return countB - countA;
+                return a.account.name.localeCompare(b.account.name);
+            });
 
-            if (task.requestGroups && currentGroupIndex < task.requestGroups.length) {
-              // We remove the readiness check here so that all tasks are assigned to batches
-              // and visible to the user, even if they are not yet ready.
-              // The TaskItem component will handle the "Not Ready" UI and countdown.
+            for (const task of sortedList) {
+                const accountId = task.account.id;
+                const currentIdx = accountGroupIndex[accountId] || 0;
 
-              // Create a task with only the current request group
-              const currentGroup = task.requestGroups[currentGroupIndex];
-              const groupTask: DailyTask = {
-                account: task.account,
-                requests: currentGroup.requests,
-                targetDate: task.targetDate,
-                completedTasks: new Set(),
-              };
+                if (task.requestGroups && currentIdx < task.requestGroups.length) {
+                    const currentGroup = task.requestGroups[currentIdx];
+                    const groupTask: DailyTask = {
+                        account: task.account,
+                        requests: currentGroup.requests,
+                        targetDate: task.targetDate,
+                        completedTasks: new Set(),
+                        totalDailyRequests: task.totalDailyRequests
+                    };
 
-              // Record the task assignment (for internal tracking, though we show it anyway)
-              const assignment: AccountTaskAssignment = {
-                accountId,
-                assignedTime: Date.now(),
-                eventToken: currentGroup.event_token,
-                timeSpent: currentGroup.time_spent,
-              };
+                    const assignment: AccountTaskAssignment = {
+                        accountId,
+                        assignedTime: Date.now(),
+                        eventToken: currentGroup.event_token,
+                        timeSpent: currentGroup.time_spent,
+                    };
 
-              this.options.setAccountTaskAssignments(prev => ({
-                ...prev,
-                [accountId]: [...(prev[accountId] || []), assignment]
-              }));
+                    this.options.setAccountTaskAssignments(prev => ({
+                        ...prev,
+                        [accountId]: [...(prev[accountId] || []), assignment]
+                    }));
 
-              currentBatchTasks.push(groupTask);
-              accountGroupIndex[accountId] = currentGroupIndex + 1;
-              hasAnyGroups = true;
-              break; // Found a suitable group for this game, move to next game
+                    currentBatchTasks.push(groupTask);
+                    accountGroupIndex[accountId] = currentIdx + 1;
+                    hasAnyGroups = true;
+                }
             }
-          }
+
+            if (currentBatchTasks.length > 0) {
+                // Ensure sorting within the batch as well
+                currentBatchTasks.sort((a, b) => {
+                    const countA = a.totalDailyRequests || 0;
+                    const countB = b.totalDailyRequests || 0;
+                    if (countB !== countA) return countB - countA;
+                    return a.account.name.localeCompare(b.account.name);
+                });
+
+                batches.push({
+                    batchIndex: currentBatchIndex++,
+                    tasks: currentBatchTasks,
+                });
+            }
+
+            if (!hasAnyGroups) break;
         }
-      }
+    };
 
-      // If we got any groups for this batch, add it
-      if (currentBatchTasks.length > 0) {
-        batches.push({
-          batchIndex: batchIndex++,
-          tasks: currentBatchTasks,
-        });
-      }
-
-      // If no groups were added in this iteration, we're done
-      if (!hasAnyGroups) {
-        break;
-      }
-    }
+    // Process priority accounts first
+    processAccountList(priorityTasks);
+    // Then process regular accounts
+    processAccountList(regularTasks);
 
     return { batches, accountScheduledTime: scheduledTimes };
   }
