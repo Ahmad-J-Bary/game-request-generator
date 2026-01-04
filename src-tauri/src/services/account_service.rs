@@ -44,7 +44,7 @@ impl AccountService {
     pub fn get_accounts_by_game(&self, conn: &Connection, game_id: i64) -> Result<Vec<Account>, String> {
         let mut stmt = conn.prepare(
             "SELECT id, game_id, name, start_date, start_time, request_template, created_at
-             FROM accounts WHERE game_id = ?1 ORDER BY name"
+             FROM accounts WHERE game_id = ?1 ORDER BY created_at"
         )
         .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
