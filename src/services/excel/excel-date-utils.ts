@@ -3,9 +3,14 @@
 /**
  * Format date to short format (e.g., "23-Dec")
  */
-export function formatDateShort(dateStr?: string): string {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
+// src/services/excel/excel-date-utils.ts
+
+/**
+ * Format date to short format (e.g., "23-Dec")
+ */
+export function formatDateShort(dateInput?: string | Date): string {
+  if (!dateInput) return '-';
+  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
   if (Number.isNaN(d.getTime())) return '-';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${d.getDate()}-${months[d.getMonth()]}`;
@@ -14,9 +19,9 @@ export function formatDateShort(dateStr?: string): string {
 /**
  * Format date with year for export/import (e.g., "23-Dec-2025")
  */
-export function formatDateWithYear(dateStr?: string): string {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
+export function formatDateWithYear(dateInput?: string | Date): string {
+  if (!dateInput) return '-';
+  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
   if (Number.isNaN(d.getTime())) return '-';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${d.getDate()}-${months[d.getMonth()]}-${d.getFullYear()}`;

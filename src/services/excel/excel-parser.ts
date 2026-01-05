@@ -15,6 +15,7 @@ export interface ImportData {
     purchaseToken?: string;
     token: string; // The specific event token for matching
     isCompleted: boolean;
+    completionDate?: string;
   }[];
   fullCompletionUpToDate?: string;
   completedToday?: any[];
@@ -24,6 +25,7 @@ export interface ImportData {
  * Parse Excel file and extract data based on sheet structure
  */
 export async function parseExcelFile(filePath: string): Promise<ImportData> {
+// ... existing code ...
   try {
     console.log('Reading file:', filePath);
     const fileContent = await readExcelFile(filePath);
@@ -179,17 +181,32 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
               
               for (let col = 4; col < row.length; col++) {
                 const cellVal = row[col] ? row[col].toString().trim() : '';
-                if (cellVal.endsWith('(C)')) {
-                  const header = colHeaders[col - 4];
-                  if (header) {
-                    result.progress.push({
-                      gameName,
-                      accountName,
-                      levelName: header.isPurchase ? undefined : header.name,
-                      purchaseToken: header.isPurchase ? header.token : undefined,
-                      token: header.token,
-                      isCompleted: true
-                    });
+                if (cellVal && cellVal !== '-') {
+                  let isCompleted = false;
+                  let dateStr = '';
+
+                  if (cellVal.endsWith('(C)')) {
+                    isCompleted = true;
+                    dateStr = cellVal.replace('(C)', '').trim();
+                  } else if (/^\d{1,2}-[A-Za-z]{3}$/.test(cellVal)) {
+                    // It's a date but not completed (scheduled/incomplete with custom offset)
+                    isCompleted = false;
+                    dateStr = cellVal;
+                  }
+
+                  if (dateStr) {
+                    const header = colHeaders[col - 4];
+                    if (header) {
+                      result.progress.push({
+                        gameName,
+                        accountName,
+                        levelName: header.isPurchase ? undefined : header.name,
+                        purchaseToken: header.isPurchase ? header.token : undefined,
+                        token: header.token,
+                        isCompleted,
+                        completionDate: dateStr
+                      });
+                    }
                   }
                 }
               }

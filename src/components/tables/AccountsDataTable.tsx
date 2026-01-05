@@ -11,6 +11,11 @@ import {
 import { useSettings, useColorStyle } from '../../contexts/SettingsContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { DataTableCell } from './DataTableCell';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { SimpleCalendar } from '../ui/simple-calendar';
+import { Button } from '../ui/button';
+import { CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
 
 type ColumnData =
   | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean }
@@ -30,6 +35,14 @@ interface AccountsDataTableProps {
   layout: 'horizontal' | 'vertical';
   levelsProgress?: Record<string, { level_id: number; is_completed: boolean }>;
   purchaseProgress?: Record<string, { purchase_event_id: number; is_completed: boolean }>;
+  isEditMode?: boolean;
+  tempProgress?: {
+    levels: { [key: string]: boolean };
+    purchases: { [key: string]: boolean };
+  };
+  onProgressChange?: (type: 'level' | 'purchase', id: number | string, completed: boolean) => void;
+  tempPurchaseDates?: { [key: number]: Date | null };
+  onPurchaseDateChange?: (purchaseId: number, date: Date | null) => void;
 }
 
 export function AccountsDataTable({
@@ -38,7 +51,12 @@ export function AccountsDataTable({
   matrix,
   layout,
   levelsProgress = {},
-  purchaseProgress = {}
+  purchaseProgress = {},
+  isEditMode = false,
+  tempProgress,
+  onProgressChange,
+  tempPurchaseDates,
+  onPurchaseDateChange,
 }: AccountsDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
@@ -107,15 +125,32 @@ export function AccountsDataTable({
     opacity: 0.8
   };
 
-  // التحقق من حالة التقدم وتحديد النمط المناسب
   const getDateCellStyle = (accountId: number, col: ColumnData): React.CSSProperties => {
+    // In edit mode, we check tempProgress
+    if (isEditMode && tempProgress) {
+      if (col.kind === 'level') {
+        // Use composite key for levels in tempProgress to handle multiple accounts
+        // We need a unique key for each cell in tempProgress: `${accountId}_${col.id}`
+        const cellKey = `${accountId}_${col.id}`;
+        return tempProgress.levels[cellKey] ? completeScheduledStyle : incompleteScheduledStyle;
+      } else {
+        const cellKey = `${accountId}_${col.id}`;
+        // tempProgress.purchases is keyed by event ID? No, needs account context too
+        // The singular page used simple IDs because it was one account.
+        // Here we need account-specific keys.
+        // Wait, tempProgress structure passed from singular page was generic.
+        // We need to adapt tempProgress for matrix.
+        // Let's assume tempProgress uses keys: `${accountId}_${id}` like the progress maps.
+        // But for TypeScript safety, let's cast logic.
+        return (tempProgress.purchases as { [key: string]: boolean })[cellKey] ? completeScheduledStyle : incompleteScheduledStyle;
+      }
+    }
+
     if (col.kind === 'level') {
-      // البحث عن تقدم المستوى المحدد لهذا الحساب
       const progressKey = `${accountId}_${col.id}`;
       const progress = levelsProgress[progressKey];
       return progress && progress.is_completed ? completeScheduledStyle : incompleteScheduledStyle;
     } else {
-      // البحث عن تقدم حدث الشراء المحدد لهذا الحساب
       const progressKey = `${accountId}_${col.id}`;
       const progress = purchaseProgress[progressKey];
       return progress && progress.is_completed ? completeScheduledStyle : incompleteScheduledStyle;
@@ -129,6 +164,79 @@ export function AccountsDataTable({
       </div>
     );
   }
+
+
+
+  // Render cell content (Checkbox + Date Picker in Edit Mode, or Text)
+  const renderCell = (acc: Account, col: ColumnData, colIdx: number, accIdx: number) => {
+    if (isEditMode && tempProgress && onProgressChange) {
+      const cellKey = `${acc.id}_${col.id}`;
+      // Logic for levels and purchase events
+      let isCompleted = false;
+      if (col.kind === 'level') {
+          isCompleted = tempProgress.levels[cellKey] ?? levelsProgress[cellKey]?.is_completed ?? false;
+      } else {
+          // Cast to any to access dynamic key if index signature is missing in prop type def, 
+          // or ideally fix the interface.
+          // Interface defined as: purchases: { [key: number]: boolean };
+          // But here we use 'string' key (accId_colId).
+          const purchasesMap = tempProgress.purchases as unknown as { [key: string]: boolean };
+          isCompleted = purchasesMap[cellKey] ?? purchaseProgress[cellKey]?.is_completed ?? false;
+      }
+      
+      const purchaseDateOverride = col.kind === 'purchase' && tempPurchaseDates 
+          ? tempPurchaseDates[acc.id * 100000 + (col.id as number)] 
+          : null;
+
+
+      return (
+        <div className="flex flex-col items-center gap-1">
+          {/* Checkbox for Completion - Native Input to match AccountDetail */}
+          <div className="flex items-center justify-center w-full h-6">
+            <input
+              type="checkbox"
+              checked={isCompleted}
+              onChange={(e) => {
+                 const newVal = e.target.checked;
+                 onProgressChange?.(col.kind, col.kind === 'level' ? cellKey : cellKey, newVal);
+              }}
+              className="w-4 h-4"
+            />
+          </div>
+          
+          {/* Date Picker for Purchase Events Only - Using SimpleCalendar and ghost button */}
+          {col.kind === 'purchase' && tempPurchaseDates && onPurchaseDateChange && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!purchaseDateOverride && "text-muted-foreground"} ${isCompleted ? 'line-through decoration-gray-500' : ''}`}
+                >
+                   <CalendarIcon className="h-3 w-3 mr-1" />
+                   {purchaseDateOverride ? format(purchaseDateOverride, "MMM d") : 'Pick'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="center">
+                <SimpleCalendar
+                  selectedDate={purchaseDateOverride || null}
+                  onDateSelect={(date) => onPurchaseDateChange?.(acc.id * 100000 + (col.id as number), date)}
+                  onClose={() => {}} // Popover handles closing
+                />
+              </PopoverContent>
+            </Popover>
+          )}
+          
+          {/* For levels, just show the date text if not purchase */}
+          {col.kind === 'level' && (
+            <span className={`text-xs ${isCompleted ? 'line-through decoration-gray-500' : ''}`}>{matrix[accIdx][colIdx]}</span>
+          )}
+        </div>
+      );
+    }
+
+    return matrix[accIdx][colIdx];
+  };
 
   if (layout === 'horizontal') {
     return (
@@ -164,11 +272,10 @@ export function AccountsDataTable({
                   {renderCellContent(col, 'timeSpent')}
                 </DataTableCell>
 
-                {accounts.map((acc) => {
-                  const accIdx = accounts.findIndex(a => a.id === acc.id);
+                {accounts.map((acc, accIdx) => {
                   return (
                     <TableCell key={acc.id} className="text-center" style={getDateCellStyle(acc.id, col)}>
-                      {matrix[accIdx]?.[colIdx]}
+                      {renderCell(acc, col, colIdx, accIdx)}
                     </TableCell>
                   );
                 })}
@@ -278,7 +385,7 @@ export function AccountsDataTable({
                   className="text-center"
                   style={getDateCellStyle(acc.id, c)}
                 >
-                  {matrix[accIdx][colIdx]}
+                  {renderCell(acc, c, colIdx, accIdx)}
                 </TableCell>
               );
             })}

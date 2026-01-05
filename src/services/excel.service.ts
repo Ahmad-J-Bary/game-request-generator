@@ -266,7 +266,19 @@ export class ExcelService {
           const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
           const isCompleted = progress?.is_completed ?? false;
           
-          row.push(isCompleted ? `${date} (C)` : date);
+          let displayDate = date;
+          
+          // For purchase events, if there is progress with a specific days_offset, recalculate the date
+          // This ensures that manually modified dates are exported correctly
+          if (col.kind === 'purchase' && progress && typeof progress.days_offset === 'number') {
+             const start = parseDate(acc.start_date);
+             if (start) {
+                 const actualDate = addDays(start, progress.days_offset);
+                 displayDate = formatDateShort(actualDate);
+             }
+          }
+          
+          row.push(isCompleted ? `${displayDate} (C)` : displayDate);
         });
         wsData.push(row);
       });
@@ -556,7 +568,10 @@ export class ExcelService {
           fullToken: p.event_token,
           name: '$$$',
           isRestricted: (p as any).is_restricted ?? false,
-          maxDaysOffset: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-',
+          // Export the reference days_offset if available (preferred), otherwise show max limit or dash
+          daysOffset: (p as any).days_offset !== undefined && (p as any).days_offset !== null
+            ? (p as any).days_offset.toString()
+            : (p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-'),
           synthetic: false,
         }));
 
@@ -852,17 +867,23 @@ export class ExcelService {
 
       if (columns && columns.length > 0) {
         allItems = columns.map(col => {
-          const dd = addDays(startDateObj, Number(col.daysOffset || 0));
-          const dateStr = formatDateShort(dd);
-
           let isCompleted = false;
+          let daysOffsetToUse = Number(col.daysOffset || 0);
+
           if (col.kind === 'level') {
             const prog = levelsProgress?.find(p => p.level_id === col.id);
             isCompleted = prog ? prog.is_completed : false;
           } else {
             const prog = purchaseProgress?.find(p => p.purchase_event_id === col.id);
             isCompleted = prog ? prog.is_completed : false;
+            // Use actual execution date if available
+            if (prog && typeof prog.days_offset === 'number') {
+                daysOffsetToUse = prog.days_offset;
+            }
           }
+
+          const dd = addDays(startDateObj, daysOffsetToUse);
+          const dateStr = formatDateShort(dd);
 
           return {
             ...col,
@@ -879,8 +900,33 @@ export class ExcelService {
             return { kind: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, dateStr: formatDateShort(dd), isCompleted: prog ? prog.is_completed : false, isBonus: l.is_bonus };
           }),
           ...purchaseEvents.map(p => {
-            const prog = purchaseProgress?.find(p => p.purchase_event_id === p.id);
-            return { kind: 'purchase', token: p.event_token, name: '$$$', daysOffset: p.max_days_offset, timeSpent: null, dateStr: '-', isCompleted: prog ? prog.is_completed : false, isRestricted: p.is_restricted };
+            const prog = purchaseProgress?.find(pr => pr.purchase_event_id === p.id);
+            
+            let dateStr = '-';
+            if (prog && typeof prog.days_offset === 'number') {
+                 const dd = addDays(startDateObj, prog.days_offset);
+                 dateStr = formatDateShort(dd);
+            } else if ((p as any).days_offset !== undefined && (p as any).days_offset !== null) {
+                 // Use reference days_offset
+                  const dd = addDays(startDateObj, (p as any).days_offset);
+                  dateStr = formatDateShort(dd);
+            }
+            
+            // Prioritize showing the reference days_offset in the 'Days Offset' column
+            const displayOffset = (p as any).days_offset !== undefined && (p as any).days_offset !== null
+                ? (p as any).days_offset.toString()
+                : (p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-');
+
+            return { 
+                kind: 'purchase', 
+                token: p.event_token, 
+                name: '$$$', 
+                daysOffset: displayOffset, // Use calculated/reference offset
+                timeSpent: null, 
+                dateStr, 
+                isCompleted: prog ? prog.is_completed : false, 
+                isRestricted: p.is_restricted 
+            };
           })
         ];
       }

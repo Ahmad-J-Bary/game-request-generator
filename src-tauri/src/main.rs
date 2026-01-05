@@ -16,7 +16,11 @@ use chrono::Datelike;
 use models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
 use models::game::{CreateGameRequest, Game, UpdateGameRequest};
 use models::level::{CreateLevelRequest, Level, UpdateLevelRequest};
-use models::progress::*;
+use models::progress::{
+    AccountLevelProgress, AccountPurchaseEventProgress, CreateAccountLevelProgressRequest,
+    CreateAccountPurchaseEventProgressRequest, UpdateAccountLevelProgressRequest,
+    UpdateAccountPurchaseEventProgressRequest,
+};
 use models::purchase_event::{
     CreatePurchaseEventRequest, PurchaseEvent, UpdatePurchaseEventRequest,
 };
@@ -402,7 +406,10 @@ fn get_daily_requests(
     let mut all_levels = levels.clone();
     let numeric_levels: Vec<&models::level::Level> = levels.iter().collect();
     if !numeric_levels.is_empty() {
-        let existing_days: std::collections::HashSet<i32> = numeric_levels.iter().map(|l| l.days_offset as i32).collect();
+        let existing_days: std::collections::HashSet<i32> = numeric_levels
+            .iter()
+            .map(|l| l.days_offset as i32)
+            .collect();
 
         let min_day = *existing_days.iter().min().unwrap();
         let max_day = *existing_days.iter().max().unwrap();
@@ -411,13 +418,19 @@ fn get_daily_requests(
         for day in start_day..=max_day {
             if !existing_days.contains(&day) {
                 // Find the next real level after this day
-                let next_real_level = levels.iter()
+                let next_real_level = levels
+                    .iter()
                     .filter(|l| l.days_offset > day)
                     .min_by_key(|l| l.days_offset);
 
                 if let Some(next_level) = next_real_level {
                     let time: f64;
-                    let token = next_level.event_token.split("_day").next().unwrap_or(&next_level.event_token).to_string();
+                    let token = next_level
+                        .event_token
+                        .split("_day")
+                        .next()
+                        .unwrap_or(&next_level.event_token)
+                        .to_string();
 
                     // Check if this synthetic level appears before any real level in the dataset
                     let first_real_day = *existing_days.iter().min().unwrap();
@@ -429,13 +442,16 @@ fn get_daily_requests(
                         time = (day + 1) as f64 * increment;
                     } else {
                         // Normal interpolation between adjacent real levels
-                        let prev_real_level = levels.iter()
+                        let prev_real_level = levels
+                            .iter()
                             .filter(|l| l.days_offset < day)
                             .max_by_key(|l| l.days_offset);
 
                         if let Some(prev_level) = prev_real_level {
-                            let ratio = (day - prev_level.days_offset) as f64 / (next_level.days_offset - prev_level.days_offset) as f64;
-                            time = prev_level.time_spent as f64 + ratio * (next_level.time_spent - prev_level.time_spent) as f64;
+                            let ratio = (day - prev_level.days_offset) as f64
+                                / (next_level.days_offset - prev_level.days_offset) as f64;
+                            time = prev_level.time_spent as f64
+                                + ratio * (next_level.time_spent - prev_level.time_spent) as f64;
                         } else {
                             time = (next_level.time_spent / 2) as f64;
                         }
@@ -535,20 +551,27 @@ fn get_daily_requests(
             let mut event_request_content = account.request_template.clone();
 
             // Replace placeholders for event request
-            event_request_content = event_request_content.replace("{event_token}", &clean_event_token);
-            event_request_content = event_request_content.replace("{time_spent}", &time_spent.to_string());
+            event_request_content =
+                event_request_content.replace("{event_token}", &clean_event_token);
+            event_request_content =
+                event_request_content.replace("{time_spent}", &time_spent.to_string());
 
             // Additional placeholders
             event_request_content = event_request_content.replace("{account_name}", &account.name);
-            event_request_content = event_request_content.replace("{game_id}", &account.game_id.to_string());
-            event_request_content = event_request_content.replace("{level_name}", &level.level_name);
-            event_request_content = event_request_content.replace("{days_offset}", &level.days_offset.to_string());
+            event_request_content =
+                event_request_content.replace("{game_id}", &account.game_id.to_string());
+            event_request_content =
+                event_request_content.replace("{level_name}", &level.level_name);
+            event_request_content =
+                event_request_content.replace("{days_offset}", &level.days_offset.to_string());
 
             // Change POST /session to POST /event if needed
             event_request_content = event_request_content.replace("POST /session", "POST /event");
 
             // If the template doesn't contain Content-Length header, calculate it
-            if !event_request_content.contains("Content-Length:") && event_request_content.contains("\n\n") {
+            if !event_request_content.contains("Content-Length:")
+                && event_request_content.contains("\n\n")
+            {
                 let parts: Vec<&str> = event_request_content.split("\n\n").collect();
                 if parts.len() >= 2 {
                     let headers = parts[0];
@@ -556,7 +579,8 @@ fn get_daily_requests(
                     let content_length_line = format!("Content-Length: {}", body.len());
 
                     // Insert Content-Length header before the body
-                    event_request_content = format!("{}\n{}\n\n{}", headers, content_length_line, body);
+                    event_request_content =
+                        format!("{}\n{}\n\n{}", headers, content_length_line, body);
                 }
             }
 
@@ -577,22 +601,84 @@ fn get_daily_requests(
         .get_purchase_events_by_game(conn, account.game_id)
         .map_err(|_| "Failed to get purchase events".to_string())?;
 
-    let purchase_events_map: std::collections::HashMap<i64, PurchaseEvent> =
-        purchase_events.into_iter().map(|pe| (pe.id, pe)).collect();
-
     // Get purchase event progress
     let purchase_progress = progress_service
         .get_account_purchase_event_progress(conn, account_id)
         .map_err(|_| "Failed to get purchase event progress".to_string())?;
 
-    for p in purchase_progress {
-        if p.days_offset as i64 == days_passed && !p.is_completed {
-            if let Some(event) = purchase_events_map.get(&p.purchase_event_id) {
-                // Apply the same time_spent conversion as level events
+    // Create a map of progress for quick lookup
+    let progress_map: std::collections::HashMap<
+        i64,
+        &models::progress::AccountPurchaseEventProgress,
+    > = purchase_progress
+        .iter()
+        .map(|p| (p.purchase_event_id, p))
+        .collect();
+
+    for event in purchase_events {
+        // Determine the effective days_offset (from progress override or event default)
+        // If progress exists, use its days_offset (whether it's completed or not, though completed are filtered later)
+        // If no progress, use event default
+
+        let effective_offset = if let Some(prog) = progress_map.get(&event.id) {
+            Some(prog.days_offset)
+        } else {
+            event.days_offset
+        };
+
+        // Check if the event is scheduled for today (matches days_passed)
+        if let Some(event_day_offset) = effective_offset {
+            // Check if completed
+            let is_completed = if let Some(prog) = progress_map.get(&event.id) {
+                prog.is_completed
+            } else {
+                false
+            };
+
+            if event_day_offset as i64 == days_passed && !is_completed {
+                // Calculate time_spent dynamically based on adjacent levels
+                // Logic mirrors frontend GameDetailPage.tsx calculation
+                let mut calculated_time: i32 = 0;
+
+                // Filter real levels (ignore synthetic ones if any were mixed in, though 'levels' here are from DB)
+                let mut sorted_levels = levels.clone();
+                sorted_levels.sort_by_key(|l| l.days_offset);
+
+                // Find all levels on the same day
+                let same_day_levels: Vec<&models::level::Level> = sorted_levels
+                    .iter()
+                    .filter(|l| l.days_offset == event_day_offset)
+                    .collect();
+
+                // Find the next level after this day
+                let next_level = sorted_levels
+                    .iter()
+                    .find(|l| l.days_offset > event_day_offset);
+
+                let mut levels_to_average = Vec::new();
+                levels_to_average.extend(same_day_levels);
+                if let Some(nl) = next_level {
+                    levels_to_average.push(nl);
+                }
+
+                if !levels_to_average.is_empty() {
+                    let total_time: i32 = levels_to_average.iter().map(|l| l.time_spent).sum();
+                    calculated_time =
+                        (total_time as f64 / levels_to_average.len() as f64).round() as i32;
+                }
+
+                // If calculation failed (e.g. no levels), fallback to some default or 0?
+                // The prompt implies it should be automatic based on position.
+                // If there are no levels, we might default to a non-zero value or kept 0.
+                if calculated_time == 0 {
+                    calculated_time = 243; // Default fallback similar to frontend
+                }
+
+                // Apply randomized multiplier (Logic from level events)
                 use rand::Rng;
                 let mut rng = rand::thread_rng();
                 let offset = rng.gen_range(-1..=1); // -1, 0, or 1
-                let adjusted_time = (p.time_spent as i32) + offset;
+                let adjusted_time = calculated_time + offset;
                 let multiplied_time = adjusted_time * 1000;
                 let random_addition = rng.gen_range(0..1000);
                 let time_spent = multiplied_time + random_addition;
@@ -603,17 +689,25 @@ fn get_daily_requests(
                 let mut purchase_request_content = account.request_template.clone();
 
                 // Replace placeholders for purchase event
-                purchase_request_content = purchase_request_content.replace("{event_token}", clean_event_token);
-                purchase_request_content = purchase_request_content.replace("{time_spent}", &time_spent.to_string());
+                purchase_request_content =
+                    purchase_request_content.replace("{event_token}", clean_event_token);
+                purchase_request_content =
+                    purchase_request_content.replace("{time_spent}", &time_spent.to_string());
 
                 // Additional placeholders
-                purchase_request_content = purchase_request_content.replace("{account_name}", &account.name);
-                purchase_request_content = purchase_request_content.replace("{game_id}", &account.game_id.to_string());
-                purchase_request_content = purchase_request_content.replace("{level_name}", &event.event_token); // Use event token as level name for purchase events
-                purchase_request_content = purchase_request_content.replace("{days_offset}", &p.days_offset.to_string());
+                purchase_request_content =
+                    purchase_request_content.replace("{account_name}", &account.name);
+                purchase_request_content =
+                    purchase_request_content.replace("{game_id}", &account.game_id.to_string());
+                purchase_request_content =
+                    purchase_request_content.replace("{level_name}", &event.event_token); // Use event token as level name for purchase events
+                purchase_request_content = purchase_request_content
+                    .replace("{days_offset}", &event_day_offset.to_string());
 
                 // If the template doesn't contain Content-Length header, calculate it
-                if !purchase_request_content.contains("Content-Length:") && purchase_request_content.contains("\n\n") {
+                if !purchase_request_content.contains("Content-Length:")
+                    && purchase_request_content.contains("\n\n")
+                {
                     let parts: Vec<&str> = purchase_request_content.split("\n\n").collect();
                     if parts.len() >= 2 {
                         let headers = parts[0];
@@ -621,7 +715,8 @@ fn get_daily_requests(
                         let content_length_line = format!("Content-Length: {}", body.len());
 
                         // Insert Content-Length header before the body
-                        purchase_request_content = format!("{}\n{}\n\n{}", headers, content_length_line, body);
+                        purchase_request_content =
+                            format!("{}\n{}\n\n{}", headers, content_length_line, body);
                     }
                 }
 
@@ -636,7 +731,22 @@ fn get_daily_requests(
 
                 // Create Event HTTP request for purchase events
                 let mut purchase_event_request_content = purchase_request_content.clone();
-                purchase_event_request_content = purchase_event_request_content.replace("POST /session", "POST /event");
+                purchase_event_request_content =
+                    purchase_event_request_content.replace("POST /session", "POST /event");
+
+                // Recalculate Content-Length for event request as well if body changed (it shouldn't here really, but good practice)
+                if !purchase_event_request_content.contains("Content-Length:")
+                    && purchase_event_request_content.contains("\n\n")
+                {
+                    let parts: Vec<&str> = purchase_event_request_content.split("\n\n").collect();
+                    if parts.len() >= 2 {
+                        let headers = parts[0];
+                        let body = parts[1];
+                        let content_length_line = format!("Content-Length: {}", body.len());
+                        purchase_event_request_content =
+                            format!("{}\n{}\n\n{}", headers, content_length_line, body);
+                    }
+                }
 
                 requests.push(serde_json::json!({
                     "request_type": "event",
@@ -662,9 +772,13 @@ fn get_daily_requests(
 }
 
 #[tauri::command]
-async fn import_request_templates(state: tauri::State<'_, AppState>, app: tauri::AppHandle, game_id: i64) -> Result<serde_json::Value, String> {
-    use tauri_plugin_dialog::DialogExt;
+async fn import_request_templates(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    game_id: i64,
+) -> Result<serde_json::Value, String> {
     use std::path::Path;
+    use tauri_plugin_dialog::DialogExt;
 
     // Open file dialog to select multiple .txt files
     let files = app

@@ -11,7 +11,7 @@ import { ImportDialog } from '../../components/molecules/ImportDialog';
 import { ExportDialog } from '../../components/molecules/ExportDialog';
 import { Button } from '../../components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu';
-import { Download, Upload, ChevronDown } from 'lucide-react';
+import { Download, Upload, ChevronDown, Edit3, Save, X } from 'lucide-react';
 
 import { useAccounts } from '../../hooks/useAccounts';
 import { useLevels } from '../../hooks/useLevels';
@@ -47,6 +47,7 @@ function formatDateShort(date: Date | null): string {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${date.getDate()}-${months[date.getMonth()]}`;
 }
+
 
 
 export default function AccountsDetailPage() {
@@ -108,9 +109,7 @@ export default function AccountsDetailPage() {
           .sort((a, b) => (a.daysOffset as number) - (b.daysOffset as number));
 
         if (numericLevels.length > 0) {
-          // Find all levels on the same day as the purchase event
           const sameDayLevels = numericLevels.filter(l => (l.daysOffset as number) === day);
-          // Find the next level after the purchase event day
           const nextLevel = numericLevels.find(l => (l.daysOffset as number) > day);
 
           const levelsToAverage = [...sameDayLevels];
@@ -134,7 +133,7 @@ export default function AccountsDetailPage() {
         daysOffset: day != null ? day : null,
         timeSpent: midpointTime,
         maxDaysOffset: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : '-',
-      };
+      } as const;
     });
 
     const allCols = [...levelCols, ...peCols];
@@ -156,8 +155,8 @@ export default function AccountsDetailPage() {
       levels.sort((a: any, b: any) => (a.daysOffset || 0) - (b.daysOffset || 0));
       purchases.sort((a: any, b: any) => {
         if (a.daysOffset === b.daysOffset) return 0;
-        if (a.daysOffset == null) return 1;
         if (b.daysOffset == null) return -1;
+        if (a.daysOffset == null) return 1;
         return a.daysOffset - b.daysOffset;
       });
 
@@ -268,17 +267,371 @@ export default function AccountsDetailPage() {
     const numericIds = new Set(numeric.map((c: any) => c.id));
     const nonNumeric = allCols.filter((c: any) => !numericIds.has(c.id));
     return [...result, ...nonNumeric];
-  }, [levels, purchaseEvents, mode]);
+  }, [levels, purchaseEvents, mode, t]);
 
-
-
+  // Handlers defined inside the render loop OR we move the render loop up
+  // We can define the handlers here but they will need `levelsProgress` which is not yet available.
+  // So we will define a InnerComponent or just inline the logic in the render prop.
+  // For cleanliness, I'll put the big JSX block inside the render prop and define handlers there? 
+  // No, React doesn't like defining functions inside render during every render (perf).
+  // But here we need closure over `levelsProgress`.
+  // Better approach: Separate component `AccountsDetailContent` that takes `levelsProgress` as prop.
+  
   return (
     <div className="p-6 space-y-4 min-h-[calc(100vh-4rem)] relative flex flex-col">
-      <div className="flex-1">
-      <div className="flex items-center justify-between">
+       <ProgressProvider accounts={accounts}>
+         {({ levelsProgress, purchaseProgress }) => (
+            <AccountsDetailContent 
+               accounts={accounts}
+               levels={levels}
+               purchaseEvents={purchaseEvents}
+               games={games}
+               selectedGameId={selectedGameId}
+               setSelectedGameId={setSelectedGameId}
+               mode={mode}
+               setMode={setMode}
+               layout={layout}
+               setLayout={setLayout}
+               colors={colors}
+               theme={theme}
+               t={t}
+               columns={columns}
+               levelsProgress={levelsProgress}
+               purchaseProgress={purchaseProgress}
+               showImportDialog={showImportDialog}
+               setShowImportDialog={setShowImportDialog}
+               showExportDialog={showExportDialog}
+               setShowExportDialog={setShowExportDialog}
+               exportType={exportType}
+               setExportType={setExportType}
+               isCreatingGame={isCreatingGame}
+               setIsCreatingGame={setIsCreatingGame}
+               newGameName={newGameName}
+               setNewGameName={setNewGameName}
+               handleCreateGame={handleCreateGame}
+            />
+         )}
+       </ProgressProvider>
+    </div>
+  );
+}
+
+// Separate component to handle the logic that depends on Progress
+function AccountsDetailContent({
+    accounts, purchaseEvents, games, selectedGameId, setSelectedGameId,
+    mode, setMode, layout, setLayout, colors, theme, t, columns, levelsProgress, purchaseProgress,
+    showImportDialog, setShowImportDialog, showExportDialog, setShowExportDialog, exportType, setExportType,
+    isCreatingGame, setIsCreatingGame, newGameName, setNewGameName, handleCreateGame
+}: any) {
+  
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [tempProgress, setTempProgress] = useState<{
+    levels: { [key: string]: boolean };
+    purchases: { [key: string]: boolean };
+  }>({
+    levels: {},
+    purchases: {},
+  });
+  const [tempPurchaseDates, setTempPurchaseDates] = useState<{ [key: number]: Date | null }>({});
+
+  const handleEditToggle = () => {
+    if (!isEditMode) {
+      const levelProg: { [key: string]: boolean } = {};
+      const purchaseProg: { [key: string]: boolean } = {};
+      const purchaseDates: { [key: number]: Date | null } = {};
+
+      // Init logic
+      // We iterate the 'columns' or 'accounts' + 'events'.
+      // Iterate existing progress to fill init state
+      Object.keys(levelsProgress).forEach(key => {
+        levelProg[key] = levelsProgress[key].is_completed;
+      });
+      
+      Object.keys(purchaseProgress).forEach(key => {
+        const prog = purchaseProgress[key];
+        purchaseProg[key] = prog.is_completed;
+        
+        // key is `${accId}_${peId}`
+        const [accIdStr, peIdStr] = key.split('_');
+        const accId = parseInt(accIdStr);
+        const peId = parseInt(peIdStr);
+        const compositeId = accId * 100000 + peId;
+        
+        const account = accounts.find((a: any) => a.id === accId);
+        if (account) {
+             const start = parseDate(account.start_date);
+             if (start) {
+                  purchaseDates[compositeId] = addDays(start, prog.days_offset);
+             }
+        }
+      });
+
+      setTempProgress({
+        levels: levelProg,
+        purchases: purchaseProg,
+      });
+      setTempPurchaseDates(purchaseDates);
+    }
+    setIsEditMode(!isEditMode);
+  };
+
+  const handleProgressChange = (type: 'level' | 'purchase', id: number | string, completed: boolean) => {
+    setTempProgress(prev => ({
+      ...prev,
+      [type === 'level' ? 'levels' : 'purchases']: {
+        ...prev[type === 'level' ? 'levels' : 'purchases'],
+        [id]: completed,
+      },
+    }));
+  };
+
+  const handlePurchaseDateChange = (compositeId: number, date: Date | null) => {
+    setTempPurchaseDates(prev => ({
+      ...prev,
+      [compositeId]: date
+    }));
+  };
+
+  const handleSaveProgress = async () => {
+      // Save logic (same as previous)
+      
+      const updatePromises: Promise<any>[] = [];
+
+      const purchaseKeys = new Set(Object.keys(tempProgress.purchases));
+      Object.keys(tempPurchaseDates).forEach(k => {
+          const compId = parseInt(k);
+          const peId = compId % 100000;
+          const accId = Math.floor(compId / 100000);
+          purchaseKeys.add(`${accId}_${peId}`);
+      });
+
+      for (const key of Array.from(purchaseKeys)) {
+        const [accIdStr, peIdStr] = key.split('_');
+        const accId = parseInt(accIdStr);
+        const peId = parseInt(peIdStr);
+        const isCompleted = tempProgress.purchases[key] ?? false;
+        
+        const compositeId = accId * 100000 + peId;
+        const selectedDate = tempPurchaseDates[compositeId];
+        
+        const account = accounts.find((a: any) => a.id === accId);
+        if (!account) continue;
+        
+         const eventDef = purchaseEvents.find((e: any) => e.id === peId);
+         const defaultOffset = typeof eventDef?.days_offset === 'number' ? eventDef.days_offset : (eventDef?.max_days_offset || 0);
+         
+         let daysOffset = defaultOffset;
+        
+         let calculatedTimeSpent = 0;
+
+        if (selectedDate) {
+          const start = parseDate(account.start_date);
+          if (start) {
+             const diff = selectedDate.getTime() - start.getTime();
+             daysOffset = Math.round(diff / (1000 * 60 * 60 * 24));
+             
+             // Calculate time_spent based on surrounding levels (from columns)
+             const numericLevels = columns
+                .filter((c: any) => c.kind === 'level' && typeof c.daysOffset === 'number')
+                .sort((a: any, b: any) => (a.daysOffset as number) - (b.daysOffset as number));
+
+             if (numericLevels.length > 0) {
+                const sameDayLevels = numericLevels.filter((l: any) => (l.daysOffset as number) === daysOffset);
+                const nextLevel = numericLevels.find((l: any) => (l.daysOffset as number) > daysOffset);
+                
+                const levelsToAverage = [...sameDayLevels];
+                if (nextLevel) levelsToAverage.push(nextLevel);
+                
+                if (levelsToAverage.length > 0) {
+                    const totalTimeSpent = levelsToAverage.reduce((sum: number, level: any) => sum + (level.timeSpent || 0), 0);
+                    calculatedTimeSpent = Math.round(totalTimeSpent / levelsToAverage.length);
+                }
+             }
+             
+             if (calculatedTimeSpent <= 0) {
+                 // Fallback
+                 const existingProgress = purchaseProgress[`${accId}_${peId}`];
+                 if (existingProgress && existingProgress.time_spent > 0) {
+                     calculatedTimeSpent = existingProgress.time_spent;
+                 } else {
+                     calculatedTimeSpent = 243;
+                 }
+             }
+          }
+        }
+        
+        const progressKey = `${accId}_${peId}`;
+        const existing = purchaseProgress[progressKey];
+        
+        if (existing) {
+             // If we calculated a new time (because date changed), use it. otherwise keep existing.
+             const timeToUse = calculatedTimeSpent > 0 ? calculatedTimeSpent : existing.time_spent;
+             
+             updatePromises.push(TauriService.updatePurchaseEventProgress({
+                account_id: accId,
+                purchase_event_id: peId,
+                is_completed: isCompleted,
+                days_offset: daysOffset,
+                time_spent: timeToUse
+             }));
+        } else {
+             if (isCompleted || selectedDate) {
+                 const timeToUse = calculatedTimeSpent > 0 ? calculatedTimeSpent : 243;
+                 
+                 updatePromises.push((async () => {
+                     await TauriService.createPurchaseEventProgress({
+                        account_id: accId,
+                        purchase_event_id: peId,
+                        days_offset: daysOffset,
+                        time_spent: timeToUse
+                     });
+                     if (isCompleted) {
+                        await TauriService.updatePurchaseEventProgress({
+                             account_id: accId,
+                             purchase_event_id: peId,
+                             is_completed: true
+                        });
+                     }
+                 })());
+             }
+        }
+      }
+      
+      for (const key of Object.keys(tempProgress.levels)) {
+         // Process all keys, even if unchecked, to ensure we can mark them incomplete
+         
+         const [accIdStr, lvlIdStr] = key.split('_');
+         const accId = parseInt(accIdStr);
+         let lvlId = parseInt(lvlIdStr);
+         
+         const isCompleted = tempProgress.levels[key];
+         
+         // Handle synthetic levels
+         if (lvlIdStr.startsWith('synth')) {
+            if (!isCompleted) continue; // If unchecking a synthetic level that doesn't exist, ignore
+            
+            // Find column definition
+            const col = columns.find((c: any) => c.id === lvlIdStr);
+            if (!col) continue;
+            
+            // Create real level
+             // Find account to get game_id
+            const account = accounts.find((a: any) => a.id === accId);
+            if (!account) continue;
+
+            const newLevel = {
+              game_id: account.game_id,
+              level_name: col.name,
+              event_token: `${col.token}_day${col.daysOffset}`,
+              days_offset: col.daysOffset,
+              time_spent: col.timeSpent,
+              is_bonus: col.isBonus
+            };
+            
+            try {
+                // Try to find existing first? Or just add and expect backend to handle?
+                // For safety, let's just add. If it duplicates, we might have issues, 
+                // but usually we check. Let's do a quick check if possible or blindly add if strict strict.
+                // Replicating AccountDetailPage logic strictly:
+                const existingLevels = await TauriService.getGameLevels(account.game_id);
+                const existingLevel = existingLevels.find((l: any) =>
+                  l.days_offset === newLevel.days_offset &&
+                  l.event_token === newLevel.event_token
+                );
+                
+                if (existingLevel) {
+                    lvlId = existingLevel.id;
+                } else {
+                    const createdLevelId = await TauriService.addLevel(newLevel);
+                    lvlId = createdLevelId;
+                }
+            } catch (e) {
+                console.error("Error ensuring level exists", e);
+                continue;
+            }
+         }
+         
+         // Re-construct key with potentially new real ID? 
+         // No, the existing progress map uses real IDs. 
+         // If we started with synth key, we won't find existing progress by that key in the map.
+         // We must check if 'real' progress exists.
+         
+         const realKey = `${accId}_${lvlId}`;
+         const existing = levelsProgress[realKey]; // key in levelsProgress is "accId_lvlId"
+         
+         if (existing) {
+            if (existing.is_completed !== isCompleted) {
+                updatePromises.push(TauriService.updateLevelProgress({
+                    account_id: accId,
+                    level_id: lvlId,
+                    is_completed: isCompleted
+                }));
+            }
+         } else if (isCompleted) {
+            updatePromises.push((async () => {
+                await TauriService.createLevelProgress({ account_id: accId, level_id: lvlId });
+                await TauriService.updateLevelProgress({ account_id: accId, level_id: lvlId, is_completed: true });
+            })());
+         }
+      }
+
+      await Promise.all(updatePromises);
+      setIsEditMode(false);
+      window.location.reload(); 
+  };
+
+
+  // Sort accounts by start date in ascending order
+  const sortedAccounts = [...accounts].sort((a: any, b: any) => {
+    const dateA = parseDate(a.start_date);
+    const dateB = parseDate(b.start_date);
+    if (!dateA && !dateB) return 0;
+    if (!dateA) return 1;
+    if (!dateB) return -1;
+    return dateA.getTime() - dateB.getTime();
+  });
+
+  const matrix = sortedAccounts.map((acc: any) => {
+    const start = parseDate(acc.start_date);
+    return columns.map((c: any) => {
+      if (c.kind === 'level' && start) {
+        return formatDateShort(addDays(start, Number(c.daysOffset || 0)));
+      }
+      if (c.kind === 'purchase' && start) {
+        const key = `${acc.id}_${c.id}`;
+        const progress = purchaseProgress[key];
+        if (progress) {
+          return formatDateShort(addDays(start, progress.days_offset));
+        }
+        if (c.daysOffset != null) {
+          return formatDateShort(addDays(start, Number(c.daysOffset)));
+        }
+      }
+      return '-';
+    });
+  });
+
+    return (
+      <div className="flex-1 flex flex-col h-full">
+      <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Accounts Detail</h2>
 
         <div className="flex gap-3">
+          {isEditMode ? (
+            <>
+              <Button variant="default" size="sm" onClick={handleSaveProgress} className="flex items-center gap-2">
+                <Save className="h-4 w-4" /> {t('common.save', 'Save')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setIsEditMode(false)} className="flex items-center gap-2">
+                <X className="h-4 w-4" /> {t('common.cancel', 'Cancel')}
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" onClick={handleEditToggle} className="flex items-center gap-2">
+                <Edit3 className="h-4 w-4" /> {t('common.edit', 'Edit')}
+            </Button>
+          )}
+
           <Button
             variant="outline"
             size="sm"
@@ -347,81 +700,47 @@ export default function AccountsDetailPage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="overflow-auto">
-          <ProgressProvider accounts={accounts}>
-            {({ levelsProgress, purchaseProgress }) => {
-              // Sort accounts by start date in ascending order
-              const sortedAccounts = [...accounts].sort((a, b) => {
-                const dateA = parseDate(a.start_date);
-                const dateB = parseDate(b.start_date);
-                if (!dateA && !dateB) return 0;
-                if (!dateA) return 1;
-                if (!dateB) return -1;
-                return dateA.getTime() - dateB.getTime();
-              });
-
-              const matrix = sortedAccounts.map((acc) => {
-                const start = parseDate(acc.start_date);
-                return columns.map((c) => {
-                  if (c.kind === 'level' && start) {
-                    return formatDateShort(addDays(start, Number(c.daysOffset || 0)));
-                  }
-                  if (c.kind === 'purchase' && start) {
-                    const key = `${acc.id}_${c.id}`;
-                    const progress = purchaseProgress[key];
-                    if (progress) {
-                      return formatDateShort(addDays(start, progress.days_offset));
-                    }
-                    if (c.daysOffset != null) {
-                      return formatDateShort(addDays(start, Number(c.daysOffset)));
-                    }
-                  }
-                  return '-';
-                });
-              });
-
-              return (
-                <>
-                  <AccountsDataTable
-                    accounts={sortedAccounts}
-                    columns={columns}
-                    matrix={matrix}
-                    layout={layout}
-                    levelsProgress={levelsProgress}
-                    purchaseProgress={purchaseProgress}
-                  />
-                  <ExportDialog
-                    open={showExportDialog}
-                    onOpenChange={setShowExportDialog}
-                    gameId={selectedGameId}
-                    exportType={exportType}
-                    layout={layout}
-                    colorSettings={colors}
-                    theme={theme}
-                    source="accounts-detail"
-                    mode={mode}
-                    data={columns}
-                    levelsProgress={levelsProgress}
-                    purchaseProgress={purchaseProgress}
-                  />
-                </>
-              );
-            }}
-          </ProgressProvider>
+      <Card className="flex-1">
+        <CardContent className="overflow-auto h-full">
+             <AccountsDataTable
+               accounts={sortedAccounts}
+               columns={columns}
+               matrix={matrix}
+               layout={layout}
+               levelsProgress={levelsProgress}
+               purchaseProgress={purchaseProgress}
+               isEditMode={isEditMode}
+               tempProgress={tempProgress}
+               onProgressChange={handleProgressChange}
+               tempPurchaseDates={tempPurchaseDates}
+               onPurchaseDateChange={handlePurchaseDateChange}
+             />
+             <ExportDialog
+               open={showExportDialog}
+               onOpenChange={setShowExportDialog}
+               gameId={selectedGameId}
+               exportType={exportType}
+               layout={layout}
+               colorSettings={colors}
+               theme={theme}
+               source="accounts-detail"
+               mode={mode}
+               data={columns}
+               levelsProgress={levelsProgress}
+               purchaseProgress={purchaseProgress}
+             />
         </CardContent>
       </Card>
-
+      
       <ImportDialog
         open={showImportDialog}
         onOpenChange={setShowImportDialog}
         gameId={selectedGameId}
       />
-      </div>
-
-      {/* Excel-like Game Tabs Navigation */}
+      
+      {/* Footer / Tabs */}
       <div className="sticky bottom-0 w-[calc(100%+3rem)] -ml-6 -mb-6 bg-gray-200 border-t border-gray-300 h-10 flex items-end px-2 z-40 overflow-x-auto mt-auto">
-        {games.map((g) => {
+        {games.map((g: any) => {
           const isActive = g.id === selectedGameId;
           return (
             <div
@@ -476,7 +795,8 @@ export default function AccountsDetailPage() {
           </PopoverContent>
         </Popover>
       </div>
-    </div>
-  );
+    
+      </div>
+    );
 }
 

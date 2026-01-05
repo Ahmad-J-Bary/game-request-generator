@@ -152,6 +152,43 @@ export default function AccountDetailPage() {
   const [tempPurchaseDates, setTempPurchaseDates] = useState<{ [key: number]: Date | null }>({});
 
   const handleEditToggle = () => {
+    if (!isEditMode) {
+      // Initialize tempProgress with existing progress
+      const levelProg: { [key: number | string]: boolean } = {};
+      const purchaseProg: { [key: number]: boolean } = {};
+      const purchaseDates: { [key: number]: Date | null } = {};
+
+      levelsProgress.forEach(p => {
+        levelProg[p.level_id] = p.is_completed;
+      });
+
+      purchaseProgress.forEach(p => {
+        purchaseProg[p.purchase_event_id] = p.is_completed;
+        
+        // Init date override if exists
+        const account = accounts.find(a => a.id === accountId);
+        if (typeof p.days_offset === 'number' && account) {
+             const start = new Date(`${account.start_date}T${account.start_time}`); // or just start_date if simple date
+             if (!isNaN(start.getTime())) {
+                const date = new Date(start);
+                date.setDate(date.getDate() + p.days_offset);
+                purchaseDates[p.purchase_event_id] = date;
+             }
+        }
+      });
+
+      setTempProgress({
+        levels: levelProg,
+        purchases: purchaseProg,
+      });
+      // setTempPurchaseDates(purchaseDates); // Option logic to init dates visually? AccountsDetailPage does. 
+      // If we don't init tempPurchaseDates, the picker shows 'Pick'.
+      // If the event has a stored days_offset that is DIFFERENT from Reference, we should probably show it?
+      // But calculating if it is "Reference" is hard here.
+      // For now, let's just init tempProgress to fix the 'Unchecked' bug.
+      // Initializing dates might over-complicate if we don't distinguish 'manual override' vs 'default'.
+      // AccountsDetailPage inits if 'prog.days_offset' exists.
+    }
     setIsEditMode(!isEditMode);
   };
 
@@ -279,11 +316,18 @@ export default function AccountDetailPage() {
         }
       }
 
-      // Save purchase event progress - create records for all purchase events that have been modified
-      for (const [purchaseId, isCompleted] of Object.entries(tempProgress.purchases)) {
-        const purchaseIdNum = parseInt(purchaseId);
+      const purchaseKeys = new Set(Object.keys(tempProgress.purchases));
+      Object.keys(tempPurchaseDates).forEach(k => purchaseKeys.add(k));
+
+      for (const purchaseIdStr of Array.from(purchaseKeys)) {
+        const purchaseIdNum = parseInt(purchaseIdStr);
+        const isCompleted = tempProgress.purchases[purchaseIdNum] ?? false; 
+        
         const selectedDate = tempPurchaseDates[purchaseIdNum];
-        let daysOffset = 0;
+        
+        // Default to reference event's offset
+        const eventDef = purchaseEvents.find(e => e.id === purchaseIdNum);
+        let daysOffset = typeof eventDef?.days_offset === 'number' ? eventDef.days_offset : (eventDef?.max_days_offset || 0);
         let calculatedTimeSpent = 0;
 
         if (selectedDate) {

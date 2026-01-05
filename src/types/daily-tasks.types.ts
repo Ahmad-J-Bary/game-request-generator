@@ -61,7 +61,6 @@ export interface DailyTask {
     requestGroups?: RequestGroup[]; // Groups of related requests (Session + Event pairs)
     targetDate: string;
     completedTasks: Set<string>; // Track completed tasks by index
-    totalDailyRequests?: number; // Total number of requests for this account today
 }
 
 export interface GameBatch {

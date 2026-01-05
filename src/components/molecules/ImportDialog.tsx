@@ -311,6 +311,12 @@ export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) 
             // Use token for matching instead of name
             const lowerToken = p.token.toLowerCase();
 
+            // Find account start date to calculate offsets
+            const accountInfo = importResult.imported.accounts.find((a: any) => 
+              a.name?.toLowerCase() === p.accountName.toLowerCase() && 
+              a.gameName === p.gameName
+            );
+
             if (p.levelName !== undefined) {
               const lid = levelCache[`${gid}_${lowerToken}`];
               if (lid) {
@@ -329,18 +335,53 @@ export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) 
             } else if (p.purchaseToken !== undefined) {
               const peid = purchaseCache[`${gid}_${lowerToken}`];
               if (peid) {
+                let calculatedDaysOffset = 0;
+                
+                // Calculate days_offset if completion date is provided
+                if (p.completionDate && accountInfo?.start_date) {
+                   try {
+                     // Parse start date
+                     const startDate = new Date(accountInfo.start_date);
+                     
+                     // Parse completion date (e.g. "5-Jan")
+                     // Assuming current year if not specified, or same year as start date?
+                     // Usually current year is safe for immediate re-import, but let's try to be smart.
+                     // The export format is "D-MMM".
+                     const m = p.completionDate.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+                     if (m) {
+                       const day = parseInt(m[1], 10);
+                       const monStr = m[2].toLowerCase();
+                       const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+                       const monthIndex = months.indexOf(monStr);
+                       
+                       if (monthIndex >= 0) {
+                         const currentYear = new Date().getFullYear();
+                         const compDate = new Date(currentYear, monthIndex, day);
+                         
+                         // Calculate difference
+                         const diffTime = compDate.getTime() - startDate.getTime();
+                         calculatedDaysOffset = Math.round(diffTime / (1000 * 60 * 60 * 24));
+                       }
+                     }
+                   } catch (e) {
+                     console.error("Error parsing date for offset calculation", e);
+                   }
+                }
+
                 try {
                   await TauriService.createPurchaseEventProgress({
                     account_id: aid,
                     purchase_event_id: peid,
-                    days_offset: 0,
+                    days_offset: calculatedDaysOffset,
                     time_spent: 0
                   });
                 } catch (e) { /* Ignore if exists */ }
+                
                 await TauriService.updatePurchaseEventProgress({
                   account_id: aid,
                   purchase_event_id: peid,
-                  is_completed: p.isCompleted
+                  is_completed: p.isCompleted,
+                  days_offset: calculatedDaysOffset // Update offset as well
                 });
               }
             }
