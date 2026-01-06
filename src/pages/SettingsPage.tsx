@@ -3,6 +3,7 @@
 import { useTranslation } from 'react-i18next';
 import { Settings } from 'lucide-react';
 import { ColorSettingsPanel } from '../components/molecules/ColorSettingsPanel';
+import { DatabaseSettingsPanel } from '../components/molecules/DatabaseSettingsPanel';
 
 export default function SettingsPage() {
   const { t } = useTranslation();
@@ -14,6 +15,7 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-bold">{t('settings.title')}</h1>
       </div>
 
+      <DatabaseSettingsPanel />
       <ColorSettingsPanel />
     </div>
   );

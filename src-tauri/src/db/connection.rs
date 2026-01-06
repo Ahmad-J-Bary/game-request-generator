@@ -12,15 +12,22 @@ pub struct Database {
 impl Database {
     /// افتح أو أنشئ ملف قاعدة البيانات داخل app data directory
     pub fn new(app: &AppHandle) -> Result<Self, String> {
-        let data_dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+        use super::config::ConfigService;
+        let config = ConfigService::load(app);
 
-        std::fs::create_dir_all(&data_dir)
-            .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+        let db_path = if let Some(custom_path) = config.db_path {
+            PathBuf::from(custom_path)
+        } else {
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
-        let db_path: PathBuf = data_dir.join("database.sqlite");
+            std::fs::create_dir_all(&data_dir)
+                .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+
+            data_dir.join("database.sqlite")
+        };
 
         println!("Database path: {:?}", db_path);
 

@@ -31,6 +31,8 @@ use services::level_service::LevelService;
 use services::progress_service::ProgressService;
 use services::purchase_event_service::PurchaseEventService;
 
+use db::config::ConfigService;
+
 // === حالة التطبيق ===
 struct AppState {
     db: Mutex<Database>,
@@ -51,6 +53,9 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // أوامر الإعدادات
+            get_db_path,
+            set_db_path,
             // أوامر الألعاب
             add_game,
             get_games,
@@ -90,6 +95,27 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn get_db_path(app: tauri::AppHandle) -> Result<String, String> {
+    let config = ConfigService::load(&app);
+    if let Some(path) = config.db_path {
+        Ok(path)
+    } else {
+        let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        Ok(data_dir
+            .join("database.sqlite")
+            .to_string_lossy()
+            .to_string())
+    }
+}
+
+#[tauri::command]
+fn set_db_path(app: tauri::AppHandle, path: Option<String>) -> Result<(), String> {
+    let mut config = ConfigService::load(&app);
+    config.db_path = path;
+    ConfigService::save(&app, &config)
 }
 
 // ==================== أوامر الألعاب ====================
