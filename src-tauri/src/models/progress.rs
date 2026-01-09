@@ -8,7 +8,7 @@ pub struct AccountLevelProgress {
     pub account_id: i64,
     pub level_id: i64,
     pub is_completed: bool,
-    pub completed_at: Option<String>,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,7 +32,7 @@ pub struct AccountPurchaseEventProgress {
     pub is_completed: bool,
     pub days_offset: i32,
     pub time_spent: i32,
-    pub completed_at: Option<String>,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize)]

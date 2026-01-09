@@ -247,7 +247,7 @@ export default function GameDetailPage() {
       if (a.kind !== b.kind) {
         return a.kind === 'level' ? -1 : 1;
       }
-      return String(a.id).localeCompare(String(b.id));
+      return Number(a.id) - Number(b.id);
     });
 
     if (mode === 'event-only') {
@@ -285,9 +285,13 @@ export default function GameDetailPage() {
     const result: any[] = [];
 
     for (let day = minDay; day <= maxDay; day++) {
-      if (entriesByDay[day]) {
-        result.push(...entriesByDay[day]);
-      } else {
+      const dayEntries = entriesByDay[day] || [];
+      result.push(...dayEntries);
+
+      // Check if there is any real level on this day
+      const hasRealLevel = dayEntries.some(e => e.kind === 'level' && !e.synthetic);
+
+      if (!hasRealLevel) {
         // Find the next real level after this day
         let nextRealLevel = null;
         for (let d = day + 1; d <= maxDay; d++) {
