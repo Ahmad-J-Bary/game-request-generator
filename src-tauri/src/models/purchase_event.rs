@@ -10,7 +10,7 @@ pub struct PurchaseEvent {
     pub is_restricted: bool,
     pub max_days_offset: Option<i32>,
     pub days_offset: Option<i32>,
-    pub created_at: Option<String>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize)]

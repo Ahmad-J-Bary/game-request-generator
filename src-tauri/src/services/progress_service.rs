@@ -1,7 +1,5 @@
-// src-tauri/src/services/progress_service.rs
-
-use rusqlite::{params, Connection};
 use crate::models::progress::*;
+use sqlx::{Pool, Postgres, Row};
 
 pub struct ProgressService;
 
@@ -10,27 +8,30 @@ impl ProgressService {
         ProgressService
     }
 
-    // ===== تقدم المستويات =====
-    
-    pub fn create_or_update_level_progress(
+    // ===== Level Progress =====
+
+    pub async fn create_or_update_level_progress(
         &self,
-        conn: &Connection,
+        pool: &Pool<Postgres>,
         request: CreateAccountLevelProgressRequest,
     ) -> Result<(), String> {
-        conn.execute(
+        sqlx::query(
             "INSERT INTO account_level_progress (account_id, level_id, is_completed)
-             VALUES (?1, ?2, 0)
+             VALUES ($1, $2, 0)
              ON CONFLICT(account_id, level_id) DO NOTHING",
-            params![request.account_id, request.level_id],
         )
+        .bind(request.account_id)
+        .bind(request.level_id)
+        .execute(pool)
+        .await
         .map_err(|e| format!("Failed to create level progress: {}", e))?;
 
         Ok(())
     }
 
-    pub fn update_level_progress(
+    pub async fn update_level_progress(
         &self,
-        conn: &Connection,
+        pool: &Pool<Postgres>,
         request: UpdateAccountLevelProgressRequest,
     ) -> Result<bool, String> {
         let completed_at = if request.is_completed {
@@ -39,153 +40,159 @@ impl ProgressService {
             None
         };
 
-        conn.execute(
+        let result = sqlx::query(
             "UPDATE account_level_progress 
-             SET is_completed = ?1, completed_at = ?2
-             WHERE account_id = ?3 AND level_id = ?4",
-            params![
-                if request.is_completed { 1 } else { 0 },
-                completed_at,
-                request.account_id,
-                request.level_id
-            ],
+             SET is_completed = $1, completed_at = $2
+             WHERE account_id = $3 AND level_id = $4",
         )
+        .bind(if request.is_completed { 1 } else { 0 })
+        .bind(completed_at)
+        .bind(request.account_id)
+        .bind(request.level_id)
+        .execute(pool)
+        .await
         .map_err(|e| format!("Failed to update level progress: {}", e))?;
 
-        Ok(conn.changes() > 0)
+        Ok(result.rows_affected() > 0)
     }
 
-    pub fn get_account_level_progress(
+    pub async fn get_account_level_progress(
         &self,
-        conn: &Connection,
+        pool: &Pool<Postgres>,
         account_id: i64,
     ) -> Result<Vec<AccountLevelProgress>, String> {
-        let mut stmt = conn
-            .prepare(
-                "SELECT account_id, level_id, is_completed, completed_at
-                 FROM account_level_progress WHERE account_id = ?1",
-            )
-            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
-
-        let progress_iter = stmt
-            .query_map(params![account_id], |row| {
-                Ok(AccountLevelProgress {
-                    account_id: row.get(0)?,
-                    level_id: row.get(1)?,
-                    is_completed: row.get::<_, i32>(2)? != 0,
-                    completed_at: row.get(3).ok(),
-                })
-            })
-            .map_err(|e| format!("Failed to query level progress: {}", e))?;
+        let rows = sqlx::query(
+            "SELECT account_id, level_id, is_completed, completed_at
+             FROM account_level_progress WHERE account_id = $1",
+        )
+        .bind(account_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to query level progress: {}", e))?;
 
         let mut progress_list = Vec::new();
-        for progress in progress_iter {
-            progress_list.push(progress.map_err(|e| format!("Failed to map level progress: {}", e))?);
+        for row in rows {
+            let is_completed_int: i32 = row.get("is_completed");
+            progress_list.push(AccountLevelProgress {
+                account_id: row.get("account_id"),
+                level_id: row.get("level_id"),
+                is_completed: is_completed_int != 0,
+                completed_at: row.get("completed_at"),
+            });
         }
 
         Ok(progress_list)
     }
 
-    // ===== تقدم أحداث الشراء =====
-    
-    pub fn create_or_update_purchase_event_progress(
+    // ===== Purchase Event Progress =====
+
+    pub async fn create_or_update_purchase_event_progress(
         &self,
-        conn: &Connection,
+        pool: &Pool<Postgres>,
         request: CreateAccountPurchaseEventProgressRequest,
     ) -> Result<(), String> {
-        conn.execute(
+        sqlx::query(
             "INSERT INTO account_purchase_event_progress 
              (account_id, purchase_event_id, is_completed, days_offset, time_spent)
-             VALUES (?1, ?2, 0, ?3, ?4)
+             VALUES ($1, $2, 0, $3, $4)
              ON CONFLICT(account_id, purchase_event_id) 
-             DO UPDATE SET days_offset = ?3, time_spent = ?4",
-            params![
-                request.account_id,
-                request.purchase_event_id,
-                request.days_offset,
-                request.time_spent
-            ],
+             DO UPDATE SET days_offset = $3, time_spent = $4",
         )
+        .bind(request.account_id)
+        .bind(request.purchase_event_id)
+        .bind(request.days_offset)
+        .bind(request.time_spent)
+        .execute(pool)
+        .await
         .map_err(|e| format!("Failed to create/update purchase event progress: {}", e))?;
 
         Ok(())
     }
 
-    pub fn update_purchase_event_progress(
+    pub async fn update_purchase_event_progress(
         &self,
-        conn: &Connection,
+        pool: &Pool<Postgres>,
         request: UpdateAccountPurchaseEventProgressRequest,
     ) -> Result<bool, String> {
-        let mut updates = Vec::new();
-        let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut query_builder =
+            sqlx::QueryBuilder::new("UPDATE account_purchase_event_progress SET ");
+        let mut first = true;
 
         if let Some(is_completed) = request.is_completed {
-            updates.push("is_completed = ?");
-            values.push(Box::new(if is_completed { 1 } else { 0 }));
-            
+            query_builder.push("is_completed = ");
+            query_builder.push_bind(if is_completed { 1 } else { 0 });
+            first = false;
+
             if is_completed {
-                updates.push("completed_at = ?");
-                values.push(Box::new(chrono::Utc::now().to_rfc3339()));
+                if !first {
+                    query_builder.push(", ");
+                }
+                query_builder.push("completed_at = ");
+                query_builder.push_bind(chrono::Utc::now().to_rfc3339());
             }
         }
 
         if let Some(days_offset) = request.days_offset {
-            updates.push("days_offset = ?");
-            values.push(Box::new(days_offset));
+            if !first {
+                query_builder.push(", ");
+            }
+            query_builder.push("days_offset = ");
+            query_builder.push_bind(days_offset);
+            first = false;
         }
 
         if let Some(time_spent) = request.time_spent {
-            updates.push("time_spent = ?");
-            values.push(Box::new(time_spent));
+            if !first {
+                query_builder.push(", ");
+            }
+            query_builder.push("time_spent = ");
+            query_builder.push_bind(time_spent);
+            first = false;
         }
 
-        if updates.is_empty() {
+        if first {
             return Ok(false);
         }
 
-        let sql = format!(
-            "UPDATE account_purchase_event_progress SET {} WHERE account_id = ? AND purchase_event_id = ?",
-            updates.join(", ")
-        );
-        values.push(Box::new(request.account_id));
-        values.push(Box::new(request.purchase_event_id));
+        query_builder.push(" WHERE account_id = ");
+        query_builder.push_bind(request.account_id);
+        query_builder.push(" AND purchase_event_id = ");
+        query_builder.push_bind(request.purchase_event_id);
 
-        let params: Vec<&dyn rusqlite::ToSql> = values.iter().map(|v| &**v).collect();
-
-        conn.execute(&sql, params.as_slice())
+        let result = query_builder
+            .build()
+            .execute(pool)
+            .await
             .map_err(|e| format!("Failed to update purchase event progress: {}", e))?;
 
-        Ok(conn.changes() > 0)
+        Ok(result.rows_affected() > 0)
     }
 
-    pub fn get_account_purchase_event_progress(
+    pub async fn get_account_purchase_event_progress(
         &self,
-        conn: &Connection,
+        pool: &Pool<Postgres>,
         account_id: i64,
     ) -> Result<Vec<AccountPurchaseEventProgress>, String> {
-        let mut stmt = conn
-            .prepare(
-                "SELECT account_id, purchase_event_id, is_completed, days_offset, time_spent, completed_at
-                 FROM account_purchase_event_progress WHERE account_id = ?1",
-            )
-            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
-
-        let progress_iter = stmt
-            .query_map(params![account_id], |row| {
-                Ok(AccountPurchaseEventProgress {
-                    account_id: row.get(0)?,
-                    purchase_event_id: row.get(1)?,
-                    is_completed: row.get::<_, i32>(2)? != 0,
-                    days_offset: row.get(3)?,
-                    time_spent: row.get(4)?,
-                    completed_at: row.get(5).ok(),
-                })
-            })
-            .map_err(|e| format!("Failed to query purchase event progress: {}", e))?;
+        let rows = sqlx::query(
+            "SELECT account_id, purchase_event_id, is_completed, days_offset, time_spent, completed_at
+             FROM account_purchase_event_progress WHERE account_id = $1",
+        )
+        .bind(account_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to query purchase event progress: {}", e))?;
 
         let mut progress_list = Vec::new();
-        for progress in progress_iter {
-            progress_list.push(progress.map_err(|e| format!("Failed to map purchase event progress: {}", e))?);
+        for row in rows {
+            let is_completed_int: i32 = row.get("is_completed");
+            progress_list.push(AccountPurchaseEventProgress {
+                account_id: row.get("account_id"),
+                purchase_event_id: row.get("purchase_event_id"),
+                is_completed: is_completed_int != 0,
+                days_offset: row.get("days_offset"),
+                time_spent: row.get("time_spent"),
+                completed_at: row.get("completed_at"),
+            });
         }
 
         Ok(progress_list)

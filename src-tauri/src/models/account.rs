@@ -10,7 +10,7 @@ pub struct Account {
     pub start_date: String,
     pub start_time: String,
     pub request_template: String,
-    pub created_at: Option<String>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -22,7 +22,7 @@ pub struct CreateAccountRequest {
     pub request_template: String,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct UpdateAccountRequest {
     pub id: i64,
     pub name: Option<String>,

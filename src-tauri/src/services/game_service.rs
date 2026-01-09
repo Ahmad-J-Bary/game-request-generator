@@ -1,7 +1,5 @@
-// src-tauri/src/services/game_service.rs
-
-use rusqlite::{params, OptionalExtension, Connection};
-use crate::models::game::{Game, CreateGameRequest, UpdateGameRequest};
+use crate::models::game::{CreateGameRequest, Game, UpdateGameRequest};
+use sqlx::{Pool, Postgres, Row};
 
 pub struct GameService;
 
@@ -10,72 +8,96 @@ impl GameService {
         GameService
     }
 
-    pub fn create_game(&self, conn: &Connection, request: CreateGameRequest) -> Result<i64, String> {
-        conn.execute(
-            "INSERT INTO games (name) VALUES (?1)",
-            params![request.name],
+    pub async fn create_game(
+        &self,
+        pool: &Pool<Postgres>,
+        request: CreateGameRequest,
+    ) -> Result<i64, String> {
+        // Try to insert, ignoring conflicts on 'name'
+        // If conflict, select the existing ID
+        let row = sqlx::query(
+            "WITH inserted AS (
+                INSERT INTO games (name) VALUES ($1) 
+                ON CONFLICT (name) DO NOTHING 
+                RETURNING id
+            )
+            SELECT id FROM inserted
+            UNION ALL
+            SELECT id FROM games WHERE name = $1
+            LIMIT 1",
         )
-        .map_err(|e| format!("Failed to create game: {}", e))?;
+        .bind(&request.name)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to create/fetch game: {}", e))?;
 
-        Ok(conn.last_insert_rowid())
+        Ok(row.get("id"))
     }
 
-    pub fn get_games(&self, conn: &Connection) -> Result<Vec<Game>, String> {
-        let mut stmt = conn
-            .prepare("SELECT id, name, created_at FROM games ORDER BY name")
-            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
-
-        let games_iter = stmt
-            .query_map([], |row| {
-                Ok(Game {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    created_at: row.get(2).ok(),
-                })
-            })
+    pub async fn get_games(&self, pool: &Pool<Postgres>) -> Result<Vec<Game>, String> {
+        let rows = sqlx::query("SELECT id, name, created_at FROM games ORDER BY name")
+            .fetch_all(pool)
+            .await
             .map_err(|e| format!("Failed to query games: {}", e))?;
 
         let mut games = Vec::new();
-        for game in games_iter {
-            games.push(game.map_err(|e| format!("Failed to map game: {}", e))?);
+        for row in rows {
+            games.push(Game {
+                id: row.get("id"),
+                name: row.get("name"),
+                created_at: row.get("created_at"),
+            });
         }
-
         Ok(games)
     }
 
-    pub fn get_game_by_id(&self, conn: &Connection, id: i64) -> Result<Option<Game>, String> {
-        conn.query_row(
-            "SELECT id, name, created_at FROM games WHERE id = ?1",
-            params![id],
-            |row| {
-                Ok(Game {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    created_at: row.get(2).ok(),
-                })
-            },
-        )
-        .optional()
-        .map_err(|e| format!("Failed to get game: {}", e))
+    pub async fn get_game_by_id(
+        &self,
+        pool: &Pool<Postgres>,
+        id: i64,
+    ) -> Result<Option<Game>, String> {
+        let row = sqlx::query("SELECT id, name, created_at FROM games WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| format!("Failed to get game: {}", e))?;
+
+        if let Some(row) = row {
+            Ok(Some(Game {
+                id: row.get("id"),
+                name: row.get("name"),
+                created_at: row.get("created_at"),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
-    pub fn update_game(&self, conn: &Connection, request: UpdateGameRequest) -> Result<bool, String> {
+    pub async fn update_game(
+        &self,
+        pool: &Pool<Postgres>,
+        request: UpdateGameRequest,
+    ) -> Result<bool, String> {
         if let Some(name) = request.name {
-            conn.execute(
-                "UPDATE games SET name = ?1 WHERE id = ?2",
-                params![name, request.id],
-            )
-            .map_err(|e| format!("Failed to update game: {}", e))?;
+            let result = sqlx::query("UPDATE games SET name = $1 WHERE id = $2")
+                .bind(name)
+                .bind(request.id)
+                .execute(pool)
+                .await
+                .map_err(|e| format!("Failed to update game: {}", e))?;
 
-            return Ok(conn.changes() > 0);
+            return Ok(result.rows_affected() > 0);
         }
         Ok(false)
     }
 
-    pub fn delete_game(&self, conn: &Connection, id: i64) -> Result<bool, String> {
-        conn.execute("DELETE FROM games WHERE id = ?1", params![id])
+    pub async fn delete_game(&self, pool: &Pool<Postgres>, id: i64) -> Result<bool, String> {
+        let result = sqlx::query("DELETE FROM games WHERE id = $1")
+            .bind(id)
+            .execute(pool)
+            .await
             .map_err(|e| format!("Failed to delete game: {}", e))?;
 
-        Ok(conn.changes() > 0)
+        Ok(result.rows_affected() > 0)
     }
 }

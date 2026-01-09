@@ -6,385 +6,361 @@ mod db;
 mod models;
 mod services;
 
-use std::sync::Mutex;
-use tauri::Manager;
-
-use db::Database;
-
 use chrono::Datelike;
-
-use models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
-use models::game::{CreateGameRequest, Game, UpdateGameRequest};
-use models::level::{CreateLevelRequest, Level, UpdateLevelRequest};
-use models::progress::{
-    AccountLevelProgress, AccountPurchaseEventProgress, CreateAccountLevelProgressRequest,
-    CreateAccountPurchaseEventProgressRequest, UpdateAccountLevelProgressRequest,
-    UpdateAccountPurchaseEventProgressRequest,
-};
-use models::purchase_event::{
-    CreatePurchaseEventRequest, PurchaseEvent, UpdatePurchaseEventRequest,
-};
-
+use db::Database;
 use services::account_service::AccountService;
 use services::game_service::GameService;
 use services::level_service::LevelService;
 use services::progress_service::ProgressService;
 use services::purchase_event_service::PurchaseEventService;
+use tauri::Manager;
 
-use db::config::ConfigService;
+use crate::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
+use crate::models::game::{CreateGameRequest, Game, UpdateGameRequest};
+use crate::models::level::{CreateLevelRequest, Level, UpdateLevelRequest};
+use crate::models::progress::{
+    AccountLevelProgress, AccountPurchaseEventProgress, CreateAccountLevelProgressRequest,
+    CreateAccountPurchaseEventProgressRequest, UpdateAccountLevelProgressRequest,
+    UpdateAccountPurchaseEventProgressRequest,
+};
+use crate::models::purchase_event::{
+    CreatePurchaseEventRequest, PurchaseEvent, UpdatePurchaseEventRequest,
+};
 
-// === حالة التطبيق ===
 struct AppState {
-    db: Mutex<Database>,
+    db: Database,
 }
 
 fn main() {
+    dotenv::dotenv().ok();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle();
 
-            let db = Database::new(&handle)?;
-            db.init()?;
-
-            app.manage(AppState { db: Mutex::new(db) });
+            // Async implementation for SQLx setup
+            tauri::async_runtime::block_on(async move {
+                let db = Database::new()
+                    .await
+                    .expect("Failed to connect to Supabase");
+                handle.manage(AppState { db });
+            });
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // أوامر الإعدادات
-            get_db_path,
-            set_db_path,
-            // أوامر الألعاب
+            // الألعاب
             add_game,
             get_games,
             get_game_by_id,
             update_game,
             delete_game,
-            // أوامر المستويات
+            // المستويات
             add_level,
             get_game_levels,
             get_level_by_id,
             update_level,
             delete_level,
-            // أوامر الحسابات
+            // الحسابات
             add_account,
             get_accounts,
             get_account_by_id,
             update_account,
             delete_account,
-            // أوامر أحداث الشراء
+            // أحداث الشراء
             add_purchase_event,
             get_game_purchase_events,
             get_purchase_event_by_id,
             update_purchase_event,
             delete_purchase_event,
-            // أوامر تقدم المستويات
+            // تقدم المستويات
             create_level_progress,
             update_level_progress,
             get_account_level_progress,
-            // أوامر تقدم أحداث الشراء
+            // تقدم أحداث الشراء
             create_purchase_event_progress,
             update_purchase_event_progress,
             get_account_purchase_event_progress,
-            // أوامر الطلبات اليومية
+            // الطلبات اليومية
             get_daily_requests,
-            // أوامر استيراد قوالب الطلبات
+            // استيراد القوالب
             import_request_templates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-#[tauri::command]
-fn get_db_path(app: tauri::AppHandle) -> Result<String, String> {
-    let config = ConfigService::load(&app);
-    if let Some(path) = config.db_path {
-        Ok(path)
-    } else {
-        let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        Ok(data_dir
-            .join("database.sqlite")
-            .to_string_lossy()
-            .to_string())
-    }
-}
-
-#[tauri::command]
-fn set_db_path(app: tauri::AppHandle, path: Option<String>) -> Result<(), String> {
-    let mut config = ConfigService::load(&app);
-    config.db_path = path;
-    ConfigService::save(&app, &config)
-}
-
 // ==================== أوامر الألعاب ====================
 #[tauri::command]
-fn add_game(state: tauri::State<AppState>, request: CreateGameRequest) -> Result<i64, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn add_game(
+    state: tauri::State<'_, AppState>,
+    request: CreateGameRequest,
+) -> Result<i64, String> {
+    let pool = state.db.get_pool();
     let service = GameService::new();
-    service.create_game(conn, request)
+    service.create_game(pool, request).await
 }
 
 #[tauri::command]
-fn get_games(state: tauri::State<AppState>) -> Result<Vec<Game>, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn get_games(state: tauri::State<'_, AppState>) -> Result<Vec<Game>, String> {
+    let pool = state.db.get_pool();
     let service = GameService::new();
-    service.get_games(conn)
+    service.get_games(pool).await
 }
 
 #[tauri::command]
-fn get_game_by_id(state: tauri::State<AppState>, id: i64) -> Result<Option<Game>, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn get_game_by_id(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+) -> Result<Option<Game>, String> {
+    let pool = state.db.get_pool();
     let service = GameService::new();
-    service.get_game_by_id(conn, id)
+    service.get_game_by_id(pool, id).await
 }
 
 #[tauri::command]
-fn update_game(state: tauri::State<AppState>, request: UpdateGameRequest) -> Result<bool, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn update_game(
+    state: tauri::State<'_, AppState>,
+    request: UpdateGameRequest,
+) -> Result<bool, String> {
+    let pool = state.db.get_pool();
     let service = GameService::new();
-    service.update_game(conn, request)
+    service.update_game(pool, request).await
 }
 
 #[tauri::command]
-fn delete_game(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn delete_game(state: tauri::State<'_, AppState>, id: i64) -> Result<bool, String> {
+    let pool = state.db.get_pool();
     let service = GameService::new();
-    service.delete_game(conn, id)
+    service.delete_game(pool, id).await
 }
 
 // ==================== أوامر المستويات ====================
 #[tauri::command]
-fn add_level(state: tauri::State<AppState>, request: CreateLevelRequest) -> Result<i64, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn add_level(
+    state: tauri::State<'_, AppState>,
+    request: CreateLevelRequest,
+) -> Result<i64, String> {
+    let pool = state.db.get_pool();
     let service = LevelService::new();
-    service.create_level(conn, request)
+    service.create_level(pool, request).await
 }
 
 #[tauri::command]
-fn get_game_levels(state: tauri::State<AppState>, game_id: i64) -> Result<Vec<Level>, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn get_game_levels(
+    state: tauri::State<'_, AppState>,
+    game_id: i64,
+) -> Result<Vec<Level>, String> {
+    let pool = state.db.get_pool();
     let service = LevelService::new();
-    service.get_levels_by_game(conn, game_id)
+    service.get_levels_by_game(pool, game_id).await
 }
 
 #[tauri::command]
-fn get_level_by_id(state: tauri::State<AppState>, id: i64) -> Result<Option<Level>, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn get_level_by_id(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+) -> Result<Option<Level>, String> {
+    let pool = state.db.get_pool();
     let service = LevelService::new();
-    service.get_level_by_id(conn, id)
+    service.get_level_by_id(pool, id).await
 }
 
 #[tauri::command]
-fn update_level(
-    state: tauri::State<AppState>,
+async fn update_level(
+    state: tauri::State<'_, AppState>,
     request: UpdateLevelRequest,
 ) -> Result<bool, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = LevelService::new();
-    service.update_level(conn, request)
+    service.update_level(pool, request).await
 }
 
 #[tauri::command]
-fn delete_level(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn delete_level(state: tauri::State<'_, AppState>, id: i64) -> Result<bool, String> {
+    let pool = state.db.get_pool();
     let service = LevelService::new();
-    service.delete_level(conn, id)
+    service.delete_level(pool, id).await
 }
 
 // ==================== أوامر الحسابات ====================
 #[tauri::command]
-fn add_account(
-    state: tauri::State<AppState>,
+async fn add_account(
+    state: tauri::State<'_, AppState>,
     request: CreateAccountRequest,
 ) -> Result<i64, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = AccountService::new();
-    service.create_account(conn, request)
+    service.create_account(pool, request).await
 }
 
 #[tauri::command]
-fn get_accounts(state: tauri::State<AppState>, game_id: i64) -> Result<Vec<Account>, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn get_accounts(
+    state: tauri::State<'_, AppState>,
+    game_id: i64,
+) -> Result<Vec<Account>, String> {
+    let pool = state.db.get_pool();
     let service = AccountService::new();
-    service.get_accounts_by_game(conn, game_id)
+    service.get_accounts_by_game(pool, game_id).await
 }
 
 #[tauri::command]
-fn get_account_by_id(state: tauri::State<AppState>, id: i64) -> Result<Option<Account>, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn get_account_by_id(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+) -> Result<Option<Account>, String> {
+    let pool = state.db.get_pool();
     let service = AccountService::new();
-    service.get_account_by_id(conn, id)
+    service.get_account_by_id(pool, id).await
 }
 
 #[tauri::command]
-fn update_account(
-    state: tauri::State<AppState>,
+async fn update_account(
+    state: tauri::State<'_, AppState>,
     request: UpdateAccountRequest,
 ) -> Result<bool, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = AccountService::new();
-    service.update_account(conn, request)
+    service.update_account(pool, request).await
 }
 
 #[tauri::command]
-fn delete_account(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn delete_account(state: tauri::State<'_, AppState>, id: i64) -> Result<bool, String> {
+    let pool = state.db.get_pool();
     let service = AccountService::new();
-    service.delete_account(conn, id)
+    service.delete_account(pool, id).await
 }
 
 // ==================== أوامر أحداث الشراء ====================
 #[tauri::command]
-fn add_purchase_event(
-    state: tauri::State<AppState>,
+async fn add_purchase_event(
+    state: tauri::State<'_, AppState>,
     request: CreatePurchaseEventRequest,
 ) -> Result<i64, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = PurchaseEventService::new();
-    service.create_purchase_event(conn, request)
+    service.create_purchase_event(pool, request).await
 }
 
 #[tauri::command]
-fn get_game_purchase_events(
-    state: tauri::State<AppState>,
+async fn get_game_purchase_events(
+    state: tauri::State<'_, AppState>,
     game_id: i64,
 ) -> Result<Vec<PurchaseEvent>, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = PurchaseEventService::new();
-    service.get_purchase_events_by_game(conn, game_id)
+    service.get_purchase_events_by_game(pool, game_id).await
 }
 
 #[tauri::command]
-fn get_purchase_event_by_id(
-    state: tauri::State<AppState>,
+async fn get_purchase_event_by_id(
+    state: tauri::State<'_, AppState>,
     id: i64,
 ) -> Result<Option<PurchaseEvent>, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = PurchaseEventService::new();
-    service.get_purchase_event_by_id(conn, id)
+    service.get_purchase_event_by_id(pool, id).await
 }
 
 #[tauri::command]
-fn update_purchase_event(
-    state: tauri::State<AppState>,
+async fn update_purchase_event(
+    state: tauri::State<'_, AppState>,
     request: UpdatePurchaseEventRequest,
 ) -> Result<bool, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = PurchaseEventService::new();
-    service.update_purchase_event(conn, request)
+    service.update_purchase_event(pool, request).await
 }
 
 #[tauri::command]
-fn delete_purchase_event(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+async fn delete_purchase_event(state: tauri::State<'_, AppState>, id: i64) -> Result<bool, String> {
+    let pool = state.db.get_pool();
     let service = PurchaseEventService::new();
-    service.delete_purchase_event(conn, id)
+    service.delete_purchase_event(pool, id).await
 }
 
 // ==================== أوامر تقدم المستويات ====================
 #[tauri::command]
-fn create_level_progress(
-    state: tauri::State<AppState>,
+async fn create_level_progress(
+    state: tauri::State<'_, AppState>,
     request: CreateAccountLevelProgressRequest,
 ) -> Result<(), String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = ProgressService::new();
-    service.create_or_update_level_progress(conn, request)
+    service.create_or_update_level_progress(pool, request).await
 }
 
 #[tauri::command]
-fn update_level_progress(
-    state: tauri::State<AppState>,
+async fn update_level_progress(
+    state: tauri::State<'_, AppState>,
     request: UpdateAccountLevelProgressRequest,
 ) -> Result<bool, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = ProgressService::new();
-    service.update_level_progress(conn, request)
+    service.update_level_progress(pool, request).await
 }
 
 #[tauri::command]
-fn get_account_level_progress(
-    state: tauri::State<AppState>,
+async fn get_account_level_progress(
+    state: tauri::State<'_, AppState>,
     account_id: i64,
 ) -> Result<Vec<AccountLevelProgress>, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = ProgressService::new();
-    service.get_account_level_progress(conn, account_id)
+    service.get_account_level_progress(pool, account_id).await
 }
 
 // ==================== أوامر تقدم أحداث الشراء ====================
 #[tauri::command]
-fn create_purchase_event_progress(
-    state: tauri::State<AppState>,
+async fn create_purchase_event_progress(
+    state: tauri::State<'_, AppState>,
     request: CreateAccountPurchaseEventProgressRequest,
 ) -> Result<(), String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = ProgressService::new();
-    service.create_or_update_purchase_event_progress(conn, request)
+    service
+        .create_or_update_purchase_event_progress(pool, request)
+        .await
 }
 
 #[tauri::command]
-fn update_purchase_event_progress(
-    state: tauri::State<AppState>,
+async fn update_purchase_event_progress(
+    state: tauri::State<'_, AppState>,
     request: UpdateAccountPurchaseEventProgressRequest,
 ) -> Result<bool, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = ProgressService::new();
-    service.update_purchase_event_progress(conn, request)
+    service.update_purchase_event_progress(pool, request).await
 }
 
 #[tauri::command]
-fn get_account_purchase_event_progress(
-    state: tauri::State<AppState>,
+async fn get_account_purchase_event_progress(
+    state: tauri::State<'_, AppState>,
     account_id: i64,
 ) -> Result<Vec<AccountPurchaseEventProgress>, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
     let service = ProgressService::new();
-    service.get_account_purchase_event_progress(conn, account_id)
+    service
+        .get_account_purchase_event_progress(pool, account_id)
+        .await
 }
 
 // ==================== أوامر الطلبات اليومية ====================
 #[tauri::command]
-fn get_daily_requests(
-    state: tauri::State<AppState>,
+async fn get_daily_requests(
+    state: tauri::State<'_, AppState>,
     account_id: i64,
     target_date: String,
 ) -> Result<serde_json::Value, String> {
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
+    let pool = state.db.get_pool();
 
     // Get account details
     let account_service = AccountService::new();
     let account = account_service
-        .get_account_by_id(conn, account_id)
+        .get_account_by_id(pool, account_id)
+        .await
         .map_err(|_| "Account not found".to_string())?
         .ok_or("Account not found".to_string())?;
 
@@ -413,13 +389,15 @@ fn get_daily_requests(
     // Get game levels
     let level_service = LevelService::new();
     let levels = level_service
-        .get_levels_by_game(conn, account.game_id)
+        .get_levels_by_game(pool, account.game_id)
+        .await
         .map_err(|_| "Failed to get game levels".to_string())?;
 
     // Get existing progress
     let progress_service = ProgressService::new();
     let level_progress = progress_service
-        .get_account_level_progress(conn, account_id)
+        .get_account_level_progress(pool, account_id)
+        .await
         .map_err(|_| "Failed to get level progress".to_string())?;
 
     let completed_level_ids: std::collections::HashSet<i64> = level_progress
@@ -520,14 +498,6 @@ fn get_daily_requests(
         let random_addition = rng.gen_range(0..1000);
         let time_spent = multiplied_time + random_addition;
 
-        // Get request template based on game
-        let game_service = GameService::new();
-        let _game = game_service
-            .get_game_by_id(conn, account.game_id)
-            .map_err(|_| "Failed to get game".to_string())?
-            .ok_or("Game not found".to_string())?;
-
-        // Generate complete HTTP request with correct event_token and time_spent
         // Generate complete HTTP request with correct event_token and time_spent
         // Sanitize event_token to remove any _day suffix
         let clean_event_token = level
@@ -624,12 +594,14 @@ fn get_daily_requests(
     // Get purchase events
     let purchase_event_service = PurchaseEventService::new();
     let purchase_events = purchase_event_service
-        .get_purchase_events_by_game(conn, account.game_id)
+        .get_purchase_events_by_game(pool, account.game_id)
+        .await
         .map_err(|_| "Failed to get purchase events".to_string())?;
 
     // Get purchase event progress
     let purchase_progress = progress_service
-        .get_account_purchase_event_progress(conn, account_id)
+        .get_account_purchase_event_progress(pool, account_id)
+        .await
         .map_err(|_| "Failed to get purchase event progress".to_string())?;
 
     // Create a map of progress for quick lookup
@@ -803,81 +775,78 @@ async fn import_request_templates(
     app: tauri::AppHandle,
     game_id: i64,
 ) -> Result<serde_json::Value, String> {
-    use std::path::Path;
     use tauri_plugin_dialog::DialogExt;
 
     // Open file dialog to select multiple .txt files
     let files = app
         .dialog()
         .file()
-        .add_filter("Text Files", &["txt"])
+        .add_filter("Text", &["txt"])
         .blocking_pick_files();
 
-    let file_paths = match files {
-        Some(paths) => paths,
-        None => return Ok(serde_json::json!({"cancelled": true})),
-    };
+    if let Some(files) = files {
+        let pool = state.db.get_pool();
+        let account_service = AccountService::new();
+        let mut results = serde_json::Map::new();
 
-    let db_guard = state.db.lock().unwrap();
-    let conn = db_guard.get_connection();
-    let account_service = AccountService::new();
+        // Get all accounts for the game to match filenames
+        let accounts = account_service
+            .get_accounts_by_game(pool, game_id)
+            .await
+            .map_err(|e| format!("Failed to get accounts: {}", e))?;
 
-    // Get all accounts for this game
-    let accounts = account_service
-        .get_accounts_by_game(conn, game_id)
-        .map_err(|e| format!("Failed to get accounts: {}", e))?;
+        for file_path in files {
+            // Read file content
+            let path = file_path
+                .as_path()
+                .ok_or("Failed to get file path".to_string())?;
+            let content =
+                std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
-    let total_processed = file_paths.len();
-    let mut imported_templates = Vec::new();
-    let mut errors = Vec::new();
+            // Extract filename without extension (to match account name)
+            let filename = path
+                .file_stem()
+                .and_then(|s: &std::ffi::OsStr| s.to_str())
+                .ok_or("Invalid filename")?;
 
-    for file_path in file_paths {
-        let path_str = file_path.to_string();
-        let path_buf = std::path::PathBuf::from(&path_str);
-        let path = Path::new(&path_buf);
+            // Find matching account
+            if let Some(account) = accounts
+                .iter()
+                .find(|a| a.name.eq_ignore_ascii_case(filename))
+            {
+                // Update account with request template
+                let update_request = UpdateAccountRequest {
+                    id: account.id,
+                    name: None,
+                    start_date: None,
+                    start_time: None,
+                    request_template: Some(content),
+                };
 
-        // Get filename without extension
-        let filename = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| format!("Invalid filename: {}", path_str))?;
-
-        // Read file content
-        let content = std::fs::read_to_string(&path_buf)
-            .map_err(|e| format!("Failed to read file {}: {}", path_str, e))?;
-
-        // Find matching account
-        let matching_account = accounts.iter().find(|account| account.name == filename);
-
-        if let Some(account) = matching_account {
-            // Update account's request template
-            let update_request = models::account::UpdateAccountRequest {
-                id: account.id,
-                request_template: Some(content.clone()),
-                ..Default::default()
-            };
-
-            match account_service.update_account(conn, update_request) {
-                Ok(_) => {
-                    imported_templates.push(serde_json::json!({
-                        "account_name": account.name,
-                        "filename": filename,
-                        "status": "success"
-                    }));
+                match account_service.update_account(pool, update_request).await {
+                    Ok(_) => {
+                        results.insert(
+                            filename.to_string(),
+                            serde_json::Value::String("Success".to_string()),
+                        );
+                    }
+                    Err(e) => {
+                        results.insert(
+                            filename.to_string(),
+                            serde_json::Value::String(format!("Error: {}", e)),
+                        );
+                    }
                 }
-                Err(e) => {
-                    errors.push(format!("Failed to update account {}: {}", account.name, e));
-                }
+            } else {
+                results.insert(
+                    filename.to_string(),
+                    serde_json::Value::String("Skipped: Account not found".to_string()),
+                );
             }
-        } else {
-            errors.push(format!("No account found matching filename: {}", filename));
         }
-    }
 
-    Ok(serde_json::json!({
-        "imported_templates": imported_templates,
-        "errors": errors,
-        "total_processed": total_processed,
-        "successful_imports": imported_templates.len()
-    }))
+        Ok(serde_json::Value::Object(results))
+    } else {
+        Ok(serde_json::Value::Null)
+    }
 }

@@ -1,7 +1,5 @@
-// src-tauri/src/services/account_service.rs
-
-use rusqlite::{params, OptionalExtension, Connection};
 use crate::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
+use sqlx::{Pool, Postgres, Row};
 
 pub struct AccountService;
 
@@ -10,127 +8,162 @@ impl AccountService {
         AccountService
     }
 
-    pub fn create_account(&self, conn: &Connection, request: CreateAccountRequest) -> Result<i64, String> {
-        // التحقق من وجود اللعبة
-        let game_exists: i64 = conn.query_row(
-            "SELECT 1 FROM games WHERE id = ?1",
-            params![request.game_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e| format!("Failed to check game existence: {}", e))?
-        .unwrap_or(0);
+    pub async fn create_account(
+        &self,
+        pool: &Pool<Postgres>,
+        request: CreateAccountRequest,
+    ) -> Result<i64, String> {
+        // Verify game exists
+        let game_exists = sqlx::query("SELECT 1 FROM games WHERE id = $1")
+            .bind(request.game_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| format!("Failed to check game existence: {}", e))?;
 
-        if game_exists == 0 {
+        if game_exists.is_none() {
             return Err(format!("Game with ID {} not found", request.game_id));
         }
 
-        conn.execute(
+        let rec = sqlx::query(
             "INSERT INTO accounts (game_id, name, start_date, start_time, request_template)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                request.game_id,
-                request.name,
-                request.start_date,
-                request.start_time,
-                request.request_template,
-            ],
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id",
         )
+        .bind(request.game_id)
+        .bind(&request.name)
+        .bind(&request.start_date)
+        .bind(&request.start_time)
+        .bind(&request.request_template)
+        .fetch_one(pool)
+        .await
         .map_err(|e| format!("Failed to create account: {}", e))?;
 
-        Ok(conn.last_insert_rowid())
+        Ok(rec.get("id"))
     }
 
-    pub fn get_accounts_by_game(&self, conn: &Connection, game_id: i64) -> Result<Vec<Account>, String> {
-        let mut stmt = conn.prepare(
+    pub async fn get_accounts_by_game(
+        &self,
+        pool: &Pool<Postgres>,
+        game_id: i64,
+    ) -> Result<Vec<Account>, String> {
+        let rows = sqlx::query(
             "SELECT id, game_id, name, start_date, start_time, request_template, created_at
-             FROM accounts WHERE game_id = ?1 ORDER BY created_at"
+             FROM accounts WHERE game_id = $1 ORDER BY created_at",
         )
-        .map_err(|e| format!("Failed to prepare statement: {}", e))?;
-
-        let accounts_iter = stmt.query_map(params![game_id], |row| {
-            Ok(Account {
-                id: row.get(0)?,
-                game_id: row.get(1)?,
-                name: row.get(2)?,
-                start_date: row.get(3)?,
-                start_time: row.get(4)?,
-                request_template: row.get(5)?,
-                created_at: row.get(6).ok(),
-            })
-        })
+        .bind(game_id)
+        .fetch_all(pool)
+        .await
         .map_err(|e| format!("Failed to query accounts: {}", e))?;
 
         let mut accounts = Vec::new();
-        for account in accounts_iter {
-            accounts.push(account.map_err(|e| format!("Failed to map account: {}", e))?);
+        for row in rows {
+            accounts.push(Account {
+                id: row.get("id"),
+                game_id: row.get("game_id"),
+                name: row.get("name"),
+                start_date: row.get("start_date"),
+                start_time: row.get("start_time"),
+                request_template: row.get("request_template"),
+                created_at: row.get("created_at"),
+            });
         }
 
         Ok(accounts)
     }
 
-    pub fn get_account_by_id(&self, conn: &Connection, id: i64) -> Result<Option<Account>, String> {
-        conn.query_row(
+    pub async fn get_account_by_id(
+        &self,
+        pool: &Pool<Postgres>,
+        id: i64,
+    ) -> Result<Option<Account>, String> {
+        let row = sqlx::query(
             "SELECT id, game_id, name, start_date, start_time, request_template, created_at
-             FROM accounts WHERE id = ?1",
-            params![id],
-            |row| {
-                Ok(Account {
-                    id: row.get(0)?,
-                    game_id: row.get(1)?,
-                    name: row.get(2)?,
-                    start_date: row.get(3)?,
-                    start_time: row.get(4)?,
-                    request_template: row.get(5)?,
-                    created_at: row.get(6).ok(),
-                })
-            }
+             FROM accounts WHERE id = $1",
         )
-        .optional()
-        .map_err(|e| format!("Failed to get account: {}", e))
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Failed to get account: {}", e))?;
+
+        if let Some(row) = row {
+            Ok(Some(Account {
+                id: row.get("id"),
+                game_id: row.get("game_id"),
+                name: row.get("name"),
+                start_date: row.get("start_date"),
+                start_time: row.get("start_time"),
+                request_template: row.get("request_template"),
+                created_at: row.get("created_at"),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
-    pub fn update_account(&self, conn: &Connection, request: UpdateAccountRequest) -> Result<bool, String> {
-        let mut updates = Vec::new();
-        let mut values = Vec::new();
+    pub async fn update_account(
+        &self,
+        pool: &Pool<Postgres>,
+        request: UpdateAccountRequest,
+    ) -> Result<bool, String> {
+        let mut query_builder = sqlx::QueryBuilder::new("UPDATE accounts SET ");
+        let mut first = true;
 
         if let Some(name) = &request.name {
-            updates.push("name = ?");
-            values.push(name as &dyn rusqlite::ToSql);
+            query_builder.push("name = ");
+            query_builder.push_bind(name);
+            first = false;
         }
 
         if let Some(start_date) = &request.start_date {
-            updates.push("start_date = ?");
-            values.push(start_date as &dyn rusqlite::ToSql);
+            if !first {
+                query_builder.push(", ");
+            }
+            query_builder.push("start_date = ");
+            query_builder.push_bind(start_date);
+            first = false;
         }
 
         if let Some(start_time) = &request.start_time {
-            updates.push("start_time = ?");
-            values.push(start_time as &dyn rusqlite::ToSql);
+            if !first {
+                query_builder.push(", ");
+            }
+            query_builder.push("start_time = ");
+            query_builder.push_bind(start_time);
+            first = false;
         }
 
         if let Some(request_template) = &request.request_template {
-            updates.push("request_template = ?");
-            values.push(request_template as &dyn rusqlite::ToSql);
+            if !first {
+                query_builder.push(", ");
+            }
+            query_builder.push("request_template = ");
+            query_builder.push_bind(request_template);
+            first = false;
         }
 
-        if updates.is_empty() {
-            return Ok(false);
+        if first {
+            return Ok(false); // No updates
         }
 
-        let sql = format!("UPDATE accounts SET {} WHERE id = ?", updates.join(", "));
-        values.push(&request.id as &dyn rusqlite::ToSql);
+        query_builder.push(" WHERE id = ");
+        query_builder.push_bind(request.id);
 
-        conn.execute(&sql, values.as_slice())
-        .map_err(|e| format!("Failed to update account: {}", e))?;
+        let result = query_builder
+            .build()
+            .execute(pool)
+            .await
+            .map_err(|e| format!("Failed to update account: {}", e))?;
 
-        Ok(conn.changes() > 0)
+        Ok(result.rows_affected() > 0)
     }
 
-    pub fn delete_account(&self, conn: &Connection, id: i64) -> Result<bool, String> {
-        conn.execute("DELETE FROM accounts WHERE id = ?1", params![id])
-        .map_err(|e| format!("Failed to delete account: {}", e))?;
+    pub async fn delete_account(&self, pool: &Pool<Postgres>, id: i64) -> Result<bool, String> {
+        let result = sqlx::query("DELETE FROM accounts WHERE id = $1")
+            .bind(id)
+            .execute(pool)
+            .await
+            .map_err(|e| format!("Failed to delete account: {}", e))?;
 
-        Ok(conn.changes() > 0)
+        Ok(result.rows_affected() > 0)
     }
 }

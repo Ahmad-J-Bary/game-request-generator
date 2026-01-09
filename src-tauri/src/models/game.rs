@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct Game {
     pub id: i64,
     pub name: String,
-    pub created_at: Option<String>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
