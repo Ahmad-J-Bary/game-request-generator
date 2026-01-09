@@ -17,7 +17,7 @@ impl ProgressService {
     ) -> Result<(), String> {
         sqlx::query(
             "INSERT INTO account_level_progress (account_id, level_id, is_completed)
-             VALUES ($1, $2, 0)
+             VALUES ($1, $2, FALSE)
              ON CONFLICT(account_id, level_id) DO NOTHING",
         )
         .bind(request.account_id)
@@ -34,8 +34,8 @@ impl ProgressService {
         pool: &Pool<Postgres>,
         request: UpdateAccountLevelProgressRequest,
     ) -> Result<bool, String> {
-        let completed_at = if request.is_completed {
-            Some(chrono::Utc::now().to_rfc3339())
+        let completed_at: Option<chrono::DateTime<chrono::Utc>> = if request.is_completed {
+            Some(chrono::Utc::now())
         } else {
             None
         };
@@ -45,7 +45,7 @@ impl ProgressService {
              SET is_completed = $1, completed_at = $2
              WHERE account_id = $3 AND level_id = $4",
         )
-        .bind(if request.is_completed { 1 } else { 0 })
+        .bind(request.is_completed)
         .bind(completed_at)
         .bind(request.account_id)
         .bind(request.level_id)
@@ -72,11 +72,11 @@ impl ProgressService {
 
         let mut progress_list = Vec::new();
         for row in rows {
-            let is_completed_int: i32 = row.get("is_completed");
+            let is_completed: bool = row.get("is_completed");
             progress_list.push(AccountLevelProgress {
                 account_id: row.get("account_id"),
                 level_id: row.get("level_id"),
-                is_completed: is_completed_int != 0,
+                is_completed,
                 completed_at: row.get("completed_at"),
             });
         }
@@ -94,7 +94,7 @@ impl ProgressService {
         sqlx::query(
             "INSERT INTO account_purchase_event_progress 
              (account_id, purchase_event_id, is_completed, days_offset, time_spent)
-             VALUES ($1, $2, 0, $3, $4)
+             VALUES ($1, $2, FALSE, $3, $4)
              ON CONFLICT(account_id, purchase_event_id) 
              DO UPDATE SET days_offset = $3, time_spent = $4",
         )
@@ -120,7 +120,7 @@ impl ProgressService {
 
         if let Some(is_completed) = request.is_completed {
             query_builder.push("is_completed = ");
-            query_builder.push_bind(if is_completed { 1 } else { 0 });
+            query_builder.push_bind(is_completed);
             first = false;
 
             if is_completed {
@@ -128,7 +128,9 @@ impl ProgressService {
                     query_builder.push(", ");
                 }
                 query_builder.push("completed_at = ");
-                query_builder.push_bind(chrono::Utc::now().to_rfc3339());
+                // Convert to DateTime<Utc> for sqlx, or just bind now() if supported.
+                // Since sqlx map supports chrono, we can bind DateTime<Utc>
+                query_builder.push_bind(chrono::Utc::now());
             }
         }
 
@@ -184,11 +186,11 @@ impl ProgressService {
 
         let mut progress_list = Vec::new();
         for row in rows {
-            let is_completed_int: i32 = row.get("is_completed");
+            let is_completed: bool = row.get("is_completed");
             progress_list.push(AccountPurchaseEventProgress {
                 account_id: row.get("account_id"),
                 purchase_event_id: row.get("purchase_event_id"),
-                is_completed: is_completed_int != 0,
+                is_completed,
                 days_offset: row.get("days_offset"),
                 time_spent: row.get("time_spent"),
                 completed_at: row.get("completed_at"),
