@@ -1,6 +1,6 @@
 [package]
 name = "game-request-generator"
-version = "1.0.1"
+version = "1.0.2"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -8,8 +8,6 @@ edition = "2021"
 [lib]
 name = "game_request_generator_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
-
-
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
