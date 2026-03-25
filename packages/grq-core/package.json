@@ -1,0 +1,25 @@
+{
+  "name": "@grq/core",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-i18next": "^16.5.0",
+    "i18next": "^25.7.3",
+    "xlsx-js-style": "^1.2.0",
+    "@tauri-apps/api": "2.9.1",
+    "@tauri-apps/plugin-dialog": "^2.4.2",
+    "@tauri-apps/plugin-fs": "^2.4.4",
+    "sonner": "^2.0.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@game-request/config": "workspace:*"
+  }
+}

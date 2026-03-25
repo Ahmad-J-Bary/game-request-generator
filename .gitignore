@@ -1,24 +1,47 @@
-# Logs
-logs
+# Dependencies
+node_modules/
+.turbo/
+target/
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+coverage/
+
+# Tauri
+src-tauri/target/
+# Android / Mobile specific
+src-tauri/gen/**/build/
+src-tauri/gen/**/.gradle/
+src-tauri/gen/**/local.properties
+src-tauri/gen/**/.idea/
+src-tauri/gen/**/*.iml
+src-tauri/gen/**/.cxx/
+src-tauri/gen/**/.externalNativeBuild/
+src-tauri/gen/**/captures/
+src-tauri/gen/**/google-services.json
+src-tauri/gen/**/*.keystore
+src-tauri/gen/**/*.jks
+src-tauri/gen/**/*.p12
+src-tauri/gen/**/*.pem
+
+# Editor/Temp
+.idea/
+.vscode/
+.DS_Store
+*.suo
+*.sln
+*.sw?
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Environment & Database
+.env
+.env.local
+.env.*
 *.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+*.sqlite
+*.db

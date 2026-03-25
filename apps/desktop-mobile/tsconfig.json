@@ -1,0 +1,13 @@
+{
+  "extends": "@game-request/config/tsconfig.base.json",
+  "compilerOptions": {},
+  "include": [
+    "src",
+    "../../packages/grq-ui/src/templates"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
+}

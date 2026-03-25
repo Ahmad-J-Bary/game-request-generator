@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@grq/ui/*": ["../../packages/grq-ui/src/*"],
+      "@grq/core/*": ["../../packages/grq-core/src/*"],
+      "@grq/api-bindings": ["../../packages/grq-api-bindings/src/types/index"],
+      "@grq/api-bindings/*": ["../../packages/grq-api-bindings/src/*"]
+    }
+  }
+}
