@@ -434,11 +434,13 @@ fn get_daily_requests(
     for level in due_levels {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        let offset = rng.gen_range(-1..=1);
-        let adjusted_time = (level.time_spent as i32) + offset;
-        let multiplied_time = adjusted_time * 1000;
-        let random_addition = rng.gen_range(0..1000);
-        let time_spent = multiplied_time + random_addition;
+        let base_time = level.time_spent;
+        let jitter = if base_time < 25 {
+            rng.gen_range(-100..=500)
+        } else {
+            rng.gen_range(-750..=1500)
+        };
+        let time_spent = (base_time as i64 * 1000) + jitter as i64;
 
         let game_service = GameService::new();
         let _game = game_service
@@ -581,11 +583,13 @@ fn get_daily_requests(
 
                 use rand::Rng;
                 let mut rng = rand::thread_rng();
-                let offset = rng.gen_range(-1..=1);
-                let adjusted_time = calculated_time + offset;
-                let multiplied_time = adjusted_time * 1000;
-                let random_addition = rng.gen_range(0..1000);
-                let time_spent = multiplied_time + random_addition;
+                let base_time = calculated_time;
+                let jitter = if base_time < 25 {
+                    rng.gen_range(-100..=500)
+                } else {
+                    rng.gen_range(-750..=1500)
+                };
+                let time_spent = (base_time as i64 * 1000) + jitter as i64;
 
                 let clean_event_token = &event.event_token;
 

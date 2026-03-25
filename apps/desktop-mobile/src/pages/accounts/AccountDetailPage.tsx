@@ -4,12 +4,18 @@ import { useMemo, useState, useEffect } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@grq/ui/atoms/card';
-import { Download, Upload, Edit3, Save, X, CheckSquare, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Download, Upload, Edit3, Save, X, CheckSquare, ArrowLeft, ArrowRight, MoreVertical } from 'lucide-react';
 import type { ColumnData } from '@grq/ui/organisms/tables/AccountDataTable';
 import { LayoutToggle, Layout } from '@grq/ui/molecules/LayoutToggle';
 import { BackButton } from '@grq/ui/molecules/BackButton';
 import { ImportDialog } from '@grq/ui/molecules/ImportDialog';
 import { ExportDialog } from '@grq/ui/molecules/ExportDialog';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+  } from '@grq/ui/atoms/popover';
+import { Label } from '@grq/ui/atoms/label';
 import { Button } from '@grq/ui/atoms/button';
 import { Level, Account } from '@grq/api-bindings';
 import { useAccounts } from '@grq/core/hooks/useAccounts';
@@ -270,6 +276,7 @@ export default function AccountDetailPage() {
       }
 
       setIsEditMode(false);
+      window.dispatchEvent(new CustomEvent('data-changed'));
       window.location.reload();
     } catch (error) {
       console.error('Error saving progress:', error);
@@ -419,56 +426,124 @@ export default function AccountDetailPage() {
   return (
     <div className="p-6 space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
       <div className="flex-1">
-        <div className="mb-4 flex items-center justify-between">
-            <div>
-            <h2 className="text-xl font-semibold">{account.name}</h2>
-            <div className="text-sm text-muted-foreground">{account.start_date} • {account.start_time}</div>
+        <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex-1 min-w-0">
+                <h2 className="text-xl md:text-2xl font-bold truncate">{account.name}</h2>
+                <div className="text-xs md:text-sm text-muted-foreground">{account.start_date} • {account.start_time}</div>
             </div>
-            <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)} className="flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                {t('common.import', 'Import')}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)} className="flex items-center gap-2">
-                <Download className="h-4 w-4" />
-                {t('common.export', 'Export')}
-            </Button>
-            {isEditMode ? (
-                <>
-                <div className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-muted/50">
-                    <input type="checkbox" id="complete-all" checked={completeAllChecked} onChange={(e) => handleCompleteAllChange(e.target.checked)} className="h-4 w-4" />
-                    <label htmlFor="complete-all" className="text-sm font-medium flex items-center gap-2 cursor-pointer">
-                        <CheckSquare className="h-4 w-4 text-muted-foreground" />
-                        {t('accounts.completeAll', 'Complete All')}
-                    </label>
+            
+            <div className="flex items-center gap-2 self-end md:self-auto">
+                {/* Desktop Secondary Actions */}
+                <div className="hidden md:flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)} className="flex items-center gap-2">
+                        <Upload className="h-4 w-4" />
+                        {t('common.import', 'Import')}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)} className="flex items-center gap-2">
+                        <Download className="h-4 w-4" />
+                        {t('common.export', 'Export')}
+                    </Button>
+                    <div className="flex items-center gap-2 px-2 py-1 border rounded h-9">
+                        <label className="inline-flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="account-detail-mode-desktop" checked={mode === 'event-only'} onChange={() => setMode('event-only')} className="w-3 h-3" />
+                            <span className="text-xs">{t('common.eventOnly')}</span>
+                        </label>
+                        <label className="inline-flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="account-detail-mode-desktop" checked={mode === 'all'} onChange={() => setMode('all')} className="w-3 h-3" />
+                            <span className="text-xs">{t('common.all')}</span>
+                        </label>
+                    </div>
+                    <LayoutToggle layout={layout} onLayoutChange={setLayout} />
                 </div>
-                <Button variant="default" size="sm" onClick={handleSaveProgress} className="flex items-center gap-2">
-                    <Save className="h-4 w-4" />
-                    {t('common.save', 'Save')}
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleCancelEdit} className="flex items-center gap-2">
-                    <X className="h-4 w-4" />
-                    {t('common.cancel', 'Cancel')}
-                </Button>
-                </>
-            ) : (
-                <Button variant="outline" size="sm" onClick={handleEditToggle} className="flex items-center gap-2">
-                <Edit3 className="h-4 w-4" />
-                {t('common.edit', 'Edit')}
-                </Button>
-            )}
-            <div className="flex items-center gap-2 px-2 py-1 border rounded">
-                <label className="inline-flex items-center gap-2">
-                <input type="radio" name="account-detail-mode" checked={mode === 'event-only'} onChange={() => setMode('event-only')} />
-                <span className="text-sm">{t('common.eventOnly')}</span>
-                </label>
-                <label className="inline-flex items-center gap-2">
-                <input type="radio" name="account-detail-mode" checked={mode === 'all'} onChange={() => setMode('all')} />
-                <span className="text-sm">{t('common.all')}</span>
-                </label>
-            </div>
-            <LayoutToggle layout={layout} onLayoutChange={setLayout} />
-            <BackButton />
+
+                {/* Mobile More Actions Popover */}
+                <div className="md:hidden">
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-9 w-9 p-0">
+                                <MoreVertical className="h-4 w-4" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-3 space-y-4" align="end">
+                            <div className="space-y-2">
+                                <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.view')}</Label>
+                                <div className="flex flex-col gap-2 p-2 border rounded bg-accent/20">
+                                    <LayoutToggle layout={layout} onLayoutChange={setLayout} />
+                                    <div className="flex flex-col gap-2 pt-2 border-t">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="radio" name="account-detail-mode-mobile" checked={mode === 'event-only'} onChange={() => setMode('event-only')} />
+                                            <span className="text-sm">{t('common.eventOnly')}</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="radio" name="account-detail-mode-mobile" checked={mode === 'all'} onChange={() => setMode('all')} />
+                                            <span className="text-sm">{t('common.all')}</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {isEditMode && (
+                                <div className="space-y-2 pt-2 border-t">
+                                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.edit')}</Label>
+                                    <div className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-orange-500/10 border-orange-500/20 text-orange-600">
+                                        <input type="checkbox" id="complete-all-mobile" checked={completeAllChecked} onChange={(e) => handleCompleteAllChange(e.target.checked)} className="h-4 w-4" />
+                                        <label htmlFor="complete-all-mobile" className="text-sm font-medium flex items-center gap-2 cursor-pointer select-none">
+                                            <CheckSquare className="h-4 w-4" />
+                                            {t('accounts.completeAll', 'Complete All')}
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="space-y-2 pt-2 border-t">
+                                <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.actions')}</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)} className="justify-start gap-2 h-9 text-xs px-2">
+                                        <Upload className="h-3.5 w-3.5" />
+                                        {t('common.import')}
+                                    </Button>
+                                    <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)} className="justify-start gap-2 h-9 text-xs px-2">
+                                        <Download className="h-3.5 w-3.5" />
+                                        {t('common.export')}
+                                    </Button>
+                                </div>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+                </div>
+
+                <div className="h-8 w-[1px] bg-border mx-1" />
+
+                {/* Primary Actions */}
+                <div className="flex items-center gap-2">
+                    {isEditMode ? (
+                        <>
+                            {/* Desktop Edit Helpers */}
+                            <div className="hidden md:flex items-center gap-2 px-3 py-2 border rounded-lg bg-muted/50 h-9">
+                                <input type="checkbox" id="complete-all" checked={completeAllChecked} onChange={(e) => handleCompleteAllChange(e.target.checked)} className="h-4 w-4" />
+                                <label htmlFor="complete-all" className="text-xs font-medium flex items-center gap-1 cursor-pointer">
+                                    {t('accounts.completeAll')}
+                                </label>
+                            </div>
+                            
+                            <Button variant="default" size="sm" onClick={handleSaveProgress} className="flex items-center gap-2 h-9 bg-green-600 hover:bg-green-700">
+                                <Save className="h-4 w-4" />
+                                <span className="hidden xs:inline">{t('common.save', 'Save')}</span>
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={handleCancelEdit} className="flex items-center gap-2 h-9">
+                                <X className="h-4 w-4" />
+                                <span className="hidden xs:inline">{t('common.cancel', 'Cancel')}</span>
+                            </Button>
+                        </>
+                    ) : (
+                        <Button variant="outline" size="sm" onClick={handleEditToggle} className="flex items-center gap-2 h-9">
+                            <Edit3 className="h-4 w-4" />
+                            <span className="hidden xs:inline">{t('common.edit', 'Edit')}</span>
+                        </Button>
+                    )}
+                </div>
+
+                <BackButton />
             </div>
         </div>
         <Card>

@@ -45,7 +45,13 @@ export function MainLayout({ children }: MainLayoutProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile Header (Visible only on mobile) */}
-      <header className="md:hidden flex h-14 items-center justify-between border-b px-4 bg-background sticky top-0 z-40">
+      <header 
+        className="md:hidden flex items-center justify-between border-b px-4 bg-background sticky top-0 z-40 transition-colors"
+        style={{ 
+          paddingTop: 'env(safe-area-inset-top)',
+          height: 'calc(3.5rem + env(safe-area-inset-top))' 
+        }}
+      >
         <div className="flex items-center gap-2">
           <Gamepad2 className="h-6 w-6 text-primary" />
           <span className="font-semibold text-lg">Game Manager</span>
@@ -216,6 +222,9 @@ export function MainLayout({ children }: MainLayoutProps) {
           // Mobile padding
           "pt-0 pb-10"
         )}
+        style={{
+          paddingBottom: 'calc(2.5rem + env(safe-area-inset-bottom))'
+        }}
       >
         <div className="container mx-auto p-4 md:p-6">
           {children}

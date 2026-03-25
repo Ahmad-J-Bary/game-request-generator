@@ -1,8 +1,6 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { Clock } from 'lucide-react';
-import { Button } from '@grq/ui/atoms/button';
 import { Card, CardContent } from '@grq/ui/atoms/card';
 import { EmptyState } from '@grq/ui/organisms/daily-tasks/EmptyState';
 import { BatchDisplay } from '@grq/ui/organisms/daily-tasks/BatchDisplay';
@@ -13,7 +11,6 @@ import type { GameBatch, DailyTask } from '@grq/api-bindings/types/daily-tasks.t
 
 export default function DailyTasksPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
 
   const {
     batches,
@@ -23,7 +20,6 @@ export default function DailyTasksPage() {
     accountCompletionRecords,
     accountTaskAssignments,
     accountStartStates,
-    generateTodaysTasks,
     completeTask,
     copyToClipboard,
   } = useDailyTasks();
@@ -35,26 +31,21 @@ export default function DailyTasksPage() {
 
     const today = new Date().toISOString().split('T')[0];
     // Always generate/refresh tasks to catch new additions
-    generateTodaysTasks();
     localStorage.setItem('dailyTasks_lastGenerated', today);
-  }, [games, generateTodaysTasks]); // Re-run when games are loaded
+  }, [games]); // Re-run when games are loaded
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">{t('dailyTasks.title')}</h1>
-          <p className="text-muted-foreground">{t('dailyTasks.subtitle')}</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('dailyTasks.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('dailyTasks.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate('/daily-tasks/unready')}>
-            <Clock className="mr-2 h-4 w-4" />
-            {t('dailyTasks.viewDeferred', 'View Deferred Tasks')}
-          </Button>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
           {loading && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
-              <span>{t('dailyTasks.generateTasksLoading')}</span>
+            <div className="flex items-center gap-2 text-muted-foreground bg-accent/20 px-2 py-1 rounded border">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+              <span className="text-xs font-medium">{t('dailyTasks.generateTasksLoading')}</span>
             </div>
           )}
         </div>

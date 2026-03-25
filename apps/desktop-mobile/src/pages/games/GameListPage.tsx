@@ -34,6 +34,7 @@ export default function GameListPage() {
   const handleDelete = async () => {
     if (deletingGame) {
       await deleteGame(deletingGame.id);
+      window.dispatchEvent(new CustomEvent('data-changed'));
       setDeletingGame(null);
     }
   };
@@ -49,11 +50,12 @@ export default function GameListPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-2xl font-bold">{t('games.title')}</h3>
-        <Button onClick={() => setShowForm(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          {t('games.addGame')}
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('games.title')}</h1>
+        <Button size="sm" onClick={() => setShowForm(true)} className="h-9">
+          <Plus className="mr-1 md:mr-2 h-4 w-4" />
+          <span className="hidden xs:inline">{t('games.addGame')}</span>
+          <span className="xs:hidden">{t('common.add', 'Add')}</span>
         </Button>
       </div>
 

@@ -480,6 +480,7 @@ export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) 
         }
 
         queryClient.invalidateQueries();
+        window.dispatchEvent(new CustomEvent('data-changed'));
         NotificationService.success(t('import.success', { count: importedCount }));
       }
 

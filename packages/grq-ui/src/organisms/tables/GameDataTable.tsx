@@ -97,7 +97,7 @@ export function GameDataTable({
         }
       })();
 
-      const handleChange = (newValue: string, fieldOverride?: string) => {
+      const handleChange = (newValue: any, fieldOverride?: string) => {
         const targetField = fieldOverride || field;
         if (col.kind === 'level' && onUpdateLevel) {
           let processedValue: any = newValue;
@@ -113,6 +113,22 @@ export function GameDataTable({
           onUpdatePurchaseEvent(col.id as number, targetField === 'daysOffset' ? 'days_offset' : targetField === 'maxDaysOffset' ? 'max_days_offset' : targetField, processedValue);
         }
       };
+
+      if (col.kind === 'purchase' && field === 'name') {
+        return (
+          <div className="flex items-center gap-2 group cursor-pointer" onClick={() => handleChange(!col.isRestricted, 'is_restricted')}>
+            <input
+              type="checkbox"
+              checked={col.isRestricted}
+              onChange={() => {}} // Controlled by onClick on container for better touch/click area
+              className="h-3.5 w-3.5 cursor-pointer"
+            />
+            <span className="text-[10px] whitespace-nowrap leading-none select-none">
+                {t('purchaseEvents.isRestricted')}
+            </span>
+          </div>
+        );
+      }
 
       if (col.kind === 'purchase' && field === 'daysOffset') {
         return (

@@ -35,11 +35,13 @@ export function GameForm({ game, onClose }: GameFormProps) {
       if (game) {
         const request: UpdateGameRequest = { id: game.id, name };
         await updateGame(request);
+        window.dispatchEvent(new CustomEvent('data-changed'));
         onClose();
       } else {
         const request: CreateGameRequest = { name };
         const id = await addGame(request);
         if (id) {
+            window.dispatchEvent(new CustomEvent('data-changed'));
             onClose();
             navigate(`/games/${id}`);
         }

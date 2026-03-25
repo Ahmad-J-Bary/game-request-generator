@@ -6,9 +6,12 @@ import { ArrowLeft } from 'lucide-react';
 interface BackButtonProps {
   to?: string;
   variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
+  size?: 'default' | 'sm' | 'lg' | 'icon';
+  className?: string;
+  children?: React.ReactNode;
 }
 
-export function BackButton({ to, variant = 'ghost' }: BackButtonProps) {
+export function BackButton({ to, variant = 'ghost', size, className, children }: BackButtonProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
@@ -21,8 +24,12 @@ export function BackButton({ to, variant = 'ghost' }: BackButtonProps) {
   };
 
   return (
-    <Button variant={variant} onClick={handleClick}>
-      <ArrowLeft className="mr-2 h-4 w-4" /> {t('common.back')}
+    <Button variant={variant} size={size} className={className} onClick={handleClick}>
+      {children || (
+        <>
+          <ArrowLeft className="mr-2 h-4 w-4" /> {t('common.back')}
+        </>
+      )}
     </Button>
   );
 }

@@ -1,5 +1,5 @@
 export const APP_NAME = 'Game Request Generator';
-export const APP_VERSION = '1.0.3';
+export const APP_VERSION = '1.0.4';
 
 export const DATE_FORMAT = 'yyyy-MM-dd';
 export const TIME_FORMAT = 'HH:mm';

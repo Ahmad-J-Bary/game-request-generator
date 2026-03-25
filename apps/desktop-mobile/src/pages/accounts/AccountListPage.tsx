@@ -17,9 +17,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@grq/ui/atoms/alert-dialog';
-import { Plus, Pencil, Trash2, Eye, Download, Upload } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, Download, Upload, MoreVertical } from 'lucide-react';
 import { ImportDialog } from '@grq/ui/molecules/ImportDialog';
 import { ExportDialog } from '@grq/ui/molecules/ExportDialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@grq/ui/atoms/popover';
+import { Label } from '@grq/ui/atoms/label';
 import { Account } from '@grq/api-bindings';
 
 export default function AccountListPage() {
@@ -59,6 +65,7 @@ export default function AccountListPage() {
   const doDelete = async () => {
     if (deletingAccount) {
       await deleteAccount(deletingAccount.id);
+      window.dispatchEvent(new CustomEvent('data-changed'));
     }
     setShowDelete(false);
     setDeletingAccount(null);
@@ -66,27 +73,55 @@ export default function AccountListPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <h3 className="text-2xl font-bold">{t('accounts.title')}</h3>
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('accounts.title')}</h1>
+        <div className="flex items-center gap-2 self-end md:self-auto">
           <GameSelector selectedGameId={selectedGameId} onGameChange={setSelectedGameId} />
 
           {selectedGameId && (
             <>
-              <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-                <Upload className="mr-2 h-4 w-4" />
-                {t('common.import', 'Import')}
-              </Button>
-              <Button variant="outline" onClick={() => setShowExportDialog(true)}>
-                <Download className="mr-2 h-4 w-4" />
-                {t('common.export', 'Export')}
-              </Button>
+              {/* Desktop Import/Export */}
+              <div className="hidden md:flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)}>
+                    <Upload className="mr-2 h-4 w-4" />
+                    {t('common.import', 'Import')}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)}>
+                    <Download className="mr-2 h-4 w-4" />
+                    {t('common.export', 'Export')}
+                </Button>
+              </div>
+
+              {/* Mobile More Actions */}
+              <div className="md:hidden">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 w-9 p-0">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-2 space-y-2" align="end">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold px-2">{t('common.actions')}</Label>
+                    <div className="flex flex-col gap-1">
+                      <Button variant="ghost" size="sm" className="justify-start w-full" onClick={() => setShowImportDialog(true)}>
+                        <Upload className="mr-2 h-4 w-4" />
+                        {t('common.import')}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="justify-start w-full" onClick={() => setShowExportDialog(true)}>
+                        <Download className="mr-2 h-4 w-4" />
+                        {t('common.export')}
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </>
           )}
 
-          <Button onClick={handleAddNavigate} disabled={!selectedGameId}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t('accounts.addAccount')}
+          <Button size="sm" onClick={handleAddNavigate} disabled={!selectedGameId} className="h-9">
+            <Plus className="mr-1 md:mr-2 h-4 w-4" />
+            <span className="hidden xs:inline">{t('accounts.addAccount')}</span>
+            <span className="xs:hidden">{t('common.add', 'Add')}</span>
           </Button>
         </div>
       </div>

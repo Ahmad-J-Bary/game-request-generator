@@ -212,62 +212,23 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
               }
             }
           }
+        } else if (isVerticalGameDetailFormat(matrixData)) {
+          console.log(`Detected Vertical Game Detail format in sheet: ${sheetName}`);
+          const parsedData = parseVerticalLayoutData(matrixData);
+          parsedData.levels.forEach(l => (l as any).gameName = gameName);
+          parsedData.purchaseEvents.forEach(e => (e as any).gameName = gameName);
+          result.levels.push(...parsedData.levels);
+          result.purchaseEvents.push(...parsedData.purchaseEvents);
+        } else if (isHorizontalGameDetailFormat(matrixData)) {
+          console.log(`Detected Horizontal Game Detail format in sheet: ${sheetName}`);
+          const parsedData = parseHorizontalLayoutData(matrixData);
+          parsedData.levels.forEach(l => (l as any).gameName = gameName);
+          parsedData.purchaseEvents.forEach(e => (e as any).gameName = gameName);
+          result.levels.push(...parsedData.levels);
+          result.purchaseEvents.push(...parsedData.purchaseEvents);
         }
       }
     }
-
-    // Try to parse data from all sheets
-    for (const sheetName of workbook.SheetNames) {
-      const sheet = workbook.Sheets[sheetName];
-      if (!sheet) continue;
-
-      // Detect game name from sheet name
-      // Logic: SheetName, SheetName_Lvl, or SheetName_Evt
-      let gameName = sheetName;
-      if (sheetName.endsWith('_Lvl')) {
-        gameName = sheetName.substring(0, sheetName.length - 4);
-        const levelsData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-        const parsedLevels = parseLevelsData(levelsData);
-        parsedLevels.forEach(l => (l as any).gameName = gameName);
-        result.levels.push(...parsedLevels);
-      } else if (sheetName.endsWith('_Evt')) {
-        gameName = sheetName.substring(0, sheetName.length - 4);
-        const purchaseData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-        const parsedEvents = parsePurchaseEventsData(purchaseData);
-        parsedEvents.forEach(e => (e as any).gameName = gameName);
-        result.purchaseEvents.push(...parsedEvents);
-      } else if (sheetName === 'Levels') {
-        const levelsData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-        result.levels.push(...parseLevelsData(levelsData));
-      } else if (sheetName === 'Purchase Events') {
-        const purchaseData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-        result.purchaseEvents.push(...parsePurchaseEventsData(purchaseData));
-      } else if (sheetName === 'Accounts') {
-        const accountsData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-        result.accounts.push(...parseAccountsData(accountsData));
-      } else {
-        // Assume this is a matrix sheet with account progress
-        const matrixData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-        if (isAccountsDetailFormat(matrixData)) {
-          const parsedData = parseAccountsDetailVerticalLayout(matrixData);
-          parsedData.accounts.forEach(a => (a as any).gameName = gameName);
-          // For matrix sheets, the levels/events are often just progress, 
-          // but if it's the only sheet, we take everything.
-          // If we have _Lvl/_Evt sheets, we prefer those for definitions.
-          result.accounts.push(...parsedData.accounts);
-          
-          // Only add levels/events from matrix if we haven't found dedicated sheets for this game
-          // OR if this is the only sheet.
-          if (workbook.SheetNames.length === 1) {
-            result.levels.push(...parsedData.levels);
-            result.purchaseEvents.push(...parsedData.purchaseEvents);
-          }
-        }
-      }
-    }
-
-    // Deduplicate any data if overlapping (simple approach)
-    // ... logic could be added here if needed ...
 
     console.log('Successfully parsed Excel file with data:', {
       levels: result.levels.length,
@@ -354,6 +315,28 @@ export function isAccountsDetailFormat(rows: any[][]): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Check if the data is in vertical game detail format (4 rows)
+ */
+export function isVerticalGameDetailFormat(rows: any[][]): boolean {
+  return rows.length >= 4 && 
+         rows[0]?.[0]?.toString().toLowerCase().includes('event token') &&
+         rows[1]?.[0]?.toString().toLowerCase().includes('level name') &&
+         rows[2]?.[0]?.toString().toLowerCase().includes('days offset') &&
+         rows[3]?.[0]?.toString().toLowerCase().includes('time spent');
+}
+
+/**
+ * Check if the data is in horizontal game detail format (headers in row 0)
+ */
+export function isHorizontalGameDetailFormat(rows: any[][]): boolean {
+  if (rows.length < 2) return false;
+  const headers = rows[0].map((h: any) => h?.toString().toLowerCase() || '');
+  return headers.includes('event token') && 
+         headers.includes('level name') && 
+         headers.includes('days offset');
 }
 
 /**
@@ -584,6 +567,72 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
   }
 
   return { levels, purchaseEvents, accounts };
+}
+
+/**
+ * Parse horizontal layout data (from GameDetailPage export)
+ */
+export function parseHorizontalLayoutData(rows: any[][]): { levels: Partial<Level>[], purchaseEvents: Partial<PurchaseEvent>[] } {
+  const levels: Partial<Level>[] = [];
+  const purchaseEvents: Partial<PurchaseEvent>[] = [];
+  
+  if (rows.length < 2) return { levels, purchaseEvents };
+
+  const headers = rows[0].map((h: any) => h?.toString().toLowerCase() || '');
+  
+  const eventTokenIndex = headers.indexOf('event token');
+  const levelNameIndex = headers.indexOf('level name');
+  const daysOffsetIndex = headers.indexOf('days offset');
+  const timeSpentIndex = headers.indexOf('time spent (1000 seconds)');
+
+  if (eventTokenIndex === -1) return { levels, purchaseEvents };
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0 || !row[eventTokenIndex]) continue;
+
+    const token = row[eventTokenIndex].toString().trim();
+    const name = row[levelNameIndex]?.toString().trim() || '';
+    const daysOffsetStr = row[daysOffsetIndex]?.toString().trim() || '';
+    const timeSpentStr = row[timeSpentIndex]?.toString().trim() || '';
+
+    if (name === '$$$') {
+      // Purchase event
+      const purchaseEvent: Partial<PurchaseEvent> = {
+        event_token: token,
+        is_restricted: false,
+      };
+
+      if (daysOffsetStr.toLowerCase().includes('less than')) {
+        const match = daysOffsetStr.match(/less than (\d+)/i);
+        if (match) purchaseEvent.max_days_offset = parseInt(match[1]);
+      } else {
+        const val = parseInt(daysOffsetStr);
+        if (!isNaN(val)) purchaseEvent.max_days_offset = val;
+      }
+      purchaseEvents.push(purchaseEvent);
+    } else {
+      // Level
+      const level: Partial<Level> = {
+        event_token: token,
+        level_name: name,
+      };
+
+      const dOffset = parseInt(daysOffsetStr);
+      if (!isNaN(dOffset)) level.days_offset = dOffset;
+
+      const tSpent = parseInt(timeSpentStr);
+      if (!isNaN(tSpent)) level.time_spent = tSpent;
+
+      level.is_bonus = name.toLowerCase().includes('bonus') ||
+                      name.toLowerCase().includes('extra') ||
+                      name.match(/\+\d+/) !== null;
+
+      levels.push(level);
+    }
+  }
+
+  return { levels, purchaseEvents };
 }
 
 /**

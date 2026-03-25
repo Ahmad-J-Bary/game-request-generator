@@ -412,48 +412,143 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
   return (
     <div className="container mx-auto p-6 space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
       <div className="flex-1">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex-1">
+          <h1 className="text-2xl md:text-3xl font-bold truncate">
             {game ? game.name : t('games.detailTitle')}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs md:text-sm text-muted-foreground">
             {t('games.detailSubtitle')}
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowImportDialog(true)}
-            className="flex items-center gap-2"
-          >
-            <Upload className="h-4 w-4" />
-            {t('common.import', 'Import')}
-          </Button>
+        <div className="flex items-center gap-2 md:gap-3 self-end md:self-auto">
+          {/* Desktop Actions */}
+          <div className="hidden md:flex items-center gap-3">
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowImportDialog(true)}
+                className="flex items-center gap-2"
+            >
+                <Upload className="h-4 w-4" />
+                {t('common.import', 'Import')}
+            </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowExportDialog(true)}
-            className="flex items-center gap-2"
-          >
-            <Download className="h-4 w-4" />
-            {t('common.export', 'Export')}
-          </Button>
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowExportDialog(true)}
+                className="flex items-center gap-2"
+            >
+                <Download className="h-4 w-4" />
+                {t('common.export', 'Export')}
+            </Button>
 
-          <LayoutToggle layout={layout} onLayoutChange={setLayout} />
+            <LayoutToggle layout={layout} onLayoutChange={setLayout} />
+
+            <div className="flex items-center gap-2 px-2 py-1 border rounded h-9">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="game-detail-mode-desktop"
+                  checked={mode === 'event-only'}
+                  onChange={() => setMode('event-only')}
+                  className="w-3 h-3"
+                />
+                <span className="text-xs">{t('common.eventOnly')}</span>
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="game-detail-mode-desktop"
+                  checked={mode === 'all'}
+                  onChange={() => setMode('all')}
+                  className="w-3 h-3"
+                />
+                <span className="text-xs">{t('common.all')}</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Mobile More Actions Popover */}
+          <div className="md:hidden">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 w-9 p-0">
+                  <div className="flex flex-col gap-0.5 items-center">
+                    <div className="w-1 h-1 bg-current rounded-full" />
+                    <div className="w-1 h-1 bg-current rounded-full" />
+                    <div className="w-1 h-1 bg-current rounded-full" />
+                  </div>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-3 space-y-4" align="end">
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.view', 'View Options')}</Label>
+                  <div className="flex flex-col gap-2">
+                    <LayoutToggle layout={layout} onLayoutChange={setLayout} />
+                    <div className="flex flex-col gap-2 p-2 border rounded bg-accent/20">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="game-detail-mode-mobile"
+                          checked={mode === 'event-only'}
+                          onChange={() => setMode('event-only')}
+                        />
+                        <span className="text-sm">{t('common.eventOnly')}</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="game-detail-mode-mobile"
+                          checked={mode === 'all'}
+                          onChange={() => setMode('all')}
+                        />
+                        <span className="text-sm">{t('common.all')}</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.actions', 'Actions')}</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowImportDialog(true)}
+                      className="justify-start gap-2 h-9 text-xs px-2"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      {t('common.import')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowExportDialog(true)}
+                      className="justify-start gap-2 h-9 text-xs px-2"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {t('common.export')}
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="h-9 w-[1px] bg-border mx-1" />
 
           {!isEditMode ? (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleEditToggle}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 h-9"
               >
                 <Edit3 className="h-4 w-4" />
-                {t('common.edit', 'Edit')}
+                <span className="hidden xs:inline">{t('common.edit', 'Edit')}</span>
               </Button>
           ) : (
             <div className="flex items-center gap-2">
@@ -461,44 +556,22 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
                 variant="outline"
                 size="sm"
                 onClick={handleSaveChanges}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 h-9 bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20"
               >
                 <Save className="h-4 w-4" />
-                {t('common.save', 'Save')}
+                <span className="hidden xs:inline">{t('common.save', 'Save')}</span>
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleCancelEdit}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 h-9"
               >
                 <X className="h-4 w-4" />
-                {t('common.cancel', 'Cancel')}
+                <span className="hidden xs:inline">{t('common.cancel', 'Cancel')}</span>
               </Button>
             </div>
           )}
-
-          <div className="flex items-center gap-2 px-2 py-1 border rounded">
-            <label className="inline-flex items-center gap-2">
-              <input
-                type="radio"
-                name="game-detail-mode"
-                checked={mode === 'event-only'}
-                onChange={() => setMode('event-only')}
-              />
-              <span className="text-sm">{t('common.eventOnly')}</span>
-            </label>
-
-            <label className="inline-flex items-center gap-2">
-              <input
-                type="radio"
-                name="game-detail-mode"
-                checked={mode === 'all'}
-                onChange={() => setMode('all')}
-              />
-              <span className="text-sm">{t('common.all')}</span>
-            </label>
-          </div>
 
           <BackButton />
         </div>

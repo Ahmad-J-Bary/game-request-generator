@@ -100,16 +100,32 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
+      - name: Rename APKs
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # The VERSION might contain 'v', let's keep it or clean it if needed
+          # For consistency with tauri.conf.json, we use ref_name
+          cd apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release/
+          for apk in *.apk; do
+            if [[ $apk == *"release.apk" ]]; then
+              # Extract ABI: app-arm64-v8a-release.apk -> arm64-v8a
+              ABI=$(echo $apk | sed 's/app-//' | sed 's/-release.apk//')
+              NEW_NAME="GameRequestGenerator-$VERSION-$ABI.apk"
+              mv "$apk" "$NEW_NAME"
+              echo "Renamed $apk to $NEW_NAME"
+            fi
+          done
+
       - name: Upload Android APK to Action Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Game-Request-Generator-Android-APKs
-          path: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          path: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release/*.apk
 
       - name: Upload APKs to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          files: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release/*.apk
           draft: true
           prerelease: false
         env:

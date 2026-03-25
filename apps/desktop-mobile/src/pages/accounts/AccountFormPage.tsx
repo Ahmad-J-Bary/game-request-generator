@@ -9,7 +9,7 @@ import { Button } from '@grq/ui/atoms/button';
 import { Input } from '@grq/ui/atoms/input';
 import { Label } from '@grq/ui/atoms/label';
 import { Textarea } from '@grq/ui/atoms/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@grq/ui/atoms/card';
+import { Card, CardContent } from '@grq/ui/atoms/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 import { BackButton } from '@grq/ui/molecules/BackButton';
 import { CreateAccountRequest, UpdateAccountRequest } from '@grq/api-bindings';
@@ -394,6 +394,7 @@ export default function AccountFormPage() {
         };
         await addAccount(request);
       }
+      window.dispatchEvent(new CustomEvent('data-changed'));
       navigate('/accounts');
     } catch (error) {
       console.error('Failed to save account:', error);
@@ -404,15 +405,18 @@ export default function AccountFormPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <BackButton />
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <BackButton variant="ghost" size="sm" className="h-9">
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            <span className="hidden xs:inline">{t('common.back')}</span>
+        </BackButton>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+            {account ? t('accounts.editAccount') : t('accounts.addAccount')}
+        </h1>
+      </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>
-            {account ? t('accounts.editAccount') : t('accounts.addAccount')}
-          </CardTitle>
-        </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">

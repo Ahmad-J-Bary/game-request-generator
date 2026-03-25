@@ -19,7 +19,6 @@ import GameDetailPage from './pages/games/GameDetailPage';
 import AccountsDetailPage from './pages/progress/AccountsDetailPage';
 // Daily Tasks
 import DailyTasksPage from './pages/daily-tasks/DailyTasksPage';
-import UnreadyDailyTasksPage from './pages/daily-tasks/UnreadyDailyTasksPage';
 // Settings
 import SettingsPage from './pages/SettingsPage';
 import './i18n';
@@ -61,7 +60,6 @@ const App = () => (
                   <Route path="/accounts/edit/:id" element={<AccountFormPage />} />
                   <Route path="/accounts/detail" element={<AccountsDetailPage />} />
                   <Route path="/daily-tasks" element={<DailyTasksPage />} />
-                  <Route path="/daily-tasks/unready" element={<UnreadyDailyTasksPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Routes>
               </MainLayout>
