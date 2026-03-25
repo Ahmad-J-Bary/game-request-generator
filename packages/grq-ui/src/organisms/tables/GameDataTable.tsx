@@ -19,6 +19,15 @@ type ColumnData =
   | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number | string | null; timeSpent: number | null; isBonus: boolean; synthetic?: boolean }
   | { kind: 'purchase'; id: number | string; token: string; name: string; isRestricted: boolean; daysOffset: number | null; maxDaysOffset: number | string | null; timeSpent: number | null; synthetic?: boolean };
 
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@grq/ui/atoms/popover';
+import { Plus } from 'lucide-react';
+import { Label } from '@grq/ui/atoms/label';
+import { useState } from 'react';
+
 interface GameDataTableProps {
   columns: ColumnData[];
   layout: 'horizontal' | 'vertical';
@@ -27,6 +36,8 @@ interface GameDataTableProps {
   onDeletePurchaseEvent?: (eventId: number) => void;
   onUpdateLevel?: (levelId: number, field: string, value: any) => void;
   onUpdatePurchaseEvent?: (eventId: number, field: string, value: any) => void;
+  onAddLevel?: (data: { level_name: string; event_token: string; days_offset: number; time_spent: number; is_bonus: boolean }) => void;
+  onAddPurchaseEvent?: (data: { event_token: string; days_offset: number; max_days_offset: number | null; is_restricted: boolean }) => void;
   mode?: 'event-only' | 'all';
 }
 
@@ -38,12 +49,30 @@ export function GameDataTable({
   onDeletePurchaseEvent,
   onUpdateLevel,
   onUpdatePurchaseEvent,
+  onAddLevel,
+  onAddPurchaseEvent,
   mode = 'event-only'
 }: GameDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
   const { theme } = useTheme();
   const getColorStyle = useColorStyle();
+
+  // Form State for new columns
+  const [isAdding, setIsAdding] = useState(false);
+  const [addKind, setAddKind] = useState<'level' | 'purchase'>('level');
+  const [newLevel, setNewLevel] = useState({ level_name: '', event_token: '', days_offset: 0, time_spent: 0, is_bonus: false });
+  const [newPurchase, setNewPurchase] = useState({ event_token: '', days_offset: 0, max_days_offset: null as number | null, is_restricted: false });
+
+  const handleAddSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (addKind === 'level' && onAddLevel) {
+      onAddLevel(newLevel);
+    } else if (addKind === 'purchase' && onAddPurchaseEvent) {
+      onAddPurchaseEvent(newPurchase);
+    }
+    setIsAdding(false);
+  };
 
   const renderCellContent = (col: ColumnData, field: 'token' | 'name' | 'daysOffset' | 'timeSpent') => {
     if (isEditMode && !col.synthetic) {
@@ -169,13 +198,7 @@ export function GameDataTable({
     color: theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)',
   };
 
-  if (columns.length === 0) {
-    return (
-      <div className="py-8 text-center text-muted-foreground">
-        {t('games.noDetails')}
-      </div>
-    );
-  }
+  // Remove the empty check to allow the Plus button to always show in the header
 
   if (layout === 'horizontal') {
     return (
@@ -189,9 +212,81 @@ export function GameDataTable({
             {isEditMode && columns.some(col => !col.synthetic) && (
               <TableHead style={headerStyle} className="w-16">{t('common.actions', 'Actions')}</TableHead>
             )}
+            <TableHead style={headerStyle} className="w-12 p-0">
+                <Popover open={isAdding} onOpenChange={setIsAdding}>
+                    <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-full w-full hover:bg-black/10">
+                            <Plus className="h-4 w-4" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-4" side="bottom" align="end">
+                        <form onSubmit={handleAddSubmit} className="space-y-4">
+                            <div className="flex items-center gap-4 mb-2">
+                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                    <input type="radio" checked={addKind === 'level'} onChange={() => setAddKind('level')} name="addKind" />
+                                    {t('levels.title', 'Level')}
+                                </label>
+                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                    <input type="radio" checked={addKind === 'purchase'} onChange={() => setAddKind('purchase')} name="addKind" />
+                                    {t('purchaseEvents.title', 'Purchase')}
+                                </label>
+                            </div>
+
+                            {addKind === 'level' ? (
+                                <div className="space-y-3">
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">{t('levels.levelName')}</Label>
+                                        <Input value={newLevel.level_name} onChange={e => setNewLevel({...newLevel, level_name: e.target.value})} className="h-8" />
+                                    </div>
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">{t('levels.eventToken')}</Label>
+                                        <Input value={newLevel.event_token} onChange={e => setNewLevel({...newLevel, event_token: e.target.value})} className="h-8" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="grid gap-1">
+                                            <Label className="text-xs">{t('levels.daysOffset')}</Label>
+                                            <Input type="number" value={newLevel.days_offset} onChange={e => setNewLevel({...newLevel, days_offset: Number(e.target.value)})} className="h-8" />
+                                        </div>
+                                        <div className="grid gap-1">
+                                            <Label className="text-xs">{t('levels.timeSpent')}</Label>
+                                            <Input type="number" value={newLevel.time_spent} onChange={e => setNewLevel({...newLevel, time_spent: Number(e.target.value)})} className="h-8" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">{t('levels.eventToken')}</Label>
+                                        <Input value={newPurchase.event_token} onChange={e => setNewPurchase({...newPurchase, event_token: e.target.value})} className="h-8" />
+                                    </div>
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">{t('levels.daysOffset')}</Label>
+                                        <Input type="number" value={newPurchase.days_offset} onChange={e => setNewPurchase({...newPurchase, days_offset: Number(e.target.value)})} className="h-8" />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <input type="checkbox" checked={newPurchase.is_restricted} onChange={e => setNewPurchase({...newPurchase, is_restricted: e.target.checked})} />
+                                        <Label className="text-xs cursor-pointer">{t('purchaseEvents.isRestricted')}</Label>
+                                    </div>
+                                </div>
+                            )}
+
+                            <Button type="submit" size="sm" className="w-full bg-green-600 hover:bg-green-700">
+                                {t('common.add', 'Add Column')}
+                            </Button>
+                        </form>
+                    </PopoverContent>
+                </Popover>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
+          {columns.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6} className="py-8 text-center text-muted-foreground italic">
+                {t('games.noDetails', 'No levels or events yet. Click + to add.')}
+              </TableCell>
+            </TableRow>
+          )}
           {columns.map((col) => {
             const columnStyle = getColumnSpecificStyle(col);
             const combinedStyle = { ...dataRowStyle, ...columnStyle };
@@ -228,6 +323,7 @@ export function GameDataTable({
                     </Button>
                   </TableCell>
                 )}
+                <TableCell style={dataRowStyle} />
               </TableRow>
             );
           })}
@@ -256,6 +352,71 @@ export function GameDataTable({
               </TableHead>
             );
           })}
+          <TableHead style={headerStyle} className="w-12 p-0">
+                <Popover open={isAdding} onOpenChange={setIsAdding}>
+                    <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-full w-full hover:bg-black/10">
+                            <Plus className="h-4 w-4" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-4" side="bottom" align="end">
+                        <form onSubmit={handleAddSubmit} className="space-y-4">
+                            <div className="flex items-center gap-4 mb-2">
+                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                    <input type="radio" checked={addKind === 'level'} onChange={() => setAddKind('level')} name="addKindDetails" />
+                                    {t('levels.title', 'Level')}
+                                </label>
+                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                    <input type="radio" checked={addKind === 'purchase'} onChange={() => setAddKind('purchase')} name="addKindDetails" />
+                                    {t('purchaseEvents.title', 'Purchase')}
+                                </label>
+                            </div>
+
+                            {addKind === 'level' ? (
+                                <div className="space-y-3">
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">{t('levels.levelName')}</Label>
+                                        <Input value={newLevel.level_name} onChange={e => setNewLevel({...newLevel, level_name: e.target.value})} className="h-8" />
+                                    </div>
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">{t('levels.eventToken')}</Label>
+                                        <Input value={newLevel.event_token} onChange={e => setNewLevel({...newLevel, event_token: e.target.value})} className="h-8" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="grid gap-1">
+                                            <Label className="text-xs">{t('levels.daysOffset')}</Label>
+                                            <Input type="number" value={newLevel.days_offset} onChange={e => setNewLevel({...newLevel, days_offset: Number(e.target.value)})} className="h-8" />
+                                        </div>
+                                        <div className="grid gap-1">
+                                            <Label className="text-xs">{t('levels.timeSpent')}</Label>
+                                            <Input type="number" value={newLevel.time_spent} onChange={e => setNewLevel({...newLevel, time_spent: Number(e.target.value)})} className="h-8" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">{t('levels.eventToken')}</Label>
+                                        <Input value={newPurchase.event_token} onChange={e => setNewPurchase({...newPurchase, event_token: e.target.value})} className="h-8" />
+                                    </div>
+                                    <div className="grid gap-1">
+                                        <Label className="text-xs">{t('levels.daysOffset')}</Label>
+                                        <Input type="number" value={newPurchase.days_offset} onChange={e => setNewPurchase({...newPurchase, days_offset: Number(e.target.value)})} className="h-8" />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <input type="checkbox" checked={newPurchase.is_restricted} onChange={e => setNewPurchase({...newPurchase, is_restricted: e.target.checked})} />
+                                        <Label className="text-xs cursor-pointer">{t('purchaseEvents.isRestricted')}</Label>
+                                    </div>
+                                </div>
+                            )}
+
+                            <Button type="submit" size="sm" className="w-full bg-green-600 hover:bg-green-700">
+                                {t('common.add', 'Add Column')}
+                            </Button>
+                        </form>
+                    </PopoverContent>
+                </Popover>
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -271,6 +432,7 @@ export function GameDataTable({
               </DataTableCell>
             );
           })}
+          <TableCell style={dataRowStyle} />
         </TableRow>
 
         <TableRow>
@@ -285,6 +447,7 @@ export function GameDataTable({
               </DataTableCell>
             );
           })}
+          <TableCell style={dataRowStyle} />
         </TableRow>
 
         <TableRow>
@@ -299,6 +462,7 @@ export function GameDataTable({
               </DataTableCell>
             );
           })}
+          <TableCell style={dataRowStyle} />
         </TableRow>
 
         {isEditMode && columns.some(col => !col.synthetic) && (
@@ -331,6 +495,7 @@ export function GameDataTable({
                 </TableCell>
               );
             })}
+            <TableCell style={dataRowStyle} />
           </TableRow>
         )}
       </TableBody>

@@ -53,6 +53,7 @@ jobs:
           projectPath: ./apps/desktop-mobile
 
   android:
+    needs: release
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -103,12 +104,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Game-Request-Generator-Android-APKs
-          path: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release/*.apk
+          path: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
 
       - name: Upload APKs to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release/*.apk
+          files: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           draft: true
           prerelease: false
         env:

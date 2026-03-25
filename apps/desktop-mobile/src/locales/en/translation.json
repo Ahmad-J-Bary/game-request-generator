@@ -31,7 +31,8 @@
   },
   "nav": {
     "dashboard": "Dashboard",
-    "games": "Games",
+    "games": "Games List",
+    "gamesTable": "Games Table",
     "accounts": "Accounts",
     "accountsDetail": "Accounts Detail",
     "levels": "Levels",

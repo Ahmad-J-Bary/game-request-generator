@@ -31,7 +31,8 @@
   },
   "nav": {
     "dashboard": "لوحة التحكم",
-    "games": "الألعاب",
+    "games": "قائمة الألعاب",
+    "gamesTable": "جدول الألعاب",
     "accounts": "الحسابات",
     "accountsDetail": "تفاصيل الحسابات",
     "levels": "المستويات",

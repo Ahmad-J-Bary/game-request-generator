@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useGames } from '@grq/core/hooks/useGames';
 import { Button } from '@grq/ui/atoms/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@grq/ui/atoms/card';
@@ -14,6 +15,7 @@ interface GameFormProps {
 
 export function GameForm({ game, onClose }: GameFormProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { addGame, updateGame } = useGames();
   const [name, setName] = useState(game?.name || '');
   const [loading, setLoading] = useState(false);
@@ -33,11 +35,15 @@ export function GameForm({ game, onClose }: GameFormProps) {
       if (game) {
         const request: UpdateGameRequest = { id: game.id, name };
         await updateGame(request);
+        onClose();
       } else {
         const request: CreateGameRequest = { name };
-        await addGame(request);
+        const id = await addGame(request);
+        if (id) {
+            onClose();
+            navigate(`/games/${id}`);
+        }
       }
-      onClose();
     } catch (err) {
       console.error('Failed to save game', err);
     } finally {

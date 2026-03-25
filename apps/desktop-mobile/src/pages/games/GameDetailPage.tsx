@@ -1,7 +1,7 @@
 // src/pages/games/GameDetailPage.tsx
 
 import { useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@grq/ui/atoms/card';
 import { LayoutToggle, Layout } from '@grq/ui/molecules/LayoutToggle';
@@ -11,7 +11,7 @@ import { ImportDialog } from '@grq/ui/molecules/ImportDialog';
 import { ExportDialog } from '@grq/ui/molecules/ExportDialog';
 import type { ColumnData } from '@grq/ui/organisms/tables/AccountDataTable';
 import { Button } from '@grq/ui/atoms/button';
-import { Download, Upload, Plus, Edit3, Save, X } from 'lucide-react';
+import { Download, Upload, Plus, Edit3, Save, X, Trash2 } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -30,19 +30,36 @@ import { Level, PurchaseEvent } from '@grq/api-bindings';
 
 type Mode = 'all' | 'event-only';
 
-export default function GameDetailPage() {
+export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { gameId?: number; forcedLayout?: Layout }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { id } = useParams<{ id?: string }>();
-  const gameId = id ? parseInt(id, 10) : undefined;
+  const location = useLocation();
+  const { id: urlId } = useParams<{ id?: string }>();
+  const gameId = propGameId || (urlId ? parseInt(urlId, 10) : undefined);
   const { colors } = useSettings();
   const { theme } = useTheme();
 
-  const { games } = useGames();
+  const { games, deleteGame } = useGames();
   const { levels = [] } = useLevels(gameId);
   const { events: purchaseEvents = [] } = usePurchaseEvents(gameId);
 
-  const [layout, setLayout] = useState<Layout>('vertical');
+  // Parse layout from query params if present
+  const queryParams = new URLSearchParams(location.search);
+  const forceLayout = queryParams.get('layout') as Layout | null;
+
+  const [layout, setLayout] = useState<Layout>(forcedLayout || forceLayout || 'vertical');
+  const [prevForceLayout, setPrevForceLayout] = useState(forceLayout);
+  const [prevForcedLayoutProp, setPrevForcedLayoutProp] = useState(forcedLayout);
+
+  if (forceLayout !== prevForceLayout || forcedLayout !== prevForcedLayoutProp) {
+    setPrevForceLayout(forceLayout);
+    setPrevForcedLayoutProp(forcedLayout);
+    const newLayout = forcedLayout || forceLayout;
+    if (newLayout) {
+      setLayout(newLayout);
+    }
+  }
+
   const [mode, setMode] = useState<Mode>('event-only');
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -171,7 +188,43 @@ export default function GameDetailPage() {
     ));
   };
 
-  const game = games.find(g => String(g.id) === String(id));
+  const handleDeleteGame = async () => {
+    if (!gameId || !game) return;
+    if (window.confirm(t('games.deleteConfirm'))) {
+      const success = await deleteGame(gameId);
+      if (success) {
+        navigate('/games-table');
+      }
+    }
+  };
+
+  const handleAddLevel = async (data: { level_name: string; event_token: string; days_offset: number; time_spent: number; is_bonus: boolean }) => {
+    if (!gameId) return;
+    try {
+      await TauriService.addLevel({
+        game_id: gameId,
+        ...data
+      });
+      window.location.reload();
+    } catch (error) {
+      console.error('Error adding level:', error);
+    }
+  };
+
+  const handleAddPurchaseEvent = async (data: { event_token: string; days_offset: number; max_days_offset: number | null; is_restricted: boolean }) => {
+    if (!gameId) return;
+    try {
+      await TauriService.addPurchaseEvent({
+        game_id: gameId,
+        ...data
+      });
+      window.location.reload();
+    } catch (error) {
+      console.error('Error adding purchase event:', error);
+    }
+  };
+
+  const game = games.find(g => String(g.id) === String(gameId));
 
   const currentLevels = isEditMode ? editedLevels : levels;
   const currentPurchaseEvents = isEditMode ? editedPurchaseEvents : purchaseEvents;
@@ -393,15 +446,15 @@ export default function GameDetailPage() {
           <LayoutToggle layout={layout} onLayoutChange={setLayout} />
 
           {!isEditMode ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEditToggle}
-              className="flex items-center gap-2"
-            >
-              <Edit3 className="h-4 w-4" />
-              {t('common.edit', 'Edit')}
-            </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleEditToggle}
+                className="flex items-center gap-2"
+              >
+                <Edit3 className="h-4 w-4" />
+                {t('common.edit', 'Edit')}
+              </Button>
           ) : (
             <div className="flex items-center gap-2">
               <Button
@@ -461,6 +514,8 @@ export default function GameDetailPage() {
             onDeletePurchaseEvent={handleDeletePurchaseEvent}
             onUpdateLevel={handleUpdateLevel}
             onUpdatePurchaseEvent={handleUpdatePurchaseEvent}
+            onAddLevel={handleAddLevel}
+            onAddPurchaseEvent={handleAddPurchaseEvent}
           />
         </CardContent>
       </Card>
@@ -468,27 +523,11 @@ export default function GameDetailPage() {
       {!isEditMode && (
         <div className="flex flex-wrap gap-4 mt-6">
           <Button
-            onClick={() => navigate('/levels', { state: { selectedGameId: gameId, createMode: true } })}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            {t('games.quickActions.addLevel')}
-          </Button>
-
-          <Button
-            onClick={() => navigate('/purchase-events', { state: { selectedGameId: gameId, createMode: true } })}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            {t('games.quickActions.addPurchaseEvent')}
-          </Button>
-
-          <Button
             onClick={() => navigate(`/accounts/new?gameId=${gameId}`)}
             className="flex items-center gap-2"
           >
             <Plus className="h-4 w-4" />
-            {t('games.quickActions.addAccount')}
+            {t('games.quickActions.addAccount', 'Add Account')}
           </Button>
         </div>
       )}
@@ -521,7 +560,7 @@ export default function GameDetailPage() {
               key={g.id}
               onClick={() => navigate(`/games/${g.id}`)}
               className={`
-                flex items-center gap-2 px-4 py-1.5 min-w-[120px] max-w-[200px] text-sm cursor-pointer select-none border-r border-gray-300 transition-colors
+                flex items-center gap-2 px-4 py-1.5 min-w-[120px] max-w-[200px] text-sm cursor-pointer select-none border-r border-gray-300 transition-colors group
                 ${isActive 
                   ? 'bg-white font-bold text-green-700 border-t-2 border-t-green-600 rounded-t-sm shadow-[0_-2px_4px_rgba(0,0,0,0.05)] h-[34px] relative top-[1px]' 
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-50 h-[30px] mb-[1px]'
@@ -529,7 +568,19 @@ export default function GameDetailPage() {
               `}
               title={g.name}
             >
-              <span className="truncate">{g.name}</span>
+              <span className="truncate flex-1">{g.name}</span>
+              {isActive && !isEditMode && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteGame();
+                  }}
+                  className="p-1 hover:bg-red-50 hover:text-red-600 rounded-full transition-colors"
+                  title={t('common.delete', 'Delete Game')}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           );
         })}

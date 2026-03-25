@@ -6,15 +6,14 @@ import {
   LayoutDashboard,
   Gamepad2,
   Users,
-  Trophy,
   FileText,
   Calendar,
-  ShoppingCart,
   ChevronLeft,
   ChevronRight,
   CheckCircle,
   Menu,
-  X
+  X,
+  Table
 } from 'lucide-react';
 import { cn } from '@grq/ui/lib/utils';
 import { ThemeToggle } from '@grq/ui/molecules/ThemeToggle';
@@ -32,8 +31,7 @@ interface MainLayoutProps {
 const navigation = [
   { name: 'dashboard', href: '/', icon: LayoutDashboard },
   { name: 'games', href: '/games', icon: Gamepad2 },
-  { name: 'levels', href: '/levels', icon: Trophy },
-  { name: 'purchaseEvents', href: '/purchase-events', icon: ShoppingCart },
+  { name: 'gamesTable', href: '/games-table', icon: Table },
   { name: 'accounts', href: '/accounts', icon: Users },
   { name: 'accountsDetail', href: '/accounts/detail', icon: FileText },
   { name: 'dailyTasks', href: '/daily-tasks', icon: Calendar },

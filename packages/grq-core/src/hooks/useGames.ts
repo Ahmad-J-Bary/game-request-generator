@@ -54,12 +54,12 @@ export function useGames() {
       window.dispatchEvent(new CustomEvent('games-updated', { detail: { id } }));
       // refresh local list
       await fetchGames();
-      return true;
+      return id;
     } catch (err) {
       const message = extractErrorMessage(err);
       setError(message);
       NotificationService.error(message);
-      return false;
+      return null;
     } finally {
       setLoading(false);
     }
