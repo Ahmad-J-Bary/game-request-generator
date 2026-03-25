@@ -176,8 +176,8 @@ export class ExcelService {
     colorSettings: ColorSettings,
     theme: 'light' | 'dark',
     columns?: any[],
-    levelsProgress?: any[],
-    purchaseProgress?: any[]
+    levelsProgress?: any,
+    purchaseProgress?: any
   ): Promise<boolean> {
     try {
       const account = await TauriService.getAccountById(accountId);
@@ -404,8 +404,8 @@ export class ExcelService {
     colorSettings: ColorSettings,
     theme: 'light' | 'dark',
     columnsData?: any[],
-    levelsProgress?: any[],
-    purchaseProgress?: any[]
+    levelsProgress?: any,
+    purchaseProgress?: any
   ): Promise<boolean> {
     try {
       const workbook = XLSX.utils.book_new();
@@ -471,7 +471,7 @@ export class ExcelService {
   /**
    * Export game data with matrix layout
    */
-  static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any[], purchaseProgress?: any[]): Promise<boolean> {
+  static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any, purchaseProgress?: any): Promise<boolean> {
     try {
       const [levels, purchaseEvents, accounts] = await Promise.all([
         TauriService.getGameLevels(gameId),

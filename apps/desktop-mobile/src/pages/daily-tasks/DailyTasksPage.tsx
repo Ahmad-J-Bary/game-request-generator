@@ -37,7 +37,7 @@ export default function DailyTasksPage() {
     // Always generate/refresh tasks to catch new additions
     generateTodaysTasks();
     localStorage.setItem('dailyTasks_lastGenerated', today);
-  }, [games]); // Re-run when games are loaded
+  }, [games, generateTodaysTasks]); // Re-run when games are loaded
 
   return (
     <div className="container mx-auto p-6 space-y-6">

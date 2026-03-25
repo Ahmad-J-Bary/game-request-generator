@@ -14,6 +14,9 @@ import { Button } from '@grq/ui/atoms/button';
 import { ExcelService } from '@grq/core/services/excel.service';
 import { NotificationService } from '@grq/core/utils/notifications';
 
+import type { ColorSettings } from '@grq/ui/contexts/SettingsContext';
+import type { ColumnData } from '../organisms/tables/AccountsDataTable';
+
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -21,11 +24,11 @@ interface ExportDialogProps {
   accountId?: number;
   exportType: 'game' | 'account' | 'all';
   layout?: 'horizontal' | 'vertical';
-  colorSettings?: any;
+  colorSettings?: ColorSettings;
   theme?: 'light' | 'dark';
   source?: 'game-detail' | 'account-detail' | 'accounts-detail';
   mode?: 'event-only' | 'all';
-  data?: any[];
+  data?: ColumnData[];
   levelsProgress?: any;
   purchaseProgress?: any;
 }

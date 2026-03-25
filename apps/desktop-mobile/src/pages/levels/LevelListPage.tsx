@@ -1,6 +1,6 @@
 // src/pages/levels/LevelListPage.tsx
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { useLevels } from '@grq/core/hooks/useLevels';
@@ -30,22 +30,13 @@ type Mode = 'all' | 'event-only';
 export default function LevelListPage() {
   const { t } = useTranslation();
   const location = useLocation();
-  const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
+  const locationState = location.state as { selectedGameId?: number; createMode?: boolean } | null;
+  const [selectedGameId, setSelectedGameId] = useState<number | undefined>(locationState?.selectedGameId);
   const [layout, setLayout] = useState<Layout>('vertical');
   const [mode, setMode] = useState<Mode>('event-only');
   const { levels = [], loading, deleteLevel } = useLevels(selectedGameId);
 
-  // Handle navigation state for pre-selected game and create mode
-  const [showForm, setShowForm] = useState(false);
-  useEffect(() => {
-    const state = location.state as { selectedGameId?: number; createMode?: boolean };
-    if (state?.selectedGameId) {
-      setSelectedGameId(state.selectedGameId);
-    }
-    if (state?.createMode) {
-      setShowForm(true);
-    }
-  }, [location.state]);
+  const [showForm, setShowForm] = useState(locationState?.createMode ?? false);
   const [editingLevel, setEditingLevel] = useState<Level | null>(null);
   const [deletingLevel, setDeletingLevel] = useState<Level | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -94,10 +85,11 @@ export default function LevelListPage() {
       synthetic: l.level_name === '-',
     }));
 
-    const numeric = levelCols.filter((c: any) => typeof c.daysOffset === 'number');
-    numeric.sort((a: any, b: any) => a.daysOffset - b.daysOffset);
+    const numeric = levelCols.filter((c) => typeof c.daysOffset === 'number') as (typeof levelCols[number] & { daysOffset: number })[];
+    numeric.sort((a, b) => a.daysOffset - b.daysOffset);
 
-    const result: any[] = [];
+    type SynthEntry = { kind: 'level'; id: string | number; token: string; name: string; daysOffset: number; timeSpent: number | null; isBonus: boolean; synthetic: boolean };
+    const result: (typeof levelCols[number] | SynthEntry)[] = [];
     for (let i = 0; i < numeric.length; i++) {
       const left = numeric[i];
       result.push(left);
@@ -124,20 +116,20 @@ export default function LevelListPage() {
       }
     }
 
-    const numericIds = new Set(numeric.map((c: any) => c.id));
-    const nonNumeric = levelCols.filter((c: any) => !numericIds.has(c.id));
+    const numericIds = new Set(numeric.map((c) => c.id));
+    const nonNumeric = levelCols.filter((c) => !numericIds.has(c.id));
     nonNumeric.forEach(c => result.push(c));
 
-    // Convert back to Level format for display
+    // Convert back to Level format for display (cast id to number; synthetic ids are display-only)
     return result.map(item => ({
-      id: item.id,
+      id: typeof item.id === 'string' ? -1 : item.id as number,
       event_token: item.token,
       level_name: item.name,
       days_offset: item.daysOffset,
       time_spent: item.timeSpent,
       is_bonus: item.isBonus,
       synthetic: item.synthetic,
-      game_id: selectedGameId || 0, // Add required game_id
+      game_id: selectedGameId || 0,
     }));
   }, [levels, mode, selectedGameId]);
 

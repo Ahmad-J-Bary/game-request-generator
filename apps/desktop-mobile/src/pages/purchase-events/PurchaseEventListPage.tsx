@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { Plus } from 'lucide-react';
@@ -24,7 +24,8 @@ import { PurchaseEventForm } from './PurchaseEventForm';
 export default function PurchaseEventListPage() {
   const { t } = useTranslation();
   const location = useLocation();
-  const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
+  const locationState = location.state as { selectedGameId?: number; createMode?: boolean } | null;
+  const [selectedGameId, setSelectedGameId] = useState<number | undefined>(locationState?.selectedGameId);
 
   // Handle navigation state for pre-selected game and create mode
   const [layout, setLayout] = useState<Layout>('vertical');
@@ -32,19 +33,9 @@ export default function PurchaseEventListPage() {
   const { events, loading, addPurchaseEvent, updatePurchaseEvent, deletePurchaseEvent } =
     usePurchaseEvents(selectedGameId);
 
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(locationState?.createMode ?? false);
   const [editingEvent, setEditingEvent] = useState<PurchaseEvent | null>(null);
   const [deletingEvent, setDeletingEvent] = useState<PurchaseEvent | null>(null);
-
-  useEffect(() => {
-    const state = location.state as { selectedGameId?: number; createMode?: boolean };
-    if (state?.selectedGameId) {
-      setSelectedGameId(state.selectedGameId);
-    }
-    if (state?.createMode) {
-      setShowForm(true);
-    }
-  }, [location.state]);
   
   const handleEdit = (event: PurchaseEvent) => {
     setEditingEvent(event);

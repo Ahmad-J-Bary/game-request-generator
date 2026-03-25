@@ -31,7 +31,7 @@ export default function Dashboard() {
           const parsed = JSON.parse(storedTasks);
           const batches = parsed.batches || [];
           let count = 0;
-          batches.forEach((batch: any) => {
+          batches.forEach((batch: { tasks: unknown[] }) => {
             count += batch.tasks.length;
           });
           setTodayTasksCount(count);

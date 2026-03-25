@@ -17,7 +17,7 @@ import { Trash2 } from 'lucide-react';
 
 type ColumnData =
   | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number | string | null; timeSpent: number | null; isBonus: boolean; synthetic?: boolean }
-  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; daysOffset: number | null; maxDaysOffset: number | null; timeSpent: number | null; synthetic?: boolean };
+  | { kind: 'purchase'; id: number | string; token: string; name: string; isRestricted: boolean; daysOffset: number | null; maxDaysOffset: number | string | null; timeSpent: number | null; synthetic?: boolean };
 
 interface GameDataTableProps {
   columns: ColumnData[];

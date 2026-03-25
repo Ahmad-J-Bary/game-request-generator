@@ -1,4 +1,4 @@
-package GameRequestGenerator
+package com.gamerequest.app
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

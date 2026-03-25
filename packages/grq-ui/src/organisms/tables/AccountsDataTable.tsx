@@ -17,9 +17,9 @@ import { Button } from '@grq/ui/atoms/button';
 import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 
-type ColumnData =
-  | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean }
-  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; daysOffset: number | null; maxDaysOffset: string | null; synthetic?: boolean };
+export type ColumnData =
+  | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean; isRestricted?: boolean; maxDaysOffset?: number | string | null }
+  | { kind: 'purchase'; id: number | string; token: string; name: string; isRestricted: boolean; daysOffset: number | null; maxDaysOffset: number | string | null; synthetic?: boolean; timeSpent?: number | null; isBonus?: boolean };
 
 interface Account {
   id: number;

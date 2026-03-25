@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@grq/ui/atoms/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@grq/ui/atoms/select';
@@ -10,22 +10,13 @@ export default function RequestGeneratorPage() {
   const { t } = useTranslation();
   const { games, loading: gamesLoading } = useGames();
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
-  const { accounts, loading: accountsLoading } = useAccounts(selectedGameId || undefined);
+  const effectiveGameId = selectedGameId ?? (games.length > 0 ? games[0].id : null);
+  
+  const { accounts, loading: accountsLoading } = useAccounts(effectiveGameId || undefined);
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
+  const effectiveAccountId = selectedAccountId ?? (accounts.length > 0 ? accounts[0].id : null);
 
-  useEffect(() => {
-    if (games.length > 0 && !selectedGameId) {
-      setSelectedGameId(games[0].id);
-    }
-  }, [games, selectedGameId]);
-
-  useEffect(() => {
-    if (accounts.length > 0 && !selectedAccountId) {
-      setSelectedAccountId(accounts[0].id);
-    }
-  }, [accounts, selectedAccountId]);
-
-  const selectedAccount = accounts.find(acc => acc.id === selectedAccountId);
+  const selectedAccount = accounts.find(acc => acc.id === effectiveAccountId);
 
   return (
     <div className="container mx-auto p-6 space-y-6">

@@ -1,7 +1,7 @@
 import { Toaster } from '@grq/ui/atoms/sonner';
 import { TooltipProvider } from '@grq/ui/atoms/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom';
 import { ThemeProvider } from '@grq/ui/contexts/ThemeContext';
 import { LanguageProvider } from '@grq/core/contexts/LanguageContext';
 import { SettingsProvider } from '@grq/ui/contexts/SettingsContext';
@@ -30,6 +30,13 @@ import './i18n';
 
 const queryClient = new QueryClient();
 
+// Wrapper ensures GameDetailPage remounts when navigating to a different game,
+// resetting layout/mode state to defaults without needing a useEffect.
+function GameDetailPageWrapper() {
+  const { id } = useParams();
+  return <GameDetailPage key={id} />;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
@@ -42,7 +49,7 @@ const App = () => (
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/games" element={<GameListPage />} />
-                  <Route path="/games/:id" element={<GameDetailPage />} />
+                  <Route path="/games/:id" element={<GameDetailPageWrapper />} />
                   <Route path="/accounts" element={<AccountListPage />} />
                   <Route path="/accounts/:id" element={<AccountDetailPage />} />
                   <Route path="/accounts/new" element={<AccountFormPage />} />

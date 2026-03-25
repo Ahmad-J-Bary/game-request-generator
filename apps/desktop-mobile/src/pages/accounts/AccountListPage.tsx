@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAccounts } from '@grq/core/hooks/useAccounts';
@@ -26,15 +26,10 @@ export default function AccountListPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
-
-  // Handle navigation state for pre-selected game
-  useEffect(() => {
-    const state = location.state as { selectedGameId?: number };
-    if (state?.selectedGameId) {
-      setSelectedGameId(state.selectedGameId);
-    }
-  }, [location.state]);
+  const locationState = location.state as { selectedGameId?: number } | null;
+  const [selectedGameId, setSelectedGameId] = useState<number | undefined>(
+    locationState?.selectedGameId
+  );
   const { accounts, loading, deleteAccount } = useAccounts(selectedGameId);
   const { levels } = useLevels(selectedGameId);
   const [showDelete, setShowDelete] = useState(false);

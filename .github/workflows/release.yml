@@ -80,31 +80,35 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: install NDK
-        run: sdkmanager "ndk;28.2.13676358" # Match local NDK version if possible, or use common one
+        run: sdkmanager "ndk;28.2.13676358"
 
       - name: install frontend dependencies
         run: pnpm install
 
+      - name: Decode Android Key
+        run: |
+          echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > apps/desktop-mobile/src-tauri/gen/android/release.keystore
+
       - name: Build Android APK
-        run: pnpm tauri android build
+        run: pnpm tauri android build --target aarch64-linux-android --target armv7-linux-androideabi --target i686-linux-android --target x86_64-linux-android
         working-directory: ./apps/desktop-mobile
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_SIGNING_KEY }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          RELEASE_STORE_FILE: ../release.keystore
+          RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Upload Android APK to Action Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Game-Request-Generator-Android-APK
-          path: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          name: Game-Request-Generator-Android-APKs
+          path: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release/*.apk
 
-      - name: Upload APK to GitHub Release
+      - name: Upload APKs to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          files: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release/*.apk
           draft: true
           prerelease: false
         env:

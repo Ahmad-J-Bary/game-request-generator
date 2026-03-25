@@ -17,9 +17,9 @@ import { useTheme } from '@grq/ui/contexts/ThemeContext';
 import { DataTableCell } from './DataTableCell';
 import { SimpleCalendar } from '@grq/ui/atoms/simple-calendar';
 
-type ColumnData =
+export type ColumnData =
   | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean }
-  | { kind: 'purchase'; id: number; token: string; name: string; isRestricted: boolean; daysOffset: number | null; timeSpent: number; maxDaysOffset: string | null; synthetic?: boolean };
+  | { kind: 'purchase'; id: number | string; token: string; name: string; isRestricted: boolean; daysOffset: number | null; timeSpent: number | null; maxDaysOffset: number | string | null; synthetic?: boolean };
 
 interface AccountDataTableProps {
   columns: ColumnData[];

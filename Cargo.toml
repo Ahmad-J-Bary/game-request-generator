@@ -4,3 +4,11 @@ members = [
     "crates/grq-engine",
     "apps/desktop-mobile/src-tauri"
 ]
+
+[profile.dev]
+lto = true
+opt-level = 1
+
+[profile.release]
+lto = true
+

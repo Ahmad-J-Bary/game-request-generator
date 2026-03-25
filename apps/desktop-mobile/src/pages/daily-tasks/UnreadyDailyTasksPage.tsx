@@ -5,7 +5,7 @@ import { ArrowLeft, Clock } from 'lucide-react';
 import { Button } from '@grq/ui/atoms/button';
 import { TaskItem } from '@grq/ui/organisms/daily-tasks/TaskItem';
 import { getTaskReadinessDetails } from '@grq/core/utils/daily-tasks.utils';
-import { GameBatch, AccountCompletionRecord, AccountStartState } from '@grq/api-bindings/types/daily-tasks.types';
+import { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState } from '@grq/api-bindings/types/daily-tasks.types';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { RequestProcessor } from '@grq/core/services/tauri.service';
 
@@ -13,7 +13,6 @@ export default function UnreadyDailyTasksPage() {
     const { t } = useTranslation();
     const navigate = useNavigate();
     const [batches, setBatches] = useState<GameBatch[]>([]);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [loading, setLoading] = useState(true);
 
     const [accountCompletionRecords, setAccountCompletionRecords] = useState<{ [accountId: number]: AccountCompletionRecord }>({});
@@ -28,9 +27,9 @@ export default function UnreadyDailyTasksPage() {
             if (storedTasks) {
                 try {
                     const parsed = JSON.parse(storedTasks);
-                    const loadedBatches = (parsed.batches || []).map((batch: any) => ({
+                    const loadedBatches = (parsed.batches || []).map((batch: GameBatch) => ({
                         ...batch,
-                        tasks: batch.tasks.map((task: any) => ({
+                        tasks: (batch.tasks || []).map((task: DailyTask) => ({
                             ...task,
                             completedTasks: new Set(task.completedTasks || [])
                         }))

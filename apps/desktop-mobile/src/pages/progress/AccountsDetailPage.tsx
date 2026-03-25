@@ -27,6 +27,8 @@ import { Label } from '@grq/ui/atoms/label';
 import { Plus } from 'lucide-react';
 
 import type { PurchaseEvent } from '@grq/api-bindings';
+import type { ColumnData } from '@grq/ui/organisms/tables/AccountsDataTable';
+import type { ColorSettings } from '@grq/ui/contexts/SettingsContext';
 
 type Mode = 'all' | 'event-only';
 
@@ -129,7 +131,7 @@ export default function AccountsDetailPage() {
         id: p.id,
         token: p.event_token,
         name: '$$$',
-        isRestricted: (p as any).is_restricted ?? false,
+        isRestricted: p.is_restricted ?? false,
         daysOffset: day != null ? day : null,
         timeSpent: midpointTime,
         maxDaysOffset: p.max_days_offset != null ? `${t('purchaseEvents.lessThan')} ${p.max_days_offset}` : '-',
@@ -137,7 +139,7 @@ export default function AccountsDetailPage() {
     });
 
     const allCols = [...levelCols, ...peCols];
-    const numeric = allCols.filter((c: any) => typeof c.daysOffset === 'number' && c.daysOffset !== null) as Array<any & { daysOffset: number }>;
+    const numeric = allCols.filter((c) => typeof c.daysOffset === 'number' && c.daysOffset !== null) as (typeof allCols[number] & { daysOffset: number })[];
     numeric.sort((a, b) => {
       if (a.daysOffset !== b.daysOffset) {
         return a.daysOffset - b.daysOffset;
@@ -149,11 +151,11 @@ export default function AccountsDetailPage() {
     });
 
     if (mode === 'event-only') {
-      const levels = allCols.filter((c: any) => c.kind === 'level' && c.name !== '-');
-      const purchases = allCols.filter((c: any) => c.kind === 'purchase');
+      const levels = allCols.filter((c) => c.kind === 'level' && c.name !== '-');
+      const purchases = allCols.filter((c) => c.kind === 'purchase');
 
-      levels.sort((a: any, b: any) => (a.daysOffset || 0) - (b.daysOffset || 0));
-      purchases.sort((a: any, b: any) => {
+      levels.sort((a, b) => (a.daysOffset || 0) - (b.daysOffset || 0));
+      purchases.sort((a, b) => {
         if (a.daysOffset === b.daysOffset) return 0;
         if (b.daysOffset == null) return -1;
         if (a.daysOffset == null) return 1;
@@ -168,7 +170,7 @@ export default function AccountsDetailPage() {
     const purchaseEntries = numeric.filter(entry => entry.kind === 'purchase');
 
     // Group level entries by daysOffset to handle multiple entries per day
-    const levelEntriesByDay: { [day: number]: any[] } = {};
+    const levelEntriesByDay: { [day: number]: typeof levelEntries[number][] } = {};
     levelEntries.forEach(entry => {
       if (!levelEntriesByDay[entry.daysOffset]) {
         levelEntriesByDay[entry.daysOffset] = [];
@@ -177,13 +179,13 @@ export default function AccountsDetailPage() {
     });
 
     let minDay = levelEntries.length > 0 ? levelEntries[0].daysOffset : 0;
-    let maxDay = levelEntries.length > 0 ? levelEntries[levelEntries.length - 1].daysOffset : 0;
+    const maxDay = levelEntries.length > 0 ? levelEntries[levelEntries.length - 1].daysOffset : 0;
 
     if (levelEntries.length > 0 && minDay > 0) {
       minDay = 0;
     }
 
-    const result: any[] = [];
+    const result: (typeof numeric[number] | { kind: 'level'; id: string; token: string; name: string; daysOffset: number; timeSpent: number | null; isBonus: boolean; synthetic: boolean })[] = [];
 
     // Process levels first (including synthetic levels for missing days)
     for (let day = minDay; day <= maxDay; day++) {
@@ -264,8 +266,8 @@ export default function AccountsDetailPage() {
     });
     result.push(...purchaseEntries);
 
-    const numericIds = new Set(numeric.map((c: any) => c.id));
-    const nonNumeric = allCols.filter((c: any) => !numericIds.has(c.id));
+    const numericIds = new Set(numeric.map((c) => c.id));
+    const nonNumeric = allCols.filter((c) => !numericIds.has(c.id));
     return [...result, ...nonNumeric];
   }, [levels, purchaseEvents, mode, t]);
 
@@ -316,13 +318,43 @@ export default function AccountsDetailPage() {
   );
 }
 
+interface AccountsDetailContentProps {
+  accounts: import('@grq/api-bindings').Account[];
+  levels: import('@grq/api-bindings').Level[];
+  purchaseEvents: import('@grq/api-bindings').PurchaseEvent[];
+  games: import('@grq/api-bindings').Game[];
+  selectedGameId?: number;
+  setSelectedGameId: (id?: number) => void;
+  mode: Mode;
+  setMode: (mode: Mode) => void;
+  layout: Layout;
+  setLayout: (layout: Layout) => void;
+  colors: ColorSettings;
+  theme: 'light' | 'dark';
+  t: import('i18next').TFunction;
+  columns: ColumnData[];
+  levelsProgress: { [key: string]: import('@grq/api-bindings/types/progress.types').AccountLevelProgress };
+  purchaseProgress: { [key: string]: import('@grq/api-bindings/types/progress.types').AccountPurchaseEventProgress };
+  showImportDialog: boolean;
+  setShowImportDialog: (show: boolean) => void;
+  showExportDialog: boolean;
+  setShowExportDialog: (show: boolean) => void;
+  exportType: 'game' | 'account' | 'all';
+  setExportType: (type: 'game' | 'account' | 'all') => void;
+  isCreatingGame: boolean;
+  setIsCreatingGame: (is: boolean) => void;
+  newGameName: string;
+  setNewGameName: (name: string) => void;
+  handleCreateGame: (e?: React.FormEvent) => Promise<void>;
+}
+
 // Separate component to handle the logic that depends on Progress
 function AccountsDetailContent({
     accounts, purchaseEvents, games, selectedGameId, setSelectedGameId,
     mode, setMode, layout, setLayout, colors, theme, t, columns, levelsProgress, purchaseProgress,
     showImportDialog, setShowImportDialog, showExportDialog, setShowExportDialog, exportType, setExportType,
     isCreatingGame, setIsCreatingGame, newGameName, setNewGameName, handleCreateGame
-}: any) {
+}: AccountsDetailContentProps) {
   
   const [isEditMode, setIsEditMode] = useState(false);
   const [tempProgress, setTempProgress] = useState<{
@@ -357,7 +389,7 @@ function AccountsDetailContent({
         const peId = parseInt(peIdStr);
         const compositeId = accId * 100000 + peId;
         
-        const account = accounts.find((a: any) => a.id === accId);
+        const account = accounts.find((a) => a.id === accId);
         if (account) {
              const start = parseDate(account.start_date);
              if (start) {
@@ -395,7 +427,7 @@ function AccountsDetailContent({
   const handleSaveProgress = async () => {
       // Save logic (same as previous)
       
-      const updatePromises: Promise<any>[] = [];
+      const updatePromises: Promise<unknown>[] = [];
 
       const purchaseKeys = new Set(Object.keys(tempProgress.purchases));
       Object.keys(tempPurchaseDates).forEach(k => {
@@ -414,10 +446,10 @@ function AccountsDetailContent({
         const compositeId = accId * 100000 + peId;
         const selectedDate = tempPurchaseDates[compositeId];
         
-        const account = accounts.find((a: any) => a.id === accId);
+        const account = accounts.find((a) => a.id === accId);
         if (!account) continue;
         
-         const eventDef = purchaseEvents.find((e: any) => e.id === peId);
+         const eventDef = purchaseEvents.find((e) => e.id === peId);
          const defaultOffset = typeof eventDef?.days_offset === 'number' ? eventDef.days_offset : (eventDef?.max_days_offset || 0);
          
          let daysOffset = defaultOffset;
@@ -430,23 +462,23 @@ function AccountsDetailContent({
              const diff = selectedDate.getTime() - start.getTime();
              daysOffset = Math.round(diff / (1000 * 60 * 60 * 24));
              
-             // Calculate time_spent based on surrounding levels (from columns)
-             const numericLevels = columns
-                .filter((c: any) => c.kind === 'level' && typeof c.daysOffset === 'number')
-                .sort((a: any, b: any) => (a.daysOffset as number) - (b.daysOffset as number));
+              // Calculate time_spent based on surrounding levels (from columns)
+              const numericLevels = columns
+                 .filter((c) => c.kind === 'level' && typeof c.daysOffset === 'number')
+                 .sort((a, b) => (Number(a.daysOffset) || 0) - (Number(b.daysOffset) || 0));
 
-             if (numericLevels.length > 0) {
-                const sameDayLevels = numericLevels.filter((l: any) => (l.daysOffset as number) === daysOffset);
-                const nextLevel = numericLevels.find((l: any) => (l.daysOffset as number) > daysOffset);
-                
-                const levelsToAverage = [...sameDayLevels];
-                if (nextLevel) levelsToAverage.push(nextLevel);
-                
-                if (levelsToAverage.length > 0) {
-                    const totalTimeSpent = levelsToAverage.reduce((sum: number, level: any) => sum + (level.timeSpent || 0), 0);
-                    calculatedTimeSpent = Math.round(totalTimeSpent / levelsToAverage.length);
-                }
-             }
+              if (numericLevels.length > 0) {
+                 const sameDayLevels = numericLevels.filter((l) => (Number(l.daysOffset) || 0) === daysOffset);
+                 const nextLevel = numericLevels.find((l) => (Number(l.daysOffset) || 0) > daysOffset);
+                 
+                 const levelsToAverage = [...sameDayLevels];
+                 if (nextLevel) levelsToAverage.push(nextLevel);
+                 
+                 if (levelsToAverage.length > 0) {
+                     const totalTimeSpent = levelsToAverage.reduce((sum: number, level) => sum + (level.timeSpent || 0), 0);
+                     calculatedTimeSpent = Math.round(totalTimeSpent / levelsToAverage.length);
+                 }
+              }
              
              if (calculatedTimeSpent <= 0) {
                  // Fallback
@@ -511,12 +543,12 @@ function AccountsDetailContent({
             if (!isCompleted) continue; // If unchecking a synthetic level that doesn't exist, ignore
             
             // Find column definition
-            const col = columns.find((c: any) => c.id === lvlIdStr);
+            const col = columns.find((c) => c.id === lvlIdStr);
             if (!col) continue;
             
             // Create real level
              // Find account to get game_id
-            const account = accounts.find((a: any) => a.id === accId);
+            const account = accounts.find((a) => a.id === accId);
             if (!account) continue;
 
             const newLevel = {
@@ -534,7 +566,7 @@ function AccountsDetailContent({
                 // but usually we check. Let's do a quick check if possible or blindly add if strict strict.
                 // Replicating AccountDetailPage logic strictly:
                 const existingLevels = await TauriService.getGameLevels(account.game_id);
-                const existingLevel = existingLevels.find((l: any) =>
+                const existingLevel = existingLevels.find((l) =>
                   l.days_offset === newLevel.days_offset &&
                   l.event_token === newLevel.event_token
                 );
@@ -582,7 +614,7 @@ function AccountsDetailContent({
 
 
   // Sort accounts by start date in ascending order
-  const sortedAccounts = [...accounts].sort((a: any, b: any) => {
+  const sortedAccounts = [...accounts].sort((a, b) => {
     const dateA = parseDate(a.start_date);
     const dateB = parseDate(b.start_date);
     if (!dateA && !dateB) return 0;
@@ -591,9 +623,9 @@ function AccountsDetailContent({
     return dateA.getTime() - dateB.getTime();
   });
 
-  const matrix = sortedAccounts.map((acc: any) => {
+  const matrix = sortedAccounts.map((acc) => {
     const start = parseDate(acc.start_date);
-    return columns.map((c: any) => {
+    return columns.map((c) => {
       if (c.kind === 'level' && start) {
         return formatDateShort(addDays(start, Number(c.daysOffset || 0)));
       }
@@ -740,7 +772,7 @@ function AccountsDetailContent({
       
       {/* Footer / Tabs */}
       <div className="sticky bottom-0 w-[calc(100%+3rem)] -ml-6 -mb-6 bg-gray-200 border-t border-gray-300 h-10 flex items-end px-2 z-40 overflow-x-auto mt-auto">
-        {games.map((g: any) => {
+        {games.map((g) => {
           const isActive = g.id === selectedGameId;
           return (
             <div

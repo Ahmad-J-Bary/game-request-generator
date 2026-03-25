@@ -1,6 +1,6 @@
 // src/pages/games/GameDetailPage.tsx
 
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@grq/ui/atoms/card';
@@ -9,6 +9,7 @@ import { BackButton } from '@grq/ui/molecules/BackButton';
 import { GameDataTable } from '@grq/ui/organisms/tables/GameDataTable';
 import { ImportDialog } from '@grq/ui/molecules/ImportDialog';
 import { ExportDialog } from '@grq/ui/molecules/ExportDialog';
+import type { ColumnData } from '@grq/ui/organisms/tables/AccountDataTable';
 import { Button } from '@grq/ui/atoms/button';
 import { Download, Upload, Plus, Edit3, Save, X } from 'lucide-react';
 import {
@@ -71,20 +72,16 @@ export default function GameDetailPage() {
     }
   };
 
-  useEffect(() => {
-    setLayout('vertical');
-    setMode('event-only');
-  }, [gameId]);
+  // Layout and mode reset to defaults automatically because the component remounts
+  // on game change via key={id} in App.tsx (GameDetailPageWrapper).
 
-  // Initialize edited data when entering edit mode
-  useEffect(() => {
-    if (isEditMode) {
+  // Init logic moved to handleEditToggle to avoid cascading renders
+
+  const handleEditToggle = () => {
+    if (!isEditMode) {
       setEditedLevels([...levels]);
       setEditedPurchaseEvents([...purchaseEvents]);
     }
-  }, [isEditMode, levels, purchaseEvents]);
-
-  const handleEditToggle = () => {
     setIsEditMode(!isEditMode);
   };
 
@@ -162,13 +159,13 @@ export default function GameDetailPage() {
     }
   };
 
-  const handleUpdateLevel = (levelId: number, field: string, value: any) => {
+  const handleUpdateLevel = (levelId: number, field: keyof Level, value: Level[keyof Level]) => {
     setEditedLevels((prev: Level[]) => prev.map((level: Level) =>
       level.id === levelId ? { ...level, [field]: value } : level
     ));
   };
 
-  const handleUpdatePurchaseEvent = (eventId: number, field: string, value: any) => {
+  const handleUpdatePurchaseEvent = (eventId: number, field: keyof PurchaseEvent, value: PurchaseEvent[keyof PurchaseEvent]) => {
     setEditedPurchaseEvents((prev: PurchaseEvent[]) => prev.map((event: PurchaseEvent) =>
       event.id === eventId ? { ...event, [field]: value } : event
     ));
@@ -226,21 +223,21 @@ export default function GameDetailPage() {
         token: p.event_token,
         name: '$$$',
         daysOffset: day != null ? day : null,
-        maxDaysOffset: p.max_days_offset != null ? p.max_days_offset : null,
+        maxDaysOffset: p.max_days_offset != null ? String(p.max_days_offset) : null,
         isRestricted: !!p.is_restricted,
         timeSpent: midpointTime,
         synthetic: false,
       };
-    });
+    }) as ColumnData[];
 
     return [...levelCols, ...purchaseCols] as const;
-  }, [currentLevels, currentPurchaseEvents, t]);
+  }, [currentLevels, currentPurchaseEvents]);
 
 
   const columns = useMemo(() => {
     const allCols = [...baseColumns];
-    const numeric = allCols.filter((c: any) => typeof c.daysOffset === 'number' && c.daysOffset !== null);
-    numeric.sort((a: any, b: any) => {
+    const numeric = allCols.filter((c) => typeof c.daysOffset === 'number' && c.daysOffset !== null) as ((typeof allCols)[number] & { daysOffset: number })[];
+    numeric.sort((a, b) => {
       if (a.daysOffset !== b.daysOffset) {
         return a.daysOffset - b.daysOffset;
       }
@@ -251,11 +248,11 @@ export default function GameDetailPage() {
     });
 
     if (mode === 'event-only') {
-      const levels = allCols.filter((c: any) => c.kind === 'level' && c.name !== '-');
-      const purchases = allCols.filter((c: any) => c.kind === 'purchase');
+      const levels = allCols.filter((c) => c.kind === 'level' && c.name !== '-');
+      const purchases = allCols.filter((c) => c.kind === 'purchase');
 
-      levels.sort((a: any, b: any) => (a.daysOffset || 0) - (b.daysOffset || 0));
-      purchases.sort((a: any, b: any) => {
+      levels.sort((a, b) => (a.daysOffset ?? 0) - (b.daysOffset ?? 0));
+      purchases.sort((a, b) => {
         if (a.daysOffset === b.daysOffset) return 0;
         if (a.daysOffset == null) return 1;
         if (b.daysOffset == null) return -1;
@@ -266,23 +263,24 @@ export default function GameDetailPage() {
     }
 
     // Group entries by daysOffset to handle multiple entries per day
-    const entriesByDay: { [day: number]: any[] } = {};
+    const entriesByDay: { [day: number]: (typeof numeric)[number][] } = {};
     numeric.forEach(entry => {
-      const day = entry.daysOffset as number;
+      const day = entry.daysOffset;
       if (!entriesByDay[day]) {
         entriesByDay[day] = [];
       }
       entriesByDay[day].push(entry);
     });
 
-    let minDay: number = numeric.length > 0 ? (numeric[0].daysOffset as number) : 0;
-    let maxDay: number = numeric.length > 0 ? (numeric[numeric.length - 1].daysOffset as number) : 0;
+    let minDay: number = numeric.length > 0 ? numeric[0].daysOffset : 0;
+    const maxDay: number = numeric.length > 0 ? numeric[numeric.length - 1].daysOffset : 0;
 
     if (numeric.length > 0 && minDay > 0) {
       minDay = 0;
     }
 
-    const result: any[] = [];
+    type SynthEntry = { kind: 'level'; id: string | number; token: string; name: string; daysOffset: number; timeSpent: number | null; isBonus: boolean; synthetic: boolean };
+    const result: (typeof numeric[number] | SynthEntry)[] = [];
 
     for (let day = minDay; day <= maxDay; day++) {
       if (entriesByDay[day]) {
@@ -312,11 +310,11 @@ export default function GameDetailPage() {
           const isBeforeFirstReal = day < firstRealDay;
 
           if (isBeforeFirstReal) {
-            const increment = nextRealLevel.timeSpent / (firstRealDay + 1);
+            const increment = (nextRealLevel.timeSpent || 0) / (firstRealDay + 1);
             synthesizedTime = Math.round((day + 1) * increment);
             token = nextRealLevel.token;
           } else {
-            let prevRealLevel = null;
+            let prevRealLevel: typeof numeric[number] | null = null;
             for (let d = day - 1; d >= minDay; d--) {
               if (entriesByDay[d]) {
                 const nonSyntheticLevels = entriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
@@ -329,10 +327,10 @@ export default function GameDetailPage() {
 
             if (prevRealLevel) {
               const ratio = (day - prevRealLevel.daysOffset) / (nextRealLevel.daysOffset - prevRealLevel.daysOffset);
-              synthesizedTime = Math.round(prevRealLevel.timeSpent + ratio * (nextRealLevel.timeSpent - prevRealLevel.timeSpent));
+              synthesizedTime = Math.round((prevRealLevel.timeSpent || 0) + ratio * ((nextRealLevel.timeSpent || 0) - (prevRealLevel.timeSpent || 0)));
               token = nextRealLevel.token;
             } else {
-              synthesizedTime = Math.round(nextRealLevel.timeSpent / 2);
+              synthesizedTime = Math.round((nextRealLevel.timeSpent || 0) / 2);
               token = nextRealLevel.token;
             }
           }
@@ -353,8 +351,8 @@ export default function GameDetailPage() {
       }
     }
 
-    const numericIds = new Set(numeric.map((c: any) => c.id));
-    const nonNumeric = baseColumns.filter((c: any) => !numericIds.has(c.id));
+    const numericIds = new Set(numeric.map((c) => c.id));
+    const nonNumeric = (allCols as Array<typeof allCols[number]>).filter((c) => !numericIds.has(c.id));
     return [...result, ...nonNumeric];
   }, [baseColumns, mode]);
 

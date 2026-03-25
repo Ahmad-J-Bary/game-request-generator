@@ -314,7 +314,7 @@ export default function AccountFormPage() {
   const gameId = searchParams.get('gameId') ? parseInt(searchParams.get('gameId')!, 10) : undefined;
   const { accounts, addAccount, updateAccount } = useAccounts();
 
-  const stateAccount = (location.state as any)?.account;
+  const stateAccount = (location.state as { account?: import('@grq/api-bindings').Account } | null)?.account;
   const isEditMode = location.pathname.includes('/edit/');
   const accountId = id ? parseInt(id, 10) : undefined;
   const account = isEditMode && accountId ? (stateAccount || accounts.find(a => a.id === accountId)) : undefined;
