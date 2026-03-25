@@ -38,6 +38,9 @@ importers:
       i18next:
         specifier: ^25.7.3
         version: 25.10.9(typescript@5.9.3)
+      lucide-react:
+        specifier: ^0.561.0
+        version: 0.561.0(react@19.2.4)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.4)(react@19.2.4)

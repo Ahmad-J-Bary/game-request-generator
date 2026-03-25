@@ -1,7 +1,7 @@
 {
   "name": "@game-request/desktop",
   "private": true,
-  "version": "0.4.0",
+  "version": "1.0.0",
   "author": "Ahmad Abdelbary",
   "type": "module",
   "scripts": {
@@ -22,6 +22,7 @@
     "react-i18next": "^16.5.0",
     "react-router-dom": "^7.10.1",
     "xlsx-js-style": "^1.2.0",
+    "lucide-react": "^0.561.0",
     "@grq/ui": "workspace:*",
     "@grq/core": "workspace:*",
     "@grq/api-bindings": "workspace:*"
