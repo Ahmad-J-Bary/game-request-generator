@@ -53,7 +53,58 @@ fn set_db_path(app: tauri::AppHandle, path: Option<String>) -> Result<(), String
     ConfigService::save(&app, &config)
 }
 
-// ==================== أوامر الألعاب ====================
+/// Import: copies the given file over the internal DB (DB path stays the same, only contents change)
+#[tauri::command]
+fn import_database(
+    app: tauri::AppHandle,
+    state: tauri::State<AppState>,
+    source_path: String,
+) -> Result<(), String> {
+    // Get the current (internal) DB path
+    let config = ConfigService::load(&app);
+    let internal_db_path = if let Some(path) = config.db_path {
+        path
+    } else {
+        let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        data_dir.join("database.sqlite").to_string_lossy().to_string()
+    };
+
+    // Validate source file exists
+    let source = std::path::Path::new(&source_path);
+    if !source.exists() {
+        return Err(format!("Source file does not exist: {}", source_path));
+    }
+
+    // Close existing DB connections before replacing the file
+    let _guard = state.db.lock().unwrap();
+
+    // Copy source file over the internal DB path
+    std::fs::copy(&source_path, &internal_db_path)
+        .map_err(|e| format!("Failed to import database: {}", e))?;
+
+    Ok(())
+}
+
+/// Export: copies the internal DB to a given destination path
+#[tauri::command]
+fn export_database(
+    app: tauri::AppHandle,
+    dest_path: String,
+) -> Result<(), String> {
+    let config = ConfigService::load(&app);
+    let internal_db_path = if let Some(path) = config.db_path {
+        path
+    } else {
+        let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        data_dir.join("database.sqlite").to_string_lossy().to_string()
+    };
+
+    std::fs::copy(&internal_db_path, &dest_path)
+        .map_err(|e| format!("Failed to export database: {}", e))?;
+
+    Ok(())
+}
+
 #[tauri::command]
 fn add_game(state: tauri::State<AppState>, request: CreateGameRequest) -> Result<i64, String> {
     let db_guard = state.db.lock().unwrap();
@@ -800,6 +851,8 @@ pub fn run() {
             get_account_purchase_event_progress,
             get_daily_requests,
             import_request_templates,
+            import_database,
+            export_database,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
