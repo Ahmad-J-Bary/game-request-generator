@@ -20,6 +20,7 @@ export default function DailyTasksPage() {
     accountCompletionRecords,
     accountTaskAssignments,
     accountStartStates,
+    generateTodaysTasks,
     completeTask,
     copyToClipboard,
   } = useDailyTasks();
@@ -31,6 +32,7 @@ export default function DailyTasksPage() {
 
     const today = new Date().toISOString().split('T')[0];
     // Always generate/refresh tasks to catch new additions
+    generateTodaysTasks();
     localStorage.setItem('dailyTasks_lastGenerated', today);
   }, [games]); // Re-run when games are loaded
 

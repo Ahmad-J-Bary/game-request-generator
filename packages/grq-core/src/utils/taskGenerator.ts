@@ -15,13 +15,8 @@ export interface TaskGenerationOptions {
   games: any[];
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
   accountStartStates: { [accountId: number]: AccountStartState };
-}
-
-export interface TaskGenerationResult {
-  batches: GameBatch[];
-  accountScheduledTime: { [accountId: number]: number[] };
-  newStartStates: { [accountId: number]: AccountStartState };
-  newTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
+  setAccountStartStates: React.Dispatch<React.SetStateAction<{ [accountId: number]: AccountStartState }>>;
+  setAccountTaskAssignments: React.Dispatch<React.SetStateAction<{ [accountId: number]: AccountTaskAssignment[] }>>;
 }
 
 export class TaskGenerator {
@@ -31,11 +26,9 @@ export class TaskGenerator {
     this.options = options;
   }
 
-  async generateTodaysTasks(): Promise<TaskGenerationResult> {
+  async generateTodaysTasks(): Promise<{ batches: GameBatch[], accountScheduledTime: { [accountId: number]: number[] } }> {
     const today = new Date().toISOString().split('T')[0];
     const gameTasksMap: { [gameId: number]: DailyTask[] } = {};
-    const newStartStates = { ...this.options.accountStartStates };
-    const newTaskAssignments: { [accountId: number]: AccountTaskAssignment[] } = {};
 
     // 1. Collect all tasks grouped by game
     for (const game of this.options.games) {
@@ -115,12 +108,15 @@ export class TaskGenerator {
               if (firstEvent) {
                 const firstRequestAllowedAt = calculateFirstRequestAllowedTime(account, firstEvent.time_spent);
 
-                newStartStates[account.id] = {
-                  accountId: account.id,
-                  startTime: `${account.start_date} ${account.start_time}`,
-                  firstRequestAllowedAt,
-                  isInitialized: true,
-                };
+                this.options.setAccountStartStates(prev => ({
+                  ...prev,
+                  [account.id]: {
+                    accountId: account.id,
+                    startTime: `${account.start_date} ${account.start_time}`,
+                    firstRequestAllowedAt,
+                    isInitialized: true,
+                  }
+                }));
               }
             }
 
@@ -245,8 +241,10 @@ export class TaskGenerator {
                 timeSpent: currentGroup.time_spent,
               };
 
-              if (!newTaskAssignments[accountId]) newTaskAssignments[accountId] = [];
-              newTaskAssignments[accountId].push(assignment);
+              this.options.setAccountTaskAssignments(prev => ({
+                ...prev,
+                [accountId]: [...(prev[accountId] || []), assignment]
+              }));
 
               currentBatchTasks.push(groupTask);
               accountGroupIndex[accountId] = currentGroupIndex + 1;
@@ -271,11 +269,6 @@ export class TaskGenerator {
       }
     }
 
-    return {
-      batches,
-      accountScheduledTime: scheduledTimes,
-      newStartStates,
-      newTaskAssignments
-    };
+    return { batches, accountScheduledTime: scheduledTimes };
   }
 }

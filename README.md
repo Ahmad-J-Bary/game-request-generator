@@ -81,7 +81,7 @@ The UI has been meticulously designed to be **mobile-first**:
 ## 📦 Releases (CI/CD)
 
 The project includes an automated release workflow in `.github/workflows/release.yml`:
-1. Push a tag (e.g., `v1.0.4`).
+1. Push a tag (e.g., `v1.0.5`).
 2. GitHub Actions will build binaries for:
    - **Windows** (.msi, .exe)
    - **macOS** (.dmg, .app)

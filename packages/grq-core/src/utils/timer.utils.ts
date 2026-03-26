@@ -54,7 +54,7 @@ export const calculateTimerState = (
   // Helper to check if a task is completed
   const isTaskCompleted = (t: DailyTask): boolean => {
       if (!t.requests || t.requests.length === 0) return true;
-      return t.requests.every((_: any, idx: number) => t.completedTasks.has(idx.toString()));
+      return t.requests.every((_, idx) => t.completedTasks.has(idx.toString()));
   };
 
   // 1. Check for sequential dependency (Pending Previous)
@@ -170,7 +170,7 @@ export const isBatchReady = (
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
   accountStartStates: { [accountId: number]: AccountStartState }
 ): boolean => {
-  return batch.tasks.every((task: any) => {
+  return batch.tasks.every(task => {
     const timerState = calculateTimerState(
       task,
       batch.batchIndex,

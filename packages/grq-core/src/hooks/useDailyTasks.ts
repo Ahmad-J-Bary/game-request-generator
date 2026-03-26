@@ -117,45 +117,10 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       if (savedCompleted) {
         setCompletedTasks(JSON.parse(savedCompleted));
       }
-
-      // Load batches
-      const savedBatchesData = localStorage.getItem(`dailyTasks_batches_${today}`);
-      if (savedBatchesData) {
-        const { batches: parsedBatches, accountScheduledTime: parsedScheduledTime } = JSON.parse(savedBatchesData);
-        // Deserialize sets
-        const deserializedBatches = parsedBatches.map(batch => ({
-          ...batch,
-          tasks: batch.tasks.map(task => ({
-            ...task,
-            completedTasks: new Set(task.completedTasks)
-          }))
-        }));
-        setBatches(deserializedBatches);
-        setAccountScheduledTime(parsedScheduledTime || {});
-      }
     } catch (error) {
       console.error('Error loading account data:', error);
     }
   }, []);
-
-  // Listen for global data changes to refresh tasks reactively
-  useEffect(() => {
-    const handleDataChange = () => {
-      refreshGames();
-      // The generation will follow automatically in DailyTasksPage via the games dependency
-      // but let's be explicit if needed.
-    };
-
-    window.addEventListener('data-changed', handleDataChange);
-    window.addEventListener('games-updated', handleDataChange);
-    window.addEventListener('accounts-updated', handleDataChange);
-    
-    return () => {
-      window.removeEventListener('data-changed', handleDataChange);
-      window.removeEventListener('games-updated', handleDataChange);
-      window.removeEventListener('accounts-updated', handleDataChange);
-    };
-  }, [refreshGames]);
 
   // Save account data to localStorage whenever they change
   useEffect(() => {
@@ -190,18 +155,18 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
         games,
         accountCompletionRecords,
         accountStartStates,
+        setAccountStartStates,
+        setAccountTaskAssignments,
       });
 
-      const { batches: newBatches, accountScheduledTime: newScheduledTime, newStartStates, newTaskAssignments } = await taskGenerator.generateTodaysTasks();
+      const { batches, accountScheduledTime } = await taskGenerator.generateTodaysTasks();
 
-      setBatches(newBatches);
-      setAccountScheduledTime(newScheduledTime);
-      setAccountStartStates(newStartStates);
-      setAccountTaskAssignments(newTaskAssignments);
+      setBatches(batches);
+      setAccountScheduledTime(accountScheduledTime);
 
       // Save to localStorage for persistence
       const today = new Date().toISOString().split('T')[0];
-      const serializedBatches = newBatches.map(batch => ({
+      const serializedBatches = batches.map(batch => ({
         ...batch,
         tasks: batch.tasks.map(task => ({
           ...task,
@@ -210,11 +175,11 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       }));
       localStorage.setItem(`dailyTasks_batches_${today}`, JSON.stringify({
         batches: serializedBatches,
-        accountScheduledTime: newScheduledTime
+        accountScheduledTime
       }));
 
-      if (newBatches.length > 0) {
-        NotificationService.success(`Generated ${newBatches.length} batches`);
+      if (batches.length > 0) {
+        NotificationService.success(`Generated ${batches.length} batches`);
       }
     } catch (error) {
       NotificationService.error('Error generating daily tasks');
@@ -222,9 +187,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
     } finally {
       setLoading(false);
     }
-    // We remove accountStartStates from dependencies to fix the infinite loop
-    // as this function updates that state itself.
-  }, [games, accountCompletionRecords]); 
+  }, [games, accountCompletionRecords, accountStartStates]);
 
   // Complete a task using the TaskCompletionHandler utility
   const completeTask = useCallback(async (accountId: number, requestIndex: number, batchIndex: number) => {
