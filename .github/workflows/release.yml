@@ -41,6 +41,10 @@ jobs:
       - name: install frontend dependencies
         run: pnpm install
 
+      - name: Set version from tag
+        shell: bash
+        run: node scripts/set-version.mjs "$GITHUB_REF_NAME"
+
       - name: Build Desktop (Windows/macOS/Linux)
         uses: tauri-apps/tauri-action@v0
         env:
