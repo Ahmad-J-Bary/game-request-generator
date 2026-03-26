@@ -10,7 +10,6 @@ interface BatchDisplayProps {
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
   accountTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
   accountStartStates: { [accountId: number]: AccountStartState };
-  currentTime: number;
   onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   showProxyNotice?: boolean;
@@ -23,7 +22,6 @@ export const BatchDisplay: React.FC<BatchDisplayProps> = ({
   accountCompletionRecords,
   accountTaskAssignments,
   accountStartStates,
-  currentTime,
   onCompleteTask,
   onCopyRequest,
   showProxyNotice = true,
@@ -45,7 +43,6 @@ export const BatchDisplay: React.FC<BatchDisplayProps> = ({
         accountCompletionRecords={accountCompletionRecords}
         accountTaskAssignments={accountTaskAssignments}
         accountStartStates={accountStartStates}
-        currentTime={currentTime}
         onCompleteTask={onCompleteTask}
         onCopyRequest={onCopyRequest}
       />

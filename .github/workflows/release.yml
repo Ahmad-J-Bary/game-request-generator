@@ -91,7 +91,7 @@ jobs:
           echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > apps/desktop-mobile/src-tauri/gen/android/release.keystore
 
       - name: Build Android APK
-        run: pnpm tauri android build --target aarch64 --target armv7 --target i686 --target x86_64
+        run: pnpm tauri android build --apk --target aarch64 --target armv7 --target i686 --target x86_64
         working-directory: ./apps/desktop-mobile
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -103,29 +103,31 @@ jobs:
       - name: Rename APKs
         run: |
           VERSION="${{ github.ref_name }}"
-          # The VERSION might contain 'v', let's keep it or clean it if needed
-          # For consistency with tauri.conf.json, we use ref_name
-          cd apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release/
-          for apk in *.apk; do
-            if [[ $apk == *"release.apk" ]]; then
-              # Extract ABI: app-arm64-v8a-release.apk -> arm64-v8a
-              ABI=$(echo $apk | sed 's/app-//' | sed 's/-release.apk//')
-              NEW_NAME="GameRequestGenerator-$VERSION-$ABI.apk"
-              mv "$apk" "$NEW_NAME"
-              echo "Renamed $apk to $NEW_NAME"
+          # Tauri outputs APKs in ABI-specific folders under apk/ (e.g., apk/arm64-v8a/release/app-arm64-v8a-release.apk)
+          # We'll use find to locate all release APKs and move them to a unified folder for upload
+          mkdir -p apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release-unified
+          find apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk -name "*-release.apk" -type f | while read -r apk; do
+            filename=$(basename "$apk")
+            if [[ "$filename" == "app-universal-release.apk" ]]; then
+              ABI="universal"
+            else
+              ABI=$(echo "$filename" | sed 's/app-//' | sed 's/-release.apk//')
             fi
+            NEW_NAME="GameRequestGenerator-$VERSION-$ABI.apk"
+            mv "$apk" "apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release-unified/$NEW_NAME"
+            echo "Renamed $filename to $NEW_NAME"
           done
 
       - name: Upload Android APK to Action Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Game-Request-Generator-Android-APKs
-          path: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release/*.apk
+          path: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release-unified/*.apk
 
       - name: Upload APKs to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release/*.apk
+          files: apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release-unified/*.apk
           draft: true
           prerelease: false
         env:

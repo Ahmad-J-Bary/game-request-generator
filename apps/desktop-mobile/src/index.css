@@ -87,6 +87,39 @@
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* Premium Design Tokens */
+    --glass-background: 222.2 84% 4.9% / 0.7;
+    --glass-border: 222.2 84% 15% / 0.5;
+    --premium-glow-primary: 224.3 76.3% 48% / 0.15;
+    --premium-glow-amber: 38 92% 50% / 0.15;
+    --premium-glow-emerald: 142 71% 45% / 0.15;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply backdrop-blur-md bg-white/5 border border-white/10 dark:bg-black/20 dark:border-white/5;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  }
+  
+  .glass-emerald {
+    @apply glass border-emerald-500/20 bg-emerald-500/5;
+    box-shadow: 0 0 20px 0 theme('colors.emerald.500/0.1');
+  }
+
+  .glass-amber {
+    @apply glass border-amber-500/20 bg-amber-500/5;
+    box-shadow: 0 0 20px 0 theme('colors.amber.500/0.1');
+  }
+
+  .animate-premium-pulse {
+    animation: premium-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes premium-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(0.99); }
   }
 }
 

@@ -33,21 +33,12 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   const [batches, setBatches] = useState<GameBatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [games, setGames] = useState<any[]>([]);
-  const [currentTime, setCurrentTime] = useState(Date.now());
   // @ts-expect-error - used for internal state management and persistence
   const [accountScheduledTime, setAccountScheduledTime] = useState<{ [accountId: number]: number[] }>({});
   const [accountCompletionRecords, setAccountCompletionRecords] = useState<{ [accountId: number]: AccountCompletionRecord }>({});
   const [accountTaskAssignments, setAccountTaskAssignments] = useState<{ [accountId: number]: AccountTaskAssignment[] }>({});
   const [accountStartStates, setAccountStartStates] = useState<{ [accountId: number]: AccountStartState }>({});
   const [completedTasks, setCompletedTasks] = useState<any[]>([]);
-
-  // Update current time every second
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(Date.now());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Load games on mount
   const refreshGames = useCallback(async () => {
@@ -227,7 +218,6 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
     batches,
     loading,
     games,
-    currentTime,
     completedTasks,
 
     // Account state

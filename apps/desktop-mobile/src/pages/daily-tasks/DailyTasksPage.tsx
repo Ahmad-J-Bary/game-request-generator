@@ -89,7 +89,6 @@ export default function DailyTasksPage() {
                       accountCompletionRecords={accountCompletionRecords}
                       accountTaskAssignments={accountTaskAssignments}
                       accountStartStates={accountStartStates}
-                      currentTime={currentTime}
                       onCompleteTask={completeTask}
                       onCopyRequest={copyToClipboard}
                       showProxyNotice={idx < readyBatches.length - 1}
@@ -112,7 +111,6 @@ export default function DailyTasksPage() {
                         task={task}
                         batchIndex={batchIndex}
                         allBatches={batches}
-                        currentTime={currentTime}
                         accountCompletionRecords={accountCompletionRecords}
                         accountStartStates={accountStartStates}
                         accountTaskAssignments={accountTaskAssignments}
