@@ -19,7 +19,7 @@ use grq_engine::models::purchase_event::{
     CreatePurchaseEventRequest, PurchaseEvent, UpdatePurchaseEventRequest,
 };
 
-use grq_engine::services::account_service::AccountService;
+use grq_engine::services::account_service::{AccountService, CompletedAccount};
 use grq_engine::services::game_service::GameService;
 use grq_engine::services::level_service::LevelService;
 use grq_engine::services::progress_service::ProgressService;
@@ -156,6 +156,14 @@ fn get_accounts(state: tauri::State<AppState>, game_id: i64) -> Result<Vec<Accou
     let conn = db_guard.get_connection();
     let service = AccountService::new();
     service.get_accounts_by_game(conn, game_id)
+}
+
+#[tauri::command]
+fn get_completed_accounts(state: tauri::State<AppState>) -> Result<Vec<CompletedAccount>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = AccountService::new();
+    service.get_completed_accounts(conn)
 }
 
 #[tauri::command]
@@ -775,6 +783,7 @@ pub fn run() {
             delete_level,
             add_account,
             get_accounts,
+            get_completed_accounts,
             get_account_by_id,
             update_account,
             delete_account,

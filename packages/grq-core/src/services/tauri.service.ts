@@ -6,6 +6,7 @@ import type {
   CreateGameRequest, 
   UpdateGameRequest,
   Account,
+  CompletedAccount,
   CreateAccountRequest,
   UpdateAccountRequest,
   Level,
@@ -54,6 +55,10 @@ export class TauriService {
 
   static async getAccounts(gameId: number): Promise<Account[]> {
     return await invoke<Account[]>('get_accounts', { gameId });
+  }
+
+  static async getCompletedAccounts(): Promise<CompletedAccount[]> {
+    return await invoke<CompletedAccount[]>('get_completed_accounts');
   }
 
   static async getAccountById(id: number): Promise<Account | null> {

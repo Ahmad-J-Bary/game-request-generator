@@ -3,6 +3,18 @@
 use rusqlite::{params, OptionalExtension, Connection};
 use crate::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct CompletedAccount {
+    pub id: i64,
+    pub game_id: i64,
+    pub name: String,
+    pub start_date: String,
+    pub start_time: String,
+    pub request_template: String,
+    pub created_at: Option<String>,
+    pub game_name: String,
+}
+
 pub struct AccountService;
 
 impl AccountService {
@@ -64,6 +76,47 @@ impl AccountService {
         let mut accounts = Vec::new();
         for account in accounts_iter {
             accounts.push(account.map_err(|e| format!("Failed to map account: {}", e))?);
+        }
+
+        Ok(accounts)
+    }
+
+    pub fn get_completed_accounts(&self, conn: &Connection) -> Result<Vec<CompletedAccount>, String> {
+        let mut stmt = conn.prepare("
+            SELECT a.id, a.game_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, g.name
+            FROM accounts a
+            JOIN games g ON a.game_id = g.id
+            WHERE 
+                (SELECT COUNT(*) FROM levels l WHERE l.game_id = a.game_id) > 0
+                AND 
+                (SELECT COUNT(*) FROM levels l WHERE l.game_id = a.game_id) = 
+                (SELECT COUNT(*) FROM account_level_progress alp 
+                 JOIN levels l ON alp.level_id = l.id 
+                 WHERE alp.account_id = a.id AND alp.is_completed = 1)
+                AND
+                (SELECT COUNT(*) FROM purchase_events pe WHERE pe.game_id = a.game_id) =
+                (SELECT COUNT(*) FROM account_purchase_event_progress apep
+                 JOIN purchase_events pe ON apep.purchase_event_id = pe.id
+                 WHERE apep.account_id = a.id AND apep.is_completed = 1)
+            ORDER BY a.created_at DESC
+        ").map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+        let accounts_iter = stmt.query_map([], |row| {
+            Ok(CompletedAccount {
+                id: row.get(0)?,
+                game_id: row.get(1)?,
+                name: row.get(2)?,
+                start_date: row.get(3)?,
+                start_time: row.get(4)?,
+                request_template: row.get(5)?,
+                created_at: row.get(6).ok(),
+                game_name: row.get(7)?,
+            })
+        }).map_err(|e| format!("Failed to query completed accounts: {}", e))?;
+
+        let mut accounts = Vec::new();
+        for account in accounts_iter {
+            accounts.push(account.map_err(|e| format!("Failed to map completed account: {}", e))?);
         }
 
         Ok(accounts)

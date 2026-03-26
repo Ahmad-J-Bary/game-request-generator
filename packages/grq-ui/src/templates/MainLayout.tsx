@@ -46,19 +46,28 @@ export function MainLayout({ children }: MainLayoutProps) {
     <div className="min-h-screen bg-background">
       {/* Mobile Header (Visible only on mobile) */}
       <header 
-        className="md:hidden flex items-center justify-between border-b px-4 bg-background sticky top-0 z-40 transition-colors"
+        className="md:hidden flex items-center justify-between border-b border-border/50 py-0 bg-background/80 backdrop-blur-md sticky top-0 z-40 shadow-sm transition-all"
         style={{ 
           paddingTop: 'env(safe-area-inset-top)',
-          height: 'calc(3.5rem + env(safe-area-inset-top))' 
+          paddingLeft: 'calc(1rem + env(safe-area-inset-left))',
+          paddingRight: 'calc(1rem + env(safe-area-inset-right))',
+          height: 'calc(4rem + env(safe-area-inset-top))' 
         }}
       >
-        <div className="flex items-center gap-2">
-          <Gamepad2 className="h-6 w-6 text-primary" />
-          <span className="font-semibold text-lg">Game Manager</span>
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+            <Gamepad2 className="h-5 w-5 text-primary" />
+          </div>
+          <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+            Game Manager
+          </span>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => setMobileMenuOpen(true)}>
-          <Menu className="h-5 w-5" />
-        </Button>
+        
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(true)} className="h-9 w-9 rounded-full hover:bg-accent">
+            <Menu className="h-5 w-5" />
+          </Button>
+        </div>
       </header>
 
       {/* Mobile Swipe Backdrop */}
@@ -131,76 +140,67 @@ export function MainLayout({ children }: MainLayoutProps) {
             })}
           </nav>
 
-          {/* Quick Settings */}
-          <div className="border-t p-4 space-y-4">
-            {!sidebarCollapsed ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{t('theme.toggle')}</span>
-                  <ThemeToggle />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{t('language.select')}</span>
-                  <LanguageSelector />
-                </div>
-                <Link
-                  to="/settings"
-                  className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors pt-2 border-t"
-                >
-                  <Settings className="h-4 w-4" />
-                  {t('settings.title')}
-                </Link>
-              </>
-            ) : (
-              <div className="flex flex-col items-center gap-4">
-                <ThemeToggle />
-                <LanguageSelector />
-                <Link to="/settings" title={t('settings.title')}>
-                  <Settings className="h-5 w-5 text-muted-foreground" />
-                </Link>
-              </div>
-            )}
-          </div>
-
-          {/* Sidebar Toggle (Desktop Only) */}
-          <div className="border-t p-2 hidden md:block">
+          {/* Bottom Actions Area */}
+          <div className="mt-auto flex flex-col border-t bg-card/50 backdrop-blur-md p-3 gap-2 transition-all duration-300">
+            {/* Primary Action: Completed Tasks */}
             <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleSidebar}
-              className="w-full h-9"
-            >
-              {sidebarCollapsed ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <div className="flex items-center gap-2">
-                  <ChevronLeft className="h-4 w-4" />
-                  <span className="text-sm">Collapse</span>
-                </div>
-              )}
-            </Button>
-          </div>
-
-          {/* Completed Sidebar Toggle */}
-          <div className="border-t p-2">
-            <Button
-              variant={completedSidebarOpen ? "default" : "ghost"}
-              size="sm"
+              variant={completedSidebarOpen ? "secondary" : "ghost"}
               onClick={toggleCompletedSidebar}
-              className="w-full h-9 px-2"
+              className={cn(
+                "w-full justify-start transition-all duration-300 overflow-hidden",
+                sidebarCollapsed ? "px-0 justify-center h-10" : "px-3 bg-secondary/30 hover:bg-secondary/60"
+              )}
               title={t('dailyTasks.completedToday', 'Completed Today')}
             >
-              {sidebarCollapsed ? (
-                <CheckCircle className="h-4 w-4" />
-              ) : (
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4" />
-                  <span className="text-sm truncate">
-                    {t('dailyTasks.completed', 'Completed')}
-                  </span>
-                </div>
+              <CheckCircle className={cn("h-5 w-5 flex-shrink-0 transition-colors", !sidebarCollapsed ? "mr-3 text-primary" : (completedSidebarOpen ? "text-primary" : "text-muted-foreground"))} />
+              {!sidebarCollapsed && (
+                <span className="font-medium tracking-wide">
+                  {t('dailyTasks.completed', 'Completed')}
+                </span>
               )}
             </Button>
+
+            {/* Utility Toolbar */}
+            <div className={cn(
+              "flex items-center transition-all duration-300",
+              sidebarCollapsed ? "flex-col gap-2" : "flex-row justify-between pt-1 px-1"
+            )}>
+              <ThemeToggle />
+              <LanguageSelector />
+              
+              <Link
+                to="/settings"
+                title={sidebarCollapsed ? t('settings.title') : undefined}
+                className={cn(
+                  "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-9 w-9 text-muted-foreground hover:scale-105 active:scale-95 duration-200",
+                  !sidebarCollapsed && "ml-1"
+                )}
+              >
+                <Settings className="h-5 w-5" />
+              </Link>
+            </div>
+
+            {/* Desktop Only: Collapse Sidebar Indicator */}
+            <div className="hidden md:block pt-1 mt-1 border-t border-border/40">
+               <Button
+                 variant="ghost"
+                 size="sm"
+                 onClick={toggleSidebar}
+                 className={cn(
+                   "w-full text-muted-foreground hover:text-foreground h-8 transition-all overflow-hidden",
+                    sidebarCollapsed && "px-0"
+                 )}
+               >
+                 {sidebarCollapsed ? (
+                   <ChevronRight className="h-4 w-4 mx-auto" />
+                 ) : (
+                   <div className="flex items-center justify-center gap-2 w-full opacity-80 hover:opacity-100">
+                     <ChevronLeft className="h-4 w-4" />
+                     <span className="text-xs uppercase tracking-widest font-semibold text-muted-foreground">Collapse</span>
+                   </div>
+                 )}
+               </Button>
+            </div>
           </div>
         </div>
       </aside>
@@ -214,7 +214,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       {/* Main Content Area */}
       <main
         className={cn(
-          "transition-all duration-300 min-h-screen",
+          "transition-all duration-300 min-h-screen flex flex-col",
           // Deskop padding
           sidebarCollapsed ? "md:pl-16" : "md:pl-64",
           // Right panel padding
@@ -226,7 +226,13 @@ export function MainLayout({ children }: MainLayoutProps) {
           paddingBottom: 'calc(2.5rem + env(safe-area-inset-bottom))'
         }}
       >
-        <div className="container mx-auto p-4 md:p-6">
+        <div 
+          className="container mx-auto py-4 md:py-6 flex-1"
+          style={{
+            paddingLeft: 'calc(1rem + env(safe-area-inset-left))',
+            paddingRight: 'calc(1rem + env(safe-area-inset-right))'
+          }}
+        >
           {children}
         </div>
       </main>

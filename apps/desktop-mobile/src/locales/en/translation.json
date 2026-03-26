@@ -27,7 +27,11 @@
     "view": "View",
     "createdAt": "Created At",
     "all": "All",
-    "eventOnly": "Event Only"
+    "eventOnly": "Event Only",
+    "import": "Import",
+    "export": "Export",
+    "filter": "Filter",
+    "data": "Data"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -309,7 +313,9 @@
     "format": "Data will be exported as an Excel file (.xlsx) with separate sheets for different data types.",
     "confirm": "Export",
     "success": "Data exported successfully",
-    "failed": "Export failed"
+    "failed": "Export failed",
+    "gameAccounts": "Export Game Accounts",
+    "allGames": "Export All Games"
   },
   "errors": {
     "required": "This field is required",

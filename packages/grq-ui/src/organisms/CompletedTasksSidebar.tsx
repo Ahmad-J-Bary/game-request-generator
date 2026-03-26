@@ -7,6 +7,12 @@ import { Button } from '@grq/ui/atoms/button';
 import { Card, CardContent } from '@grq/ui/atoms/card';
 import { Badge } from '@grq/ui/atoms/badge';
 import { ScrollArea } from '@grq/ui/atoms/scroll-area';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@grq/ui/atoms/dropdown-menu';
 import { cn } from '@grq/ui/lib/utils';
 import type { CompletedDailyTask } from '@grq/api-bindings/types/daily-tasks.types';
 
@@ -112,22 +118,79 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
             )}
         >
             <div className="flex h-full flex-col">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b p-4">
+                {/* Glassmorphic Header */}
+                <div 
+                    className="flex items-center justify-between border-b py-3 bg-card/60 backdrop-blur-md sticky top-0 z-10 shadow-sm"
+                    style={{ 
+                        paddingTop: 'calc(0.75rem + env(safe-area-inset-top))',
+                        paddingLeft: 'calc(1rem + env(safe-area-inset-left))',
+                        paddingRight: 'calc(1rem + env(safe-area-inset-right))'
+                    }}
+                >
                     <div className="flex items-center gap-2">
                         <CheckCircle className="h-5 w-5 text-green-500" />
-                        <h2 className="text-lg font-semibold">
+                        <h2 className="text-lg font-semibold truncate max-w-[140px] xs:max-w-none">
                             {t('dailyTasks.completedToday', 'Completed Today')}
                         </h2>
-                        <Badge variant="secondary">{completedTasks.length}</Badge>
+                        <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
+                            {completedTasks.length}
+                        </Badge>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={onClose}>
-                        <X className="h-4 w-4" />
-                    </Button>
+                    
+                    <div className="flex items-center gap-1">
+                        {completedTasks.length > 0 && (
+                            <>
+                                {/* Desktop: Inline Secondary Actions */}
+                                <div className="hidden sm:flex items-center mr-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                        onClick={clearCompletedTasks}
+                                    >
+                                        <Trash2 className="h-4 w-4 mr-1.5" />
+                                        <span className="text-xs">{t('dailyTasks.clearCompleted', 'Clear All')}</span>
+                                    </Button>
+                                </div>
+                                
+                                {/* Mobile: "More" Dropdown menu */}
+                                <div className="sm:hidden">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                <X className="h-4 w-4 hidden" /> {/* dummy for layout matching if needed, but we use MoreVertical */}
+                                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-48">
+                                            <DropdownMenuItem onClick={clearCompletedTasks} className="text-destructive justify-center font-medium">
+                                                <Trash2 className="h-4 w-4 mr-2" />
+                                                {t('dailyTasks.clearCompleted', 'Clear All Completed')}
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
+                            </>
+                        )}
+                        
+                        <div className="w-[1px] h-4 bg-border mx-1 hidden sm:block"></div>
+
+                        <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full">
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Content */}
-                <ScrollArea className="flex-1 p-4">
+                <ScrollArea 
+                    className="flex-1"
+                    style={{
+                        paddingTop: '1rem',
+                        paddingBottom: '1rem',
+                        paddingLeft: 'calc(1rem + env(safe-area-inset-left))',
+                        paddingRight: 'calc(1rem + env(safe-area-inset-right))'
+                    }}
+                >
                     {completedTasks.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-center p-8">
                             <Clock className="h-12 w-12 text-muted-foreground mb-4" />
@@ -237,20 +300,7 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                     )}
                 </ScrollArea>
 
-                {/* Footer */}
-                {completedTasks.length > 0 && (
-                    <div className="border-t p-4">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                            onClick={clearCompletedTasks}
-                        >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            {t('dailyTasks.clearCompleted', 'Clear Completed')}
-                        </Button>
-                    </div>
-                )}
+                {/* Footer removed to save vertical space. Actions moved to the Responsive Header. */}
             </div>
         </div>
     );

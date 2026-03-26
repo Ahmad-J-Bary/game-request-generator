@@ -11,7 +11,7 @@ import { ImportDialog } from '@grq/ui/molecules/ImportDialog';
 import { ExportDialog } from '@grq/ui/molecules/ExportDialog';
 import { Button } from '@grq/ui/atoms/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@grq/ui/atoms/dropdown-menu';
-import { Download, Upload, ChevronDown, Edit3, Save, X } from 'lucide-react';
+import { Download, Upload, ChevronDown, Edit3, Save, X, MoreVertical } from 'lucide-react';
 
 import { useAccounts } from '@grq/core/hooks/useAccounts';
 import { useLevels } from '@grq/core/hooks/useLevels';
@@ -645,87 +645,129 @@ function AccountsDetailContent({
 
     return (
       <div className="flex-1 flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">Accounts Detail</h2>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+        <h2 className="text-xl md:text-2xl font-bold truncate">Accounts Detail</h2>
 
-        <div className="flex gap-3">
+        <div className="flex items-center gap-2 self-end md:self-auto">
           {isEditMode ? (
             <>
-              <Button variant="default" size="sm" onClick={handleSaveProgress} className="flex items-center gap-2">
+              <Button variant="default" size="sm" onClick={handleSaveProgress} className="flex items-center gap-2 h-9">
                 <Save className="h-4 w-4" /> {t('common.save', 'Save')}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setIsEditMode(false)} className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setIsEditMode(false)} className="flex items-center gap-2 h-9">
                 <X className="h-4 w-4" /> {t('common.cancel', 'Cancel')}
               </Button>
             </>
           ) : (
-            <Button variant="outline" size="sm" onClick={handleEditToggle} className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleEditToggle} className="flex items-center gap-2 h-9">
                 <Edit3 className="h-4 w-4" /> {t('common.edit', 'Edit')}
             </Button>
           )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowImportDialog(true)}
-            className="flex items-center gap-2"
-          >
-            <Upload className="h-4 w-4" />
-            {t('common.import', 'Import')}
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <Download className="h-4 w-4" />
-                {t('common.export', 'Export')}
-                <ChevronDown className="h-4 w-4" />
+          {/* Desktop Secondary Actions */}
+          <div className="hidden lg:flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowImportDialog(true)}
+                className="flex items-center gap-2 h-9"
+              >
+                <Upload className="h-4 w-4" />
+                {t('common.import', 'Import')}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem
-                onClick={() => {
-                  setExportType('game');
-                  setShowExportDialog(true);
-                }}
-              >
-                {t('export.gameAccounts', 'Export Game Accounts')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  setExportType('all');
-                  setShowExportDialog(true);
-                }}
-              >
-                {t('export.allGames', 'Export All Games')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
 
-          <LayoutToggle layout={layout} onLayoutChange={setLayout} />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex items-center gap-2 h-9">
+                    <Download className="h-4 w-4" />
+                    {t('common.export', 'Export')}
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => { setExportType('game'); setShowExportDialog(true); }}>
+                    {t('export.gameAccounts', 'Export Game Accounts')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setExportType('all'); setShowExportDialog(true); }}>
+                    {t('export.allGames', 'Export All Games')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-          <GameSelector selectedGameId={selectedGameId} onGameChange={setSelectedGameId} />
+              <LayoutToggle layout={layout} onLayoutChange={setLayout} />
 
-          <div className="flex items-center gap-2 px-2 py-1 border rounded">
-            <label className="inline-flex items-center gap-2">
-              <input
-                type="radio"
-                name="accounts-mode"
-                checked={mode === 'event-only'}
-                onChange={() => setMode('event-only')}
-              />
-              <span className="text-sm">{t('common.eventOnly')}</span>
-            </label>
+              <div className="h-9">
+                  <GameSelector selectedGameId={selectedGameId} onGameChange={setSelectedGameId} />
+              </div>
 
-            <label className="inline-flex items-center gap-2">
-              <input
-                type="radio"
-                name="accounts-mode"
-                checked={mode === 'all'}
-                onChange={() => setMode('all')}
-              />
-              <span className="text-sm">{t('common.all')}</span>
-            </label>
+              <div className="flex items-center gap-2 px-2 py-1 border rounded h-9">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="accounts-mode-desktop" checked={mode === 'event-only'} onChange={() => setMode('event-only')} className="w-3 h-3"/>
+                  <span className="text-xs">{t('common.eventOnly')}</span>
+                </label>
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="accounts-mode-desktop" checked={mode === 'all'} onChange={() => setMode('all')} className="w-3 h-3"/>
+                  <span className="text-xs">{t('common.all')}</span>
+                </label>
+              </div>
+          </div>
+
+          {/* Mobile More Actions Popover */}
+          <div className="lg:hidden">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 w-9 p-0">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-3 space-y-4" align="end">
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.view')}</Label>
+                  <div className="flex flex-col gap-2 p-2 border rounded bg-accent/20">
+                    <LayoutToggle layout={layout} onLayoutChange={setLayout} />
+                    <div className="flex flex-col gap-2 pt-2 border-t">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="accounts-mode-mobile" checked={mode === 'event-only'} onChange={() => setMode('event-only')} />
+                        <span className="text-sm">{t('common.eventOnly')}</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="accounts-mode-mobile" checked={mode === 'all'} onChange={() => setMode('all')} />
+                        <span className="text-sm">{t('common.all')}</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.filter')}</Label>
+                  <GameSelector selectedGameId={selectedGameId} onGameChange={setSelectedGameId} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.data')}</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)} className="w-full text-xs">
+                      <Upload className="h-3 w-3 mr-1" /> Import
+                    </Button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="w-full text-xs">
+                              <Download className="h-3 w-3 mr-1" /> Export
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem onClick={() => { setExportType('game'); setShowExportDialog(true); }}>
+                            {t('export.gameAccounts', 'Export Game Accounts')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { setExportType('all'); setShowExportDialog(true); }}>
+                            {t('export.allGames', 'Export All Games')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <BackButton />

@@ -1,7 +1,7 @@
 {
   "name": "@game-request/desktop",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.1.0",
   "author": "Ahmad Abdelbary",
   "type": "module",
   "scripts": {
@@ -46,7 +46,7 @@
     "globals": "^16.5.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.3.0",
-    "tailwindcss-animate": "^1.0.7",
+    "tailwindcss-animate": "^1.1.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.3",
     "vite": "^7.2.2"

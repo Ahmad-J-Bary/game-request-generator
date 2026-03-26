@@ -8,6 +8,10 @@ export interface Account {
   created_at?: string;
 }
 
+export interface CompletedAccount extends Account {
+  game_name: string;
+}
+
 export interface CreateAccountRequest {
   game_id: number;
   name: string;
