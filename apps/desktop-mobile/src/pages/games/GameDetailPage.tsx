@@ -146,6 +146,66 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
         }
       }
 
+      // ── Sync frozen accountCompletionRecords in localStorage ──────────────
+      // When a level or purchase event is edited, the completion records that
+      // were frozen at task-completion time (timeSpent, eventToken) must be
+      // updated so the cooldown timer uses the correct new values.
+      try {
+        const savedCompletions = localStorage.getItem('accountCompletionRecords');
+        if (savedCompletions) {
+          const records = JSON.parse(savedCompletions) as Record<string, {
+            accountId: number;
+            timeSpent: number;
+            completionTime: number;
+            levelId?: number;
+            eventToken?: string;
+          }>;
+
+          let changed = false;
+
+          // Update level-related completion records
+          for (const editedLevel of editedLevels) {
+            const originalLevel = levels.find(l => l.id === editedLevel.id);
+            if (!originalLevel) continue;
+            const timeSpentChanged = originalLevel.time_spent !== editedLevel.time_spent;
+            const tokenChanged = originalLevel.event_token !== editedLevel.event_token;
+            if (!timeSpentChanged && !tokenChanged) continue;
+
+            for (const key of Object.keys(records)) {
+              const rec = records[key];
+              if (rec.levelId === editedLevel.id) {
+                if (timeSpentChanged) rec.timeSpent = editedLevel.time_spent;
+                if (tokenChanged) rec.eventToken = editedLevel.event_token;
+                changed = true;
+              }
+            }
+          }
+
+          // Update purchase-event-related completion records
+          for (const editedEvent of editedPurchaseEvents) {
+            const originalEvent = purchaseEvents.find(e => e.id === editedEvent.id);
+            if (!originalEvent) continue;
+            const tokenChanged = originalEvent.event_token !== editedEvent.event_token;
+            if (!tokenChanged) continue;
+
+            for (const key of Object.keys(records)) {
+              const rec = records[key];
+              if (rec.eventToken === originalEvent.event_token) {
+                rec.eventToken = editedEvent.event_token;
+                changed = true;
+              }
+            }
+          }
+
+          if (changed) {
+            localStorage.setItem('accountCompletionRecords', JSON.stringify(records));
+          }
+        }
+      } catch (lsError) {
+        console.warn('Failed to sync accountCompletionRecords in localStorage:', lsError);
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       setIsEditMode(false);
       // Refresh data by reloading the page
       window.location.reload();

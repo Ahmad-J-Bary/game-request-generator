@@ -150,10 +150,29 @@ impl PurchaseEventService {
         conn.execute(&sql, params.as_slice())
             .map_err(|e| format!("Failed to update purchase event: {}", e))?;
 
+        // Cascade: if days_offset changed, sync all existing progress rows for this event
+        if let Some(new_days_offset) = request.days_offset {
+            conn.execute(
+                "UPDATE account_purchase_event_progress \
+                 SET days_offset = ?1 \
+                 WHERE purchase_event_id = ?2",
+                params![new_days_offset, request.id],
+            )
+            .map_err(|e| format!("Failed to cascade days_offset to progress: {}", e))?;
+        }
+
         Ok(conn.changes() > 0)
     }
 
     pub fn delete_purchase_event(&self, conn: &Connection, id: i64) -> Result<bool, String> {
+        // Cascade: delete all progress records referencing this purchase event
+        conn.execute(
+            "DELETE FROM account_purchase_event_progress WHERE purchase_event_id = ?1",
+            params![id],
+        )
+        .map_err(|e| format!("Failed to delete purchase event progress records: {}", e))?;
+
+        // Delete the purchase event itself
         conn.execute("DELETE FROM purchase_events WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete purchase event: {}", e))?;
 

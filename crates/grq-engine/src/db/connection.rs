@@ -34,6 +34,10 @@ impl Database {
         let conn =
             Connection::open(db_path).map_err(|e| format!("Failed to open database: {}", e))?;
 
+        // Enable foreign key support (required for ON DELETE CASCADE to work in SQLite)
+        conn.execute_batch("PRAGMA foreign_keys = ON;")
+            .map_err(|e| format!("Failed to enable foreign keys: {}", e))?;
+
         Ok(Database { connection: conn })
     }
 

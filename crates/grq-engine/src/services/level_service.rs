@@ -95,6 +95,71 @@ impl LevelService {
     }
 
     pub fn update_level(&self, conn: &Connection, request: UpdateLevelRequest) -> Result<bool, String> {
+        // Fetch the current level to determine what cascade cleanup is needed
+        let current_row = conn
+            .query_row(
+                "SELECT event_token, days_offset FROM levels WHERE id = ?1",
+                params![request.id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?)),
+            )
+            .optional()
+            .map_err(|e| format!("Failed to fetch current level: {}", e))?;
+
+        if let Some((old_token, old_days_offset)) = current_row {
+            let new_days_offset = request.days_offset.unwrap_or(old_days_offset);
+            let new_token = request.event_token.as_deref().unwrap_or(&old_token);
+
+            // If days_offset is changing, clear completion records so accounts redo it on the new day
+            if old_days_offset != new_days_offset {
+                conn.execute(
+                    "DELETE FROM account_level_progress WHERE level_id = ?1",
+                    params![request.id],
+                )
+                .map_err(|e| format!("Failed to reset level progress on days_offset change: {}", e))?;
+            }
+
+            // Synthetic sessions derived from this level have level_name = '-'
+            // and event_token like '{base_token}_day{N}'.
+            // When any key field changes, delete them so they recompute correctly.
+            let any_key_changed = old_days_offset != new_days_offset
+                || new_token != old_token
+                || request.time_spent.is_some();
+
+            if any_key_changed {
+                // Extract the base token (part before the first '_day')
+                let old_base = old_token
+                    .split("_day")
+                    .next()
+                    .unwrap_or(&old_token)
+                    .to_string();
+                let like_pattern = format!("{}\\_%", old_base);
+
+                conn.execute(
+                    "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\'",
+                    params![like_pattern],
+                )
+                .map_err(|e| format!("Failed to delete synthetic child sessions: {}", e))?;
+
+                // If event_token changed, also clean up any synthetics with the NEW base
+                // (in case partial synthetics from a previous run exist with that token)
+                if new_token != old_token {
+                    let new_base = new_token
+                        .split("_day")
+                        .next()
+                        .unwrap_or(new_token)
+                        .to_string();
+                    if new_base != old_base {
+                        let new_like = format!("{}\\_%", new_base);
+                        conn.execute(
+                            "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\'",
+                            params![new_like],
+                        )
+                        .map_err(|e| format!("Failed to delete synthetic child sessions (new token): {}", e))?;
+                    }
+                }
+            }
+        }
+
         let mut updates = Vec::new();
         let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -144,6 +209,41 @@ impl LevelService {
     }
 
     pub fn delete_level(&self, conn: &Connection, id: i64) -> Result<bool, String> {
+        // Fetch the event_token to find and delete derived synthetic sessions
+        let event_token: Option<String> = conn
+            .query_row(
+                "SELECT event_token FROM levels WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("Failed to fetch level token for cascade: {}", e))?
+            .flatten();
+
+        if let Some(token) = event_token {
+            // Delete all synthetic sessions derived from this level's base token.
+            // Synthetic sessions have level_name = '-' and event_token like 'base_dayN'.
+            let base = token
+                .split("_day")
+                .next()
+                .unwrap_or(&token)
+                .to_string();
+            let like_pattern = format!("{}\\_%", base);
+            conn.execute(
+                "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\'",
+                params![like_pattern],
+            )
+            .map_err(|e| format!("Failed to delete synthetic child sessions: {}", e))?;
+        }
+
+        // Cascade: delete all progress records referencing this level
+        conn.execute(
+            "DELETE FROM account_level_progress WHERE level_id = ?1",
+            params![id],
+        )
+        .map_err(|e| format!("Failed to delete level progress records: {}", e))?;
+
+        // Delete the level itself
         conn.execute("DELETE FROM levels WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete level: {}", e))?;
 
