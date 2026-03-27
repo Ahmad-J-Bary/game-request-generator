@@ -23,6 +23,7 @@ export default function DailyTasksPage() {
     generateTodaysTasks,
     completeTask,
     copyToClipboard,
+    completedTasks,
   } = useDailyTasks();
 
 
@@ -65,7 +66,7 @@ export default function DailyTasksPage() {
             batches.forEach(batch => {
               const readyTasksInBatch: DailyTask[] = [];
               batch.tasks.forEach(task => {
-                if (checkTaskReadiness(task, batch.batchIndex, batches, currentTime, accountCompletionRecords, accountStartStates)) {
+                if (checkTaskReadiness(task, batch.batchIndex, batches, currentTime, accountCompletionRecords, accountStartStates, completedTasks)) {
                   readyTasksInBatch.push(task);
                 } else {
                   deferredTasks.push({ task, batchIndex: batch.batchIndex });
@@ -90,6 +91,7 @@ export default function DailyTasksPage() {
                       accountStartStates={accountStartStates}
                       onCompleteTask={completeTask}
                       onCopyRequest={copyToClipboard}
+                      completedTasks={completedTasks}
                       showProxyNotice={idx < readyBatches.length - 1}
                       isLastBatch={idx === readyBatches.length - 1}
                     />
@@ -115,6 +117,7 @@ export default function DailyTasksPage() {
                         accountTaskAssignments={accountTaskAssignments}
                         onCompleteTask={completeTask}
                         onCopyRequest={copyToClipboard}
+                        completedTasks={completedTasks}
                       />
                     ))}
                   </div>

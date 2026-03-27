@@ -33,6 +33,24 @@ impl ProgressService {
         conn: &Connection,
         request: UpdateAccountLevelProgressRequest,
     ) -> Result<bool, String> {
+        if request.is_completed {
+            // Cooldown check: Has anyone else completed this SAME level in the last 1 hour?
+            let cooldown_exists: bool = conn.query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM account_level_progress 
+                    WHERE level_id = ?1 AND is_completed = 1 
+                    AND account_id != ?2
+                    AND completed_at > datetime('now', '-1 hour')
+                 )",
+                params![request.level_id, request.account_id],
+                |row| row.get(0),
+            ).map_err(|e| format!("Failed to check level cooldown: {}", e))?;
+
+            if cooldown_exists {
+                return Err("Cooldown: Same level completed by another account within 1 hour. Please wait.".to_string());
+            }
+        }
+
         let completed_at = if request.is_completed {
             Some(chrono::Utc::now().to_rfc3339())
         } else {
@@ -124,6 +142,22 @@ impl ProgressService {
             values.push(Box::new(if is_completed { 1 } else { 0 }));
             
             if is_completed {
+                // Cooldown check: Has anyone else completed this SAME event in the last 1 hour?
+                let cooldown_exists: bool = conn.query_row(
+                    "SELECT EXISTS(
+                        SELECT 1 FROM account_purchase_event_progress 
+                        WHERE purchase_event_id = ?1 AND is_completed = 1 
+                        AND account_id != ?2
+                        AND completed_at > datetime('now', '-1 hour')
+                     )",
+                    params![request.purchase_event_id, request.account_id],
+                    |row| row.get(0),
+                ).map_err(|e| format!("Failed to check purchase event cooldown: {}", e))?;
+
+                if cooldown_exists {
+                    return Err("Cooldown: Same purchase event completed by another account within 1 hour. Please wait.".to_string());
+                }
+
                 updates.push("completed_at = ?");
                 values.push(Box::new(chrono::Utc::now().to_rfc3339()));
             }

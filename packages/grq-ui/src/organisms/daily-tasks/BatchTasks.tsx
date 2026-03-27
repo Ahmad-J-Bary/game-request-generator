@@ -10,6 +10,7 @@ interface BatchTasksProps {
   accountStartStates: { [accountId: number]: AccountStartState };
   onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
+  completedTasks: any[];
 }
 
 export const BatchTasks: React.FC<BatchTasksProps> = ({
@@ -20,6 +21,7 @@ export const BatchTasks: React.FC<BatchTasksProps> = ({
   accountStartStates,
   onCompleteTask,
   onCopyRequest,
+  completedTasks = [],
 }) => {
   return (
     <div className="space-y-4">
@@ -39,6 +41,7 @@ export const BatchTasks: React.FC<BatchTasksProps> = ({
             accountStartStates={accountStartStates}
             batchIndex={batch.batchIndex}
             allBatches={allBatches}
+            completedTasks={completedTasks}
           />
         </div>
       ))}

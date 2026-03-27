@@ -1,7 +1,7 @@
 // src-tauri/src/services/account_service.rs
 
-use rusqlite::{params, OptionalExtension, Connection};
 use crate::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
+use rusqlite::{params, Connection, OptionalExtension};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct CompletedAccount {
@@ -24,16 +24,21 @@ impl AccountService {
         AccountService
     }
 
-    pub fn create_account(&self, conn: &Connection, request: CreateAccountRequest) -> Result<i64, String> {
+    pub fn create_account(
+        &self,
+        conn: &Connection,
+        request: CreateAccountRequest,
+    ) -> Result<i64, String> {
         // التحقق من وجود اللعبة
-        let game_exists: i64 = conn.query_row(
-            "SELECT 1 FROM games WHERE id = ?1",
-            params![request.game_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e| format!("Failed to check game existence: {}", e))?
-        .unwrap_or(0);
+        let game_exists: i64 = conn
+            .query_row(
+                "SELECT 1 FROM games WHERE id = ?1",
+                params![request.game_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("Failed to check game existence: {}", e))?
+            .unwrap_or(0);
 
         if game_exists == 0 {
             return Err(format!("Game with ID {} not found", request.game_id));
@@ -42,27 +47,59 @@ impl AccountService {
         use crate::models::account::PROXY_STATES;
 
         // 1. Find a package_id that doesn't have this game_id yet
-        let package_info: Option<(i32, String)> = conn.query_row(
-            "SELECT DISTINCT package_id, proxy_state FROM accounts 
+        let package_info: Option<(i32, String)> = conn
+            .query_row(
+                "SELECT DISTINCT package_id, proxy_state FROM accounts 
              WHERE package_id NOT IN (SELECT package_id FROM accounts WHERE game_id = ?1)
              ORDER BY package_id LIMIT 1",
-            params![request.game_id],
-            |row| Ok((row.get(0)?, row.get(1)?))
-        ).optional().map_err(|e| format!("Failed to find available package: {}", e))?;
+                params![request.game_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| format!("Failed to find available package: {}", e))?;
 
         let (package_id, proxy_state) = match package_info {
             Some((pid, state)) => (pid, state),
             None => {
                 // If no package is available, create a new one
-                let max_id: i32 = conn.query_row(
-                    "SELECT COALESCE(MAX(package_id), 0) FROM accounts",
-                    [],
-                    |row| row.get(0)
-                ).map_err(|e| format!("Failed to get max package_id: {}", e))?;
-                
+                let max_id: i32 = conn
+                    .query_row(
+                        "SELECT COALESCE(MAX(package_id), 0) FROM accounts",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| format!("Failed to get max package_id: {}", e))?;
+
                 let next_id = max_id + 1;
-                let state_idx = (next_id - 1) as usize % PROXY_STATES.len();
-                (next_id, PROXY_STATES[state_idx].to_string())
+
+                // Get states already used by this game today
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT DISTINCT proxy_state FROM accounts 
+                     WHERE game_id = ?1 AND date(created_at) = date('now')",
+                    )
+                    .map_err(|e| format!("Failed to prepare state check: {}", e))?;
+
+                let used_states: Vec<String> = stmt
+                    .query_map(params![request.game_id], |row| row.get(0))
+                    .map_err(|e| format!("Failed to query used states: {}", e))?
+                    .collect::<Result<Vec<String>, _>>()
+                    .map_err(|e| format!("Failed to collect used states: {}", e))?;
+
+                // Find a state that hasn't been used today for this game if possible
+                let mut chosen_state =
+                    PROXY_STATES[(next_id - 1) as usize % PROXY_STATES.len()].to_string();
+
+                if used_states.contains(&chosen_state) {
+                    for state in PROXY_STATES {
+                        if !used_states.contains(&(*state).to_string()) {
+                            chosen_state = (*state).to_string();
+                            break;
+                        }
+                    }
+                }
+
+                (next_id, chosen_state)
             }
         };
 
@@ -84,27 +121,32 @@ impl AccountService {
         Ok(conn.last_insert_rowid())
     }
 
-    pub fn get_accounts_by_game(&self, conn: &Connection, game_id: i64) -> Result<Vec<Account>, String> {
+    pub fn get_accounts_by_game(
+        &self,
+        conn: &Connection,
+        game_id: i64,
+    ) -> Result<Vec<Account>, String> {
         let mut stmt = conn.prepare(
             "SELECT id, game_id, name, start_date, start_time, request_template, created_at, package_id, proxy_state
              FROM accounts WHERE game_id = ?1 ORDER BY created_at"
         )
         .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let accounts_iter = stmt.query_map(params![game_id], |row| {
-            Ok(Account {
-                id: row.get(0)?,
-                game_id: row.get(1)?,
-                name: row.get(2)?,
-                start_date: row.get(3)?,
-                start_time: row.get(4)?,
-                request_template: row.get(5)?,
-                created_at: row.get(6).ok(),
-                package_id: row.get(7).ok(),
-                proxy_state: row.get(8).ok(),
+        let accounts_iter = stmt
+            .query_map(params![game_id], |row| {
+                Ok(Account {
+                    id: row.get(0)?,
+                    game_id: row.get(1)?,
+                    name: row.get(2)?,
+                    start_date: row.get(3)?,
+                    start_time: row.get(4)?,
+                    request_template: row.get(5)?,
+                    created_at: row.get(6).ok(),
+                    package_id: row.get(7).ok(),
+                    proxy_state: row.get(8).ok(),
+                })
             })
-        })
-        .map_err(|e| format!("Failed to query accounts: {}", e))?;
+            .map_err(|e| format!("Failed to query accounts: {}", e))?;
 
         let mut accounts = Vec::new();
         for account in accounts_iter {
@@ -114,7 +156,10 @@ impl AccountService {
         Ok(accounts)
     }
 
-    pub fn get_completed_accounts(&self, conn: &Connection) -> Result<Vec<CompletedAccount>, String> {
+    pub fn get_completed_accounts(
+        &self,
+        conn: &Connection,
+    ) -> Result<Vec<CompletedAccount>, String> {
         let mut stmt = conn.prepare("
             SELECT a.id, a.game_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, g.name, a.package_id, a.proxy_state
             FROM accounts a
@@ -134,20 +179,22 @@ impl AccountService {
             ORDER BY a.created_at DESC
         ").map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let accounts_iter = stmt.query_map([], |row| {
-            Ok(CompletedAccount {
-                id: row.get(0)?,
-                game_id: row.get(1)?,
-                name: row.get(2)?,
-                start_date: row.get(3)?,
-                start_time: row.get(4)?,
-                request_template: row.get(5)?,
-                created_at: row.get(6).ok(),
-                game_name: row.get(7)?,
-                package_id: row.get(8).ok(),
-                proxy_state: row.get(9).ok(),
+        let accounts_iter = stmt
+            .query_map([], |row| {
+                Ok(CompletedAccount {
+                    id: row.get(0)?,
+                    game_id: row.get(1)?,
+                    name: row.get(2)?,
+                    start_date: row.get(3)?,
+                    start_time: row.get(4)?,
+                    request_template: row.get(5)?,
+                    created_at: row.get(6).ok(),
+                    game_name: row.get(7)?,
+                    package_id: row.get(8).ok(),
+                    proxy_state: row.get(9).ok(),
+                })
             })
-        }).map_err(|e| format!("Failed to query completed accounts: {}", e))?;
+            .map_err(|e| format!("Failed to query completed accounts: {}", e))?;
 
         let mut accounts = Vec::new();
         for account in accounts_iter {
@@ -187,20 +234,21 @@ impl AccountService {
         )
         .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let accounts_iter = stmt.query_map([], |row| {
-            Ok(Account {
-                id: row.get(0)?,
-                game_id: row.get(1)?,
-                name: row.get(2)?,
-                start_date: row.get(3)?,
-                start_time: row.get(4)?,
-                request_template: row.get(5)?,
-                created_at: row.get(6).ok(),
-                package_id: row.get(7).ok(),
-                proxy_state: row.get(8).ok(),
+        let accounts_iter = stmt
+            .query_map([], |row| {
+                Ok(Account {
+                    id: row.get(0)?,
+                    game_id: row.get(1)?,
+                    name: row.get(2)?,
+                    start_date: row.get(3)?,
+                    start_time: row.get(4)?,
+                    request_template: row.get(5)?,
+                    created_at: row.get(6).ok(),
+                    package_id: row.get(7).ok(),
+                    proxy_state: row.get(8).ok(),
+                })
             })
-        })
-        .map_err(|e| format!("Failed to query all accounts: {}", e))?;
+            .map_err(|e| format!("Failed to query all accounts: {}", e))?;
 
         let mut accounts = Vec::new();
         for account in accounts_iter {
@@ -210,7 +258,11 @@ impl AccountService {
         Ok(accounts)
     }
 
-    pub fn update_account(&self, conn: &Connection, request: UpdateAccountRequest) -> Result<bool, String> {
+    pub fn update_account(
+        &self,
+        conn: &Connection,
+        request: UpdateAccountRequest,
+    ) -> Result<bool, String> {
         let mut updates = Vec::new();
         let mut values = Vec::new();
 
@@ -242,21 +294,22 @@ impl AccountService {
         values.push(&request.id as &dyn rusqlite::ToSql);
 
         conn.execute(&sql, values.as_slice())
-        .map_err(|e| format!("Failed to update account: {}", e))?;
+            .map_err(|e| format!("Failed to update account: {}", e))?;
 
         Ok(conn.changes() > 0)
     }
 
     pub fn delete_account(&self, conn: &Connection, id: i64) -> Result<bool, String> {
         conn.execute("DELETE FROM accounts WHERE id = ?1", params![id])
-        .map_err(|e| format!("Failed to delete account: {}", e))?;
+            .map_err(|e| format!("Failed to delete account: {}", e))?;
 
         Ok(conn.changes() > 0)
     }
 
     pub fn is_account_completed(&self, conn: &Connection, account_id: i64) -> Result<bool, String> {
-        let is_completed: bool = conn.query_row(
-            "SELECT 
+        let is_completed: bool = conn
+            .query_row(
+                "SELECT 
                 ((SELECT COUNT(*) FROM levels l WHERE l.game_id = a.game_id) > 0
                 AND 
                 (SELECT COUNT(*) FROM levels l WHERE l.game_id = a.game_id) = 
@@ -270,9 +323,10 @@ impl AccountService {
                  WHERE apep.account_id = a.id AND apep.is_completed = 1)) as is_comp
             FROM accounts a
             WHERE a.id = ?1",
-            params![account_id],
-            |row| row.get(0)
-        ).map_err(|e| format!("Failed to check account completion: {}", e))?;
+                params![account_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Failed to check account completion: {}", e))?;
 
         Ok(is_completed)
     }

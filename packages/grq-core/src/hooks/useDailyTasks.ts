@@ -200,8 +200,10 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       if (savedCompleted) {
         setCompletedTasks(JSON.parse(savedCompleted));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error completing task:', error);
+      const errorMessage = error.message || 'Error completing task';
+      NotificationService.error(errorMessage);
     }
   }, [batches, games, accountCompletionRecords]);
 

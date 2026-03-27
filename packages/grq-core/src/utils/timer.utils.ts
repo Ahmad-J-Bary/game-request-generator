@@ -23,7 +23,8 @@ export const calculateTimerState = (
   allBatches: GameBatch[],
   currentTime: number,
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
-  accountStartStates: { [accountId: number]: AccountStartState }
+  accountStartStates: { [accountId: number]: AccountStartState },
+  completedTasks: any[] = []
 ): TimerState => {
   const accountId = task.account.id;
   const completionRecord = accountCompletionRecords[accountId];
@@ -102,6 +103,42 @@ export const calculateTimerState = (
        };
   }
 
+  // 3. Global Cooldown Check (1 hour)
+  // Check if ANY account completed this SAME level or event within the last hour
+  const taskLevelId = task.requests[0]?.level_id;
+  const taskEventToken = task.requests[0]?.event_token;
+  
+  if (taskLevelId || taskEventToken) {
+    let globalCooldownTarget = 0;
+    const OneHourMs = 3600 * 1000;
+
+    for (const completedTask of completedTasks) {
+       // Skip own completions as they are handled by the sequential logic
+       if (completedTask.accountId === accountId) continue;
+
+       const isSameLevel = taskLevelId && completedTask.levelId === taskLevelId;
+       const isSameEvent = taskEventToken && completedTask.eventToken === taskEventToken && !taskLevelId;
+
+       if (isSameLevel || isSameEvent) {
+          const cooldownEnd = completedTask.completionTime + OneHourMs;
+          if (cooldownEnd > globalCooldownTarget) {
+            globalCooldownTarget = cooldownEnd;
+          }
+       }
+    }
+
+    if (globalCooldownTarget > currentTime) {
+      const remainingTime = Math.ceil((globalCooldownTarget - currentTime) / 1000);
+      return {
+        isReady: false,
+        isBlocked: false,
+        remainingTime,
+        comeBackTime: new Date(globalCooldownTarget),
+        reason: 'cooldown'
+      };
+    }
+  }
+
   // 3. Task is ready
   return {
     isReady: true,
@@ -168,7 +205,8 @@ export const isBatchReady = (
   allBatches: GameBatch[],
   currentTime: number,
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
-  accountStartStates: { [accountId: number]: AccountStartState }
+  accountStartStates: { [accountId: number]: AccountStartState },
+  completedTasks: any[] = []
 ): boolean => {
   return batch.tasks.every(task => {
     const timerState = calculateTimerState(
@@ -177,7 +215,8 @@ export const isBatchReady = (
       allBatches,
       currentTime,
       accountCompletionRecords,
-      accountStartStates
+      accountStartStates,
+      completedTasks
     );
     return timerState.isReady;
   });

@@ -77,4 +77,5 @@ export interface TaskItemProps {
     accountStartStates: { [accountId: number]: AccountStartState };
     batchIndex: number;
     allBatches: GameBatch[];
+    completedTasks: CompletedDailyTask[];
 }

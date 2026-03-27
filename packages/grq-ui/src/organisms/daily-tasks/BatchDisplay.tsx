@@ -12,6 +12,7 @@ interface BatchDisplayProps {
   accountStartStates: { [accountId: number]: AccountStartState };
   onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
+  completedTasks?: any[];
   showProxyNotice?: boolean;
   isLastBatch?: boolean;
 }
@@ -24,6 +25,7 @@ export const BatchDisplay: React.FC<BatchDisplayProps> = ({
   accountStartStates,
   onCompleteTask,
   onCopyRequest,
+  completedTasks = [],
   showProxyNotice = true,
   isLastBatch = false,
 }) => {
@@ -45,6 +47,7 @@ export const BatchDisplay: React.FC<BatchDisplayProps> = ({
         accountStartStates={accountStartStates}
         onCompleteTask={onCompleteTask}
         onCopyRequest={onCopyRequest}
+        completedTasks={completedTasks}
       />
 
       {/* Separator and proxy change notice */}

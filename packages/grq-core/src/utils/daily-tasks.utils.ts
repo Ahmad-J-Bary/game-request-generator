@@ -57,7 +57,8 @@ export const checkTaskReadiness = (
     allBatches: GameBatch[],
     currentTime: number,
     accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
-    accountStartStates: { [accountId: number]: AccountStartState }
+    accountStartStates: { [accountId: number]: AccountStartState },
+    completedTasks: any[] = []
 ): boolean => {
     const timerState = calculateTimerState(
         task,
@@ -65,7 +66,8 @@ export const checkTaskReadiness = (
         allBatches,
         currentTime,
         accountCompletionRecords,
-        accountStartStates
+        accountStartStates,
+        completedTasks
     );
     return timerState.isReady;
 };
@@ -80,7 +82,8 @@ export const getTaskReadinessDetails = (
     allBatches: GameBatch[],
     currentTime: number,
     accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
-    accountStartStates: { [accountId: number]: AccountStartState }
+    accountStartStates: { [accountId: number]: AccountStartState },
+    completedTasks: any[] = []
 ) => {
     const timerState = calculateTimerState(
         task,
@@ -88,7 +91,8 @@ export const getTaskReadinessDetails = (
         allBatches,
         currentTime,
         accountCompletionRecords,
-        accountStartStates
+        accountStartStates,
+        completedTasks
     );
 
     return {
