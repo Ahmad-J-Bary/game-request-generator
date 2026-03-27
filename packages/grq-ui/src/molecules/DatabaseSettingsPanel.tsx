@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Database, FolderOpen, RefreshCcw, Upload, Download } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { readFile, writeFile } from '@tauri-apps/plugin-fs';
 import { Button } from '@grq/ui/atoms/button';
 import { Input } from '@grq/ui/atoms/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@grq/ui/atoms/card';
@@ -59,7 +60,8 @@ export function DatabaseSettingsPanel() {
       if (!window.confirm(confirmMsg)) return;
 
       setImporting(true);
-      await invoke('import_database', { sourcePath: selected });
+      const fileBytes = await readFile(selected);
+      await invoke('import_database_from_bytes', { bytes: fileBytes });
       toast.success('Database imported successfully! Please restart the app for full effect.', { duration: 6000 });
     } catch (error: unknown) {
       console.error('Import error:', error);
@@ -81,7 +83,9 @@ export function DatabaseSettingsPanel() {
       if (!dest) return;
 
       setExporting(true);
-      await invoke('export_database', { destPath: dest });
+      const dbBytes = await invoke<number[]>('export_database_to_bytes');
+      const uint8Array = new Uint8Array(dbBytes);
+      await writeFile(dest, uint8Array);
       toast.success(`Database exported to:\n${dest}`, { duration: 5000 });
     } catch (error: unknown) {
       console.error('Export error:', error);

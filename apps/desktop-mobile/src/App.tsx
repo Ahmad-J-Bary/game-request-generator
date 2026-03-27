@@ -36,8 +36,8 @@ function GamesTablePage() {
 // Wrapper ensures GameDetailPage remounts when navigating to a different game,
 // resetting layout/mode state to defaults without needing a useEffect.
 function GameDetailPageWrapper() {
-  const { id } = useParams();
-  return <GameDetailPage key={id} />;
+  useParams(); // consume URL params to re-render, but id isn't needed here anymore
+  return <GameDetailPage />;
 }
 
 const App = () => (

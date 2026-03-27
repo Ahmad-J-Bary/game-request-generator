@@ -106,6 +106,45 @@ fn export_database(
 }
 
 #[tauri::command]
+fn import_database_from_bytes(
+    app: tauri::AppHandle,
+    state: tauri::State<AppState>,
+    bytes: Vec<u8>,
+) -> Result<(), String> {
+    let config = ConfigService::load(&app);
+    let internal_db_path = if let Some(path) = config.db_path {
+        path
+    } else {
+        let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        data_dir.join("database.sqlite").to_string_lossy().to_string()
+    };
+
+    // Close existing DB connections before replacing the file
+    let _guard = state.db.lock().unwrap();
+
+    std::fs::write(&internal_db_path, bytes)
+        .map_err(|e| format!("Failed to write imported database: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn export_database_to_bytes(
+    app: tauri::AppHandle,
+) -> Result<Vec<u8>, String> {
+    let config = ConfigService::load(&app);
+    let internal_db_path = if let Some(path) = config.db_path {
+        path
+    } else {
+        let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        data_dir.join("database.sqlite").to_string_lossy().to_string()
+    };
+
+    std::fs::read(&internal_db_path)
+        .map_err(|e| format!("Failed to read internal database: {}", e))
+}
+
+#[tauri::command]
 fn add_game(state: tauri::State<AppState>, request: CreateGameRequest) -> Result<i64, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
@@ -853,6 +892,8 @@ pub fn run() {
             import_request_templates,
             import_database,
             export_database,
+            import_database_from_bytes,
+            export_database_to_bytes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

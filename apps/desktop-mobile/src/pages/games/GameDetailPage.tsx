@@ -66,6 +66,14 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
   const [editedLevels, setEditedLevels] = useState<Level[]>([]);
   const [editedPurchaseEvents, setEditedPurchaseEvents] = useState<PurchaseEvent[]>([]);
 
+  const [prevGameId, setPrevGameId] = useState(gameId);
+  if (gameId !== prevGameId) {
+    setPrevGameId(gameId);
+    setIsEditMode(false);
+    setEditedLevels([]);
+    setEditedPurchaseEvents([]);
+  };
+
   // Game Creation State
   const handleCreateGameAsync = async (name: string) => {
     try {
@@ -78,9 +86,6 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
         console.error('Failed to create game:', error);
     }
   };
-
-  // Layout and mode reset to defaults automatically because the component remounts
-  // on game change via key={id} in App.tsx (GameDetailPageWrapper).
 
   // Init logic moved to handleEditToggle to avoid cascading renders
 
