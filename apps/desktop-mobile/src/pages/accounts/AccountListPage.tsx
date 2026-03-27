@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAccounts } from '@grq/core/hooks/useAccounts';
-import { useLevels } from '@grq/core/hooks/useLevels';
 import { formatTimeAMPM } from '@grq/core/services/excel/excel-date-utils';
 import { Button } from '@grq/ui/atoms/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@grq/ui/atoms/card';
@@ -37,7 +36,6 @@ export default function AccountListPage() {
     locationState?.selectedGameId
   );
   const { accounts, loading, deleteAccount } = useAccounts(selectedGameId);
-  const { levels } = useLevels(selectedGameId);
   const [showDelete, setShowDelete] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -54,7 +52,7 @@ export default function AccountListPage() {
   };
 
   const handleViewNavigate = (account: Account) => {
-    navigate(`/accounts/${account.id}`, { state: { account, levels } });
+    navigate(`/accounts/${account.id}`, { state: { account } });
   };
 
   const confirmDelete = (account: Account) => {

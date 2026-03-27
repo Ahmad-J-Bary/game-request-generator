@@ -11,13 +11,27 @@ impl GameService {
     }
 
     pub fn create_game(&self, conn: &Connection, request: CreateGameRequest) -> Result<i64, String> {
-        conn.execute(
+        // Use a transaction to ensure both game and default branch are created
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
+        tx.execute(
             "INSERT INTO games (name) VALUES (?1)",
             params![request.name],
         )
         .map_err(|e| format!("Failed to create game: {}", e))?;
 
-        Ok(conn.last_insert_rowid())
+        let game_id = tx.last_insert_rowid();
+
+        // Create the default branch for the new game
+        tx.execute(
+            "INSERT INTO game_branches (game_id, name, is_default) VALUES (?1, ?2, ?3)",
+            params![game_id, "Default", 1],
+        )
+        .map_err(|e| format!("Failed to create default branch: {}", e))?;
+
+        tx.commit().map_err(|e| e.to_string())?;
+
+        Ok(game_id)
     }
 
     pub fn get_games(&self, conn: &Connection) -> Result<Vec<Game>, String> {

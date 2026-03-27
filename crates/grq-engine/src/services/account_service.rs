@@ -135,8 +135,10 @@ impl AccountService {
         game_id: i64,
     ) -> Result<Vec<Account>, String> {
         let mut stmt = conn.prepare(
-            "SELECT id, game_id, branch_id, name, start_date, start_time, request_template, created_at, package_id, proxy_state
-             FROM accounts WHERE game_id = ?1 ORDER BY created_at"
+            "SELECT a.id, a.game_id, a.branch_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, a.package_id, a.proxy_state, b.name as branch_name
+             FROM accounts a
+             LEFT JOIN game_branches b ON a.branch_id = b.id
+             WHERE a.game_id = ?1 ORDER BY a.created_at"
         )
         .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
@@ -153,6 +155,7 @@ impl AccountService {
                     created_at: row.get(7).ok(),
                     package_id: row.get(8).ok(),
                     proxy_state: row.get(9).ok(),
+                    branch_name: row.get(10).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query accounts: {}", e))?;
@@ -215,8 +218,10 @@ impl AccountService {
 
     pub fn get_account_by_id(&self, conn: &Connection, id: i64) -> Result<Option<Account>, String> {
         conn.query_row(
-            "SELECT id, game_id, branch_id, name, start_date, start_time, request_template, created_at, package_id, proxy_state
-             FROM accounts WHERE id = ?1",
+            "SELECT a.id, a.game_id, a.branch_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, a.package_id, a.proxy_state, b.name as branch_name
+             FROM accounts a
+             LEFT JOIN game_branches b ON a.branch_id = b.id
+             WHERE a.id = ?1",
             params![id],
             |row| {
                 Ok(Account {
@@ -230,6 +235,7 @@ impl AccountService {
                     created_at: row.get(7).ok(),
                     package_id: row.get(8).ok(),
                     proxy_state: row.get(9).ok(),
+                    branch_name: row.get(10).ok(),
                 })
             }
         )
@@ -239,8 +245,10 @@ impl AccountService {
 
     pub fn get_all_accounts(&self, conn: &Connection) -> Result<Vec<Account>, String> {
         let mut stmt = conn.prepare(
-            "SELECT id, game_id, branch_id, name, start_date, start_time, request_template, created_at, package_id, proxy_state
-             FROM accounts ORDER BY package_id"
+            "SELECT a.id, a.game_id, a.branch_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, a.package_id, a.proxy_state, b.name as branch_name
+             FROM accounts a
+             LEFT JOIN game_branches b ON a.branch_id = b.id
+             ORDER BY a.package_id"
         )
         .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
@@ -257,6 +265,7 @@ impl AccountService {
                     created_at: row.get(7).ok(),
                     package_id: row.get(8).ok(),
                     proxy_state: row.get(9).ok(),
+                    branch_name: row.get(10).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query all accounts: {}", e))?;

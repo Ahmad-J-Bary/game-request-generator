@@ -21,6 +21,7 @@ interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   gameId?: number;
+  branchId?: number;
   accountId?: number;
   exportType: 'game' | 'account' | 'all';
   layout?: 'horizontal' | 'vertical';
@@ -33,7 +34,7 @@ interface ExportDialogProps {
   purchaseProgress?: any;
 }
 
-export function ExportDialog({ open, onOpenChange, gameId, accountId, exportType, layout = 'vertical', colorSettings, theme = 'light', source, mode = 'event-only', data, levelsProgress, purchaseProgress }: ExportDialogProps) {
+export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, exportType, layout = 'vertical', colorSettings, theme = 'light', source, mode = 'event-only', data, levelsProgress, purchaseProgress }: ExportDialogProps) {
   const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
 
@@ -84,7 +85,7 @@ export function ExportDialog({ open, onOpenChange, gameId, accountId, exportType
           switch (exportType) {
             case 'game':
               if (gameId) {
-                success = await ExcelService.exportGameData(gameId, layout, colorSettings, theme, data, levelsProgress, purchaseProgress);
+                success = await ExcelService.exportGameData(gameId, layout, colorSettings, theme, data, levelsProgress, purchaseProgress, branchId);
               }
               break;
             case 'all':

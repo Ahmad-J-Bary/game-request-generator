@@ -82,7 +82,6 @@ export default function AccountDetailPage() {
 
   const state = (location.state as { account?: Account; levels?: Level[] }) || {};
   const stateAccount: Account | undefined = state.account;
-  const stateLevels: Level[] | undefined = state.levels;
 
   const [fetchedAccount, setFetchedAccount] = useState<Account | null>(null);
 
@@ -95,12 +94,12 @@ export default function AccountDetailPage() {
   }, [id, stateAccount]);
 
   const account = stateAccount ?? fetchedAccount;
-  const gameIdForLevels = account?.game_id ?? undefined;
+  const branchId = account?.branch_id ?? undefined;
 
-  const { accounts } = useAccounts(gameIdForLevels); 
+  const { accounts } = useAccounts(account?.game_id); 
 
-  const { levels: fetchedLevels = [] } = useLevels(gameIdForLevels);
-  const { events: purchaseEvents = [] } = usePurchaseEvents(gameIdForLevels);
+  const { levels: fetchedLevels = [] } = useLevels(branchId);
+  const { events: purchaseEvents = [] } = usePurchaseEvents(branchId);
 
   const { prevAccount, nextAccount } = useMemo(() => {
     if (!account || !accounts) return { prevAccount: null, nextAccount: null };
@@ -132,7 +131,9 @@ export default function AccountDetailPage() {
   const accountId = parseInt(id || '0', 10);
   const { levelsProgress, purchaseProgress } = useProgress(accountId);
 
-  const levels = stateLevels ?? fetchedLevels;
+  // Use fetched levels directly to ensure branch isolation.
+  // Ignore stateLevels as they might be from a different branch if navigated from AccountListPage.
+  const levels = fetchedLevels;
 
   const [layout, setLayout] = useState<Layout>('vertical');
   const [mode, setMode] = useState<Mode>('event-only');
@@ -215,7 +216,7 @@ export default function AccountDetailPage() {
               time_spent: syntheticLevel.timeSpent || 0,
               is_bonus: syntheticLevel.kind === 'level' ? syntheticLevel.isBonus : false
             };
-            const existingLevels = await TauriService.getGameLevels(account!.game_id);
+            const existingLevels = await TauriService.getGameLevels(account!.branch_id!);
             const existingLevel = existingLevels.find(l => l.days_offset === newLevel.days_offset && l.event_token === newLevel.event_token);
             if (existingLevel) actualLevelId = existingLevel.id.toString();
             else {
@@ -447,7 +448,17 @@ export default function AccountDetailPage() {
                       </Badge>
                     )}
                 </div>
-                <div className="text-xs md:text-sm text-muted-foreground">{account.start_date} • {account.start_time}</div>
+                <div className="text-xs md:text-sm text-muted-foreground flex items-center gap-2">
+                    {account.start_date} • {account.start_time}
+                    {account.branch_name && (
+                        <>
+                            <span className="opacity-30">•</span>
+                            <span className="font-medium text-primary/80 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10">
+                                {account.branch_name}
+                            </span>
+                        </>
+                    )}
+                </div>
             </div>
             
             <div className="flex items-center gap-2 self-end lg:self-auto">
@@ -564,29 +575,38 @@ export default function AccountDetailPage() {
                 <BackButton />
             </div>
         </div>
-        <Card>
-            <CardContent className="p-0 overflow-auto">
-            <AccountDataTable
-                columns={columns}
-                computedLevelDates={computedLevelDates}
-                layout={layout}
-                levelsProgress={levelsProgress}
-                purchaseProgress={purchaseProgress}
-                isEditMode={isEditMode}
-                tempProgress={tempProgress}
-                onProgressChange={handleProgressChange}
-                onPurchaseDateChange={handlePurchaseDateChange}
-                tempPurchaseDates={tempPurchaseDates}
-                levels={levels}
-                mode={mode}
-            />
-            </CardContent>
-        </Card>
-        <ImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} gameId={gameIdForLevels} />
+        <section className="space-y-0.5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex items-center gap-3 px-4 py-2 bg-accent/20 rounded-t-xl border-x border-t border-border/50">
+                <div className="h-5 w-1 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
+                <h3 className="text-sm font-bold text-foreground tracking-tight flex items-center gap-2 flex-1">
+                    {account.branch_name || 'Default Branch'}
+                </h3>
+            </div>
+            <Card className="rounded-t-none border-t-0 shadow-lg shadow-black/5 bg-background/40 backdrop-blur-sm">
+                <CardContent className="p-0 overflow-auto max-h-[600px] custom-scrollbar">
+                    <AccountDataTable
+                        columns={columns}
+                        computedLevelDates={computedLevelDates}
+                        layout={layout}
+                        levelsProgress={levelsProgress}
+                        purchaseProgress={purchaseProgress}
+                        isEditMode={isEditMode}
+                        tempProgress={tempProgress}
+                        onProgressChange={handleProgressChange}
+                        onPurchaseDateChange={handlePurchaseDateChange}
+                        tempPurchaseDates={tempPurchaseDates}
+                        levels={levels}
+                        mode={mode}
+                    />
+                </CardContent>
+            </Card>
+        </section>
+        <ImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} gameId={account?.game_id} branchId={account?.branch_id} />
         <ExportDialog
             open={showExportDialog}
             onOpenChange={setShowExportDialog}
-            gameId={gameIdForLevels}
+            gameId={account?.game_id}
+            branchId={account?.branch_id}
             accountId={accountId}
             exportType="account"
             layout={layout}

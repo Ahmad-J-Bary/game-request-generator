@@ -9,6 +9,7 @@ export interface Account {
   created_at?: string;
   package_id?: number;
   proxy_state?: string;
+  branch_name?: string | null;
 }
 
 export interface CompletedAccount extends Account {

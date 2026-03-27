@@ -20,9 +20,10 @@ interface ImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   gameId?: number;
+  branchId?: number;
 }
 
-export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) {
+export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDialogProps) {
   const { t } = useTranslation();
   const [isImporting, setIsImporting] = useState(false);
   const [detectedImportType, setDetectedImportType] = useState<'excel' | 'request-templates' | null>(null);
@@ -153,6 +154,7 @@ export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) 
             const levelId = await TauriService.addLevel({
               ...level,
               game_id: targetGameId,
+              branch_id: branchId || undefined,
               is_bonus: level.is_bonus || false,
             } as any);
             
@@ -183,6 +185,7 @@ export function ImportDialog({ open, onOpenChange, gameId }: ImportDialogProps) 
             const peId = await TauriService.addPurchaseEvent({
               ...event,
               game_id: targetGameId,
+              branch_id: branchId || undefined,
               is_restricted: event.is_restricted || false,
             } as any);
             

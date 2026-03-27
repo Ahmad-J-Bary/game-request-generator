@@ -7,6 +7,7 @@ pub struct Account {
     pub id: i64,
     pub game_id: i64,
     pub branch_id: Option<i64>,
+    pub branch_name: Option<String>,
     pub name: String,
     pub start_date: String,
     pub start_time: String,

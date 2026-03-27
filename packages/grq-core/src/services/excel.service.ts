@@ -184,8 +184,8 @@ export class ExcelService {
       if (!account) return false;
 
       const [levels, purchaseEvents] = await Promise.all([
-        TauriService.getGameLevels(account.game_id),
-        TauriService.getGamePurchaseEvents(account.game_id)
+        TauriService.getGameLevels(account.branch_id || 0),
+        TauriService.getGamePurchaseEvents(account.branch_id || 0)
       ]);
 
       return await this.exportAccountDetailToExcel(account, levels, purchaseEvents, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress);
@@ -471,11 +471,21 @@ export class ExcelService {
   /**
    * Export game data with matrix layout
    */
-  static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any, purchaseProgress?: any): Promise<boolean> {
+  static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any, purchaseProgress?: any, branchId?: number): Promise<boolean> {
     try {
+      // If branchId is not provided, we need to find the default branch or error out
+      // For now, if no branchId, we'll try to find branches and use the first one
+      let effectiveBranchId = branchId;
+      if (!effectiveBranchId) {
+        const branches = await TauriService.getGameBranches(gameId);
+        effectiveBranchId = branches.find(b => b.is_default)?.id || branches[0]?.id;
+      }
+
+      if (!effectiveBranchId) return false;
+
       const [levels, purchaseEvents, accounts] = await Promise.all([
-        TauriService.getGameLevels(gameId),
-        TauriService.getGamePurchaseEvents(gameId),
+        TauriService.getGameLevels(effectiveBranchId),
+        TauriService.getGamePurchaseEvents(effectiveBranchId),
         TauriService.getAccounts(gameId)
       ]);
 
@@ -503,9 +513,15 @@ export class ExcelService {
 
       // Process each game and create sheets
       for (const game of games) {
+        // For export all games, we use the default branch for each game
+        const branches = await TauriService.getGameBranches(game.id);
+        const defaultBranch = branches.find(b => b.is_default) || branches[0];
+        
+        if (!defaultBranch) continue;
+
         const [levels, purchaseEvents, accounts] = await Promise.all([
-          TauriService.getGameLevels(game.id),
-          TauriService.getGamePurchaseEvents(game.id),
+          TauriService.getGameLevels(defaultBranch.id),
+          TauriService.getGamePurchaseEvents(defaultBranch.id),
           TauriService.getAccounts(game.id)
         ]);
 

@@ -464,8 +464,8 @@ export default function AccountFormPage() {
             <div className="space-y-2">
               <Label>{t('branches.branch', 'Branch')}</Label>
               <Select 
-                value={selectedBranchId?.toString()} 
-                onValueChange={(val) => setSelectedBranchId(parseInt(val, 10))}
+                value={selectedBranchId?.toString() || ""} 
+                onValueChange={(val) => setSelectedBranchId(val === "" ? null : parseInt(val, 10))}
               >
                 <SelectTrigger>
                     <SelectValue placeholder={t('branches.selectBranch', 'Select Branch')} />
