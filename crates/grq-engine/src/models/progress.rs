@@ -11,13 +11,13 @@ pub struct AccountLevelProgress {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct CreateAccountLevelProgressRequest {
     pub account_id: i64,
     pub level_id: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct UpdateAccountLevelProgressRequest {
     pub account_id: i64,
     pub level_id: i64,
@@ -35,7 +35,7 @@ pub struct AccountPurchaseEventProgress {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct CreateAccountPurchaseEventProgressRequest {
     pub account_id: i64,
     pub purchase_event_id: i64,
@@ -43,7 +43,7 @@ pub struct CreateAccountPurchaseEventProgressRequest {
     pub time_spent: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct UpdateAccountPurchaseEventProgressRequest {
     pub account_id: i64,
     pub purchase_event_id: i64,

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Settings } from 'lucide-react';
 import { ColorSettingsPanel } from '@grq/ui/molecules/ColorSettingsPanel';
 import { DatabaseSettingsPanel } from '@grq/ui/molecules/DatabaseSettingsPanel';
+import { TelegramSettingsPanel } from '@grq/ui/molecules/TelegramSettingsPanel';
 
 export default function SettingsPage() {
   const { t } = useTranslation();
@@ -15,6 +16,7 @@ export default function SettingsPage() {
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('settings.title')}</h1>
       </div>
 
+      <TelegramSettingsPanel />
       <DatabaseSettingsPanel />
       <ColorSettingsPanel />
     </div>

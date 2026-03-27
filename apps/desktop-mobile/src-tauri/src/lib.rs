@@ -26,6 +26,7 @@ use grq_engine::services::progress_service::ProgressService;
 use grq_engine::services::purchase_event_service::PurchaseEventService;
 
 use grq_engine::db::config::ConfigService;
+use grq_engine::services::telegram_service::TelegramService;
 
 // === حالة التطبيق ===
 struct AppState {
@@ -142,6 +143,44 @@ fn export_database_to_bytes(
 
     std::fs::read(&internal_db_path)
         .map_err(|e| format!("Failed to read internal database: {}", e))
+}
+
+// ==================== أوامر تيليجرام ====================
+#[tauri::command]
+async fn get_telegram_config(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let config = ConfigService::load(&app);
+    Ok(serde_json::json!({
+        "bot_token": config.telegram_bot_token,
+        "chat_id": config.telegram_chat_id,
+        "enabled": config.telegram_enabled,
+        "auto_send": config.telegram_auto_send,
+    }))
+}
+
+#[tauri::command]
+async fn set_telegram_config(
+    app: tauri::AppHandle,
+    bot_token: Option<String>,
+    chat_id: Option<String>,
+    enabled: bool,
+    auto_send: bool,
+) -> Result<(), String> {
+    let mut config = ConfigService::load(&app);
+    config.telegram_bot_token = bot_token;
+    config.telegram_chat_id = chat_id;
+    config.telegram_enabled = enabled;
+    config.telegram_auto_send = auto_send;
+    ConfigService::save(&app, &config)
+}
+
+#[tauri::command]
+async fn test_telegram_connection(bot_token: String, chat_id: String) -> Result<(), String> {
+    TelegramService::test_connection(&bot_token, &chat_id).await
+}
+
+#[tauri::command]
+async fn send_to_telegram(app: tauri::AppHandle, message: String) -> Result<(), String> {
+    TelegramService::send_message(&app, &message).await
 }
 
 #[tauri::command]
@@ -358,13 +397,36 @@ fn create_level_progress(
 
 #[tauri::command]
 fn update_level_progress(
+    app: tauri::AppHandle,
     state: tauri::State<AppState>,
     request: UpdateAccountLevelProgressRequest,
 ) -> Result<bool, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = ProgressService::new();
-    service.update_level_progress(conn, request)
+    let result = service.update_level_progress(conn, request.clone())?;
+
+    if result && request.is_completed {
+        let account_service = AccountService::new();
+        if account_service.is_account_completed(conn, request.account_id)? {
+            let config = ConfigService::load(&app);
+            if config.telegram_enabled && config.telegram_auto_send {
+                if let Some(account) = account_service.get_account_by_id(conn, request.account_id)? {
+                    let game_service = GameService::new();
+                    let game_name = game_service.get_game_by_id(conn, account.game_id)?
+                        .map(|g| g.name).unwrap_or_else(|| "Unknown".to_string());
+                    
+                    let message = format!("🏆 <b>Legendary Account!</b>\n\n<b>Name:</b> {}\n<b>Game:</b> {}\n<b>Status:</b> 100% COMPLETED ✅\n\n<i>Reported via Game Request Generator</i>", account.name, game_name);
+                    let handle = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = TelegramService::send_message(&handle, &message).await;
+                    });
+                }
+            }
+        }
+    }
+    
+    Ok(result)
 }
 
 #[tauri::command]
@@ -392,13 +454,36 @@ fn create_purchase_event_progress(
 
 #[tauri::command]
 fn update_purchase_event_progress(
+    app: tauri::AppHandle,
     state: tauri::State<AppState>,
     request: UpdateAccountPurchaseEventProgressRequest,
 ) -> Result<bool, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = ProgressService::new();
-    service.update_purchase_event_progress(conn, request)
+    let result = service.update_purchase_event_progress(conn, request.clone())?;
+
+    if result && request.is_completed.unwrap_or(false) {
+        let account_service = AccountService::new();
+        if account_service.is_account_completed(conn, request.account_id)? {
+            let config = ConfigService::load(&app);
+            if config.telegram_enabled && config.telegram_auto_send {
+                if let Some(account) = account_service.get_account_by_id(conn, request.account_id)? {
+                    let game_service = GameService::new();
+                    let game_name = game_service.get_game_by_id(conn, account.game_id)?
+                        .map(|g| g.name).unwrap_or_else(|| "Unknown".to_string());
+                    
+                    let message = format!("🏆 <b>Legendary Account!</b>\n\n<b>Name:</b> {}\n<b>Game:</b> {}\n<b>Status:</b> 100% COMPLETED ✅\n\n<i>Reported via Game Request Generator</i>", account.name, game_name);
+                    let handle = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = TelegramService::send_message(&handle, &message).await;
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -904,6 +989,10 @@ pub fn run() {
             export_database,
             import_database_from_bytes,
             export_database_to_bytes,
+            get_telegram_config,
+            set_telegram_config,
+            test_telegram_connection,
+            send_to_telegram,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -9,11 +9,21 @@ use tauri::Manager;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AppConfig {
     pub db_path: Option<String>,
+    pub telegram_bot_token: Option<String>,
+    pub telegram_chat_id: Option<String>,
+    pub telegram_enabled: bool,
+    pub telegram_auto_send: bool,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { db_path: None }
+        Self { 
+            db_path: None,
+            telegram_bot_token: None,
+            telegram_chat_id: None,
+            telegram_enabled: false,
+            telegram_auto_send: false,
+        }
     }
 }
 

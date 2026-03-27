@@ -253,4 +253,27 @@ impl AccountService {
 
         Ok(conn.changes() > 0)
     }
+
+    pub fn is_account_completed(&self, conn: &Connection, account_id: i64) -> Result<bool, String> {
+        let is_completed: bool = conn.query_row(
+            "SELECT 
+                ((SELECT COUNT(*) FROM levels l WHERE l.game_id = a.game_id) > 0
+                AND 
+                (SELECT COUNT(*) FROM levels l WHERE l.game_id = a.game_id) = 
+                (SELECT COUNT(*) FROM account_level_progress alp 
+                 JOIN levels l ON alp.level_id = l.id 
+                 WHERE alp.account_id = a.id AND alp.is_completed = 1)
+                AND
+                (SELECT COUNT(*) FROM purchase_events pe WHERE pe.game_id = a.game_id) =
+                (SELECT COUNT(*) FROM account_purchase_event_progress apep
+                 JOIN purchase_events pe ON apep.purchase_event_id = pe.id
+                 WHERE apep.account_id = a.id AND apep.is_completed = 1)) as is_comp
+            FROM accounts a
+            WHERE a.id = ?1",
+            params![account_id],
+            |row| row.get(0)
+        ).map_err(|e| format!("Failed to check account completion: {}", e))?;
+
+        Ok(is_completed)
+    }
 }

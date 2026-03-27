@@ -9,13 +9,15 @@ import { Button } from '@grq/ui/atoms/button';
 import { 
   Gamepad2, Users, CheckCircle, Clock, ArrowRight, 
   Trash2, ShieldCheck, MapPin, TrendingUp,
-  LayoutDashboard, Zap, Star
+  LayoutDashboard, Zap, Star, Send
 } from 'lucide-react';
 import { TauriService } from '@grq/core/services/tauri.service';
 import type { CompletedAccount, Account, CompletedDailyTask } from '@grq/api-bindings';
+import { invoke } from '@tauri-apps/api/core';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { Badge } from '@grq/ui/atoms/badge';
 import { Progress } from '@grq/ui/atoms/progress';
+
 export default function Dashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -51,6 +53,18 @@ export default function Dashboard() {
       await loadData();
     } catch (e) {
       NotificationService.error(t('dashboard.deleteFailed', 'Failed to delete account.'));
+    }
+  };
+
+  const handleSendToTelegram = async (account: CompletedAccount) => {
+    try {
+      const message = `🏆 <b>Legendary Account!</b>\n\n<b>Name:</b> ${account.name}\n<b>Game:</b> ${account.game_name}\n<b>Status:</b> 100% COMPLETED ✅\n\n<i>Reported via Game Request Generator</i>`;
+      await invoke('send_to_telegram', { message });
+      NotificationService.success(`Report sent to Telegram for ${account.name}!`);
+    } catch (e: unknown) {
+      console.error(e);
+      const error = e as Error;
+      NotificationService.error(error.message || 'Failed to send to Telegram. Check settings.');
     }
   };
 
@@ -108,7 +122,7 @@ export default function Dashboard() {
     'New York': allAccounts.filter(a => a.proxy_state === 'New York').length,
   };
 
-  const successRate = todayTasksCount > 0 
+  const successRate = (todayTasksCount + completedTodayCount) > 0 
     ? Math.round((completedTodayCount / (todayTasksCount + completedTodayCount)) * 100) 
     : 0;
 
@@ -301,7 +315,16 @@ export default function Dashboard() {
                   key={account.id} 
                   className="group relative flex flex-col rounded-3xl border-2 bg-card p-6 shadow-sm hover:shadow-xl hover:border-green-500/50 hover:-translate-y-1 transition-all duration-300 overflow-hidden"
                 >
-                  <div className="absolute top-0 right-0 p-4 translate-x-4 -translate-y-4 group-hover:translate-x-0 group-hover:translate-y-0 transition-all opacity-0 group-hover:opacity-100 z-20">
+                  <div className="absolute top-0 right-0 p-4 flex gap-2 translate-x-4 -translate-y-4 group-hover:translate-x-0 group-hover:translate-y-0 transition-all opacity-0 group-hover:opacity-100 z-20">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 rounded-full shadow-lg bg-background/80 backdrop-blur-sm border-primary/20 hover:border-primary hover:text-primary"
+                      onClick={() => handleSendToTelegram(account)}
+                      title="Send to Telegram"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="destructive"
                       size="icon"
