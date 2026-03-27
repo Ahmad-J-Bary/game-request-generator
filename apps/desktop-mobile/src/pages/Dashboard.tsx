@@ -58,7 +58,7 @@ export default function Dashboard() {
 
   const handleSendToTelegram = async (account: CompletedAccount) => {
     try {
-      const message = `🏆 <b>Legendary Account!</b>\n\n<b>Name:</b> ${account.name}\n<b>Game:</b> ${account.game_name}\n<b>Status:</b> 100% COMPLETED ✅\n\n<i>Reported via Game Request Generator</i>`;
+      const message = `<b>🏆 Account Name:</b> ${account.name}\n<b>Game:</b> ${account.game_name}\n<b>Status:</b> 100% COMPLETED ✅\n\n<i>Reported via Game Request Generator</i>`;
       await invoke('send_to_telegram', { message });
       NotificationService.success(`Report sent to Telegram for ${account.name}!`);
     } catch (e: unknown) {

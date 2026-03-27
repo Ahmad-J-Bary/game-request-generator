@@ -1,11 +1,11 @@
 // src-tauri/src/lib.rs
 
+use std::path::Path;
 use std::sync::Mutex;
 use tauri::Manager;
-use std::path::Path;
 
-use grq_engine::db::Database;
 use chrono::Datelike;
+use grq_engine::db::Database;
 
 use grq_engine::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
 use grq_engine::models::game::{CreateGameRequest, Game, UpdateGameRequest};
@@ -67,7 +67,10 @@ fn import_database(
         path
     } else {
         let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        data_dir.join("database.sqlite").to_string_lossy().to_string()
+        data_dir
+            .join("database.sqlite")
+            .to_string_lossy()
+            .to_string()
     };
 
     // Validate source file exists
@@ -88,16 +91,16 @@ fn import_database(
 
 /// Export: copies the internal DB to a given destination path
 #[tauri::command]
-fn export_database(
-    app: tauri::AppHandle,
-    dest_path: String,
-) -> Result<(), String> {
+fn export_database(app: tauri::AppHandle, dest_path: String) -> Result<(), String> {
     let config = ConfigService::load(&app);
     let internal_db_path = if let Some(path) = config.db_path {
         path
     } else {
         let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        data_dir.join("database.sqlite").to_string_lossy().to_string()
+        data_dir
+            .join("database.sqlite")
+            .to_string_lossy()
+            .to_string()
     };
 
     std::fs::copy(&internal_db_path, &dest_path)
@@ -117,7 +120,10 @@ fn import_database_from_bytes(
         path
     } else {
         let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        data_dir.join("database.sqlite").to_string_lossy().to_string()
+        data_dir
+            .join("database.sqlite")
+            .to_string_lossy()
+            .to_string()
     };
 
     // Close existing DB connections before replacing the file
@@ -130,19 +136,19 @@ fn import_database_from_bytes(
 }
 
 #[tauri::command]
-fn export_database_to_bytes(
-    app: tauri::AppHandle,
-) -> Result<Vec<u8>, String> {
+fn export_database_to_bytes(app: tauri::AppHandle) -> Result<Vec<u8>, String> {
     let config = ConfigService::load(&app);
     let internal_db_path = if let Some(path) = config.db_path {
         path
     } else {
         let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        data_dir.join("database.sqlite").to_string_lossy().to_string()
+        data_dir
+            .join("database.sqlite")
+            .to_string_lossy()
+            .to_string()
     };
 
-    std::fs::read(&internal_db_path)
-        .map_err(|e| format!("Failed to read internal database: {}", e))
+    std::fs::read(&internal_db_path).map_err(|e| format!("Failed to read internal database: {}", e))
 }
 
 // ==================== أوامر تيليجرام ====================
@@ -411,12 +417,16 @@ fn update_level_progress(
         if account_service.is_account_completed(conn, request.account_id)? {
             let config = ConfigService::load(&app);
             if config.telegram_enabled && config.telegram_auto_send {
-                if let Some(account) = account_service.get_account_by_id(conn, request.account_id)? {
+                if let Some(account) =
+                    account_service.get_account_by_id(conn, request.account_id)?
+                {
                     let game_service = GameService::new();
-                    let game_name = game_service.get_game_by_id(conn, account.game_id)?
-                        .map(|g| g.name).unwrap_or_else(|| "Unknown".to_string());
-                    
-                    let message = format!("🏆 <b>Legendary Account!</b>\n\n<b>Name:</b> {}\n<b>Game:</b> {}\n<b>Status:</b> 100% COMPLETED ✅\n\n<i>Reported via Game Request Generator</i>", account.name, game_name);
+                    let game_name = game_service
+                        .get_game_by_id(conn, account.game_id)?
+                        .map(|g| g.name)
+                        .unwrap_or_else(|| "Unknown".to_string());
+
+                    let message = format!("<b>🏆 Account Name:</b> {}\n<b>Game:</b> {}\n<b>Status:</b> 100% COMPLETED ✅\n\n<i>Reported via Game Request Generator</i>", account.name, game_name);
                     let handle = app.clone();
                     tauri::async_runtime::spawn(async move {
                         let _ = TelegramService::send_message(&handle, &message).await;
@@ -425,7 +435,7 @@ fn update_level_progress(
             }
         }
     }
-    
+
     Ok(result)
 }
 
@@ -468,12 +478,16 @@ fn update_purchase_event_progress(
         if account_service.is_account_completed(conn, request.account_id)? {
             let config = ConfigService::load(&app);
             if config.telegram_enabled && config.telegram_auto_send {
-                if let Some(account) = account_service.get_account_by_id(conn, request.account_id)? {
+                if let Some(account) =
+                    account_service.get_account_by_id(conn, request.account_id)?
+                {
                     let game_service = GameService::new();
-                    let game_name = game_service.get_game_by_id(conn, account.game_id)?
-                        .map(|g| g.name).unwrap_or_else(|| "Unknown".to_string());
-                    
-                    let message = format!("🏆 <b>Legendary Account!</b>\n\n<b>Name:</b> {}\n<b>Game:</b> {}\n<b>Status:</b> 100% COMPLETED ✅\n\n<i>Reported via Game Request Generator</i>", account.name, game_name);
+                    let game_name = game_service
+                        .get_game_by_id(conn, account.game_id)?
+                        .map(|g| g.name)
+                        .unwrap_or_else(|| "Unknown".to_string());
+
+                    let message = format!("<b>🏆 Account Name:</b> {}\n<b>Game:</b> {}\n<b>Status:</b> 100% COMPLETED ✅\n\n<i>Reported via Game Request Generator</i>", account.name, game_name);
                     let handle = app.clone();
                     tauri::async_runtime::spawn(async move {
                         let _ = TelegramService::send_message(&handle, &message).await;
