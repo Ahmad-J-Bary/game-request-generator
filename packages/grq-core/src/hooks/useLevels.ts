@@ -53,7 +53,7 @@ export const useLevels = (branchId?: number) => {
     };
   }, [branchId, loadLevels]);
 
-  const addLevel = async (request: CreateLevelRequest) => {
+  const addLevel = useCallback(async (request: CreateLevelRequest) => {
     setLoading(true);
     setError(null);
     try {
@@ -71,9 +71,9 @@ export const useLevels = (branchId?: number) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [branchId, loadLevels]);
 
-  const updateLevel = async (request: UpdateLevelRequest) => {
+  const updateLevel = useCallback(async (request: UpdateLevelRequest) => {
     setLoading(true);
     setError(null);
     try {
@@ -94,9 +94,9 @@ export const useLevels = (branchId?: number) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [branchId, loadLevels]);
 
-  const deleteLevel = async (id: number) => {
+  const deleteLevel = useCallback(async (id: number) => {
     setLoading(true);
     setError(null);
     try {
@@ -116,7 +116,7 @@ export const useLevels = (branchId?: number) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [branchId, loadLevels]);
 
   return {
     levels,

@@ -48,7 +48,7 @@ export const usePurchaseEvents = (branchId?: number) => {
     return () => window.removeEventListener('purchase-events-updated', handler);
   }, [branchId, load]);
 
-  const add = async (request: CreatePurchaseEventRequest) => {
+  const add = useCallback(async (request: CreatePurchaseEventRequest) => {
     setLoading(true);
     setError(null);
     try {
@@ -65,9 +65,9 @@ export const usePurchaseEvents = (branchId?: number) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [branchId, load]);
 
-  const update = async (request: UpdatePurchaseEventRequest & { branch_id?: number }) => {
+  const update = useCallback(async (request: UpdatePurchaseEventRequest & { branch_id?: number }) => {
     setLoading(true);
     setError(null);
     try {
@@ -87,9 +87,9 @@ export const usePurchaseEvents = (branchId?: number) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [branchId, load]);
 
-  const remove = async (id: number) => {
+  const remove = useCallback(async (id: number) => {
     setLoading(true);
     setError(null);
     try {
@@ -108,7 +108,7 @@ export const usePurchaseEvents = (branchId?: number) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [branchId, load]);
 
   return {
     events,

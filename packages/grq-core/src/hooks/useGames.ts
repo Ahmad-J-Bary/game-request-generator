@@ -109,7 +109,7 @@ export function useGames() {
 
   // ========== Branch Methods ==========
 
-  const fetchBranches = async (gameId: number) => {
+  const fetchBranches = useCallback(async (gameId: number) => {
     try {
       setLoading(true);
       const data = await TauriService.getGameBranches(gameId);
@@ -121,9 +121,9 @@ export function useGames() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const addBranch = async (request: any) => {
+  const addBranch = useCallback(async (request: any) => {
     try {
       setLoading(true);
       const id = await TauriService.addBranch(request);
@@ -137,15 +137,14 @@ export function useGames() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const updateBranch = async (request: any) => {
+  const updateBranch = useCallback(async (request: any) => {
     try {
       setLoading(true);
       const success = await TauriService.updateBranch(request);
       if (success) {
         NotificationService.success('Branch updated successfully');
-        // We don't have gameId in request here easily unless we pass it
         window.dispatchEvent(new CustomEvent('branches-updated'));
       }
       return success;
@@ -156,9 +155,9 @@ export function useGames() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const deleteBranch = async (id: number) => {
+  const deleteBranch = useCallback(async (id: number) => {
     try {
       setLoading(true);
       const success = await TauriService.deleteBranch(id);
@@ -174,7 +173,7 @@ export function useGames() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   return {
     games,

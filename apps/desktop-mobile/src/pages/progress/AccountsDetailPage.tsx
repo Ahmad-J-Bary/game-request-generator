@@ -535,10 +535,11 @@ function AccountsDetailContent({
 
             const newLevel = {
               game_id: account.game_id,
+              branch_id: account.branch_id!,
               level_name: col.name,
               event_token: `${col.token}_day${col.daysOffset}`,
               days_offset: col.daysOffset,
-              time_spent: col.timeSpent,
+              time_spent: col.timeSpent as number,
               is_bonus: col.isBonus
             };
             

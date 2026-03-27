@@ -55,17 +55,32 @@ impl Database {
 
     /// وظيفة داخلية لإنشاء جداول المشروع
     fn create_tables(&self) -> SqlResult<()> {
-        // إنشاء الجداول الأساسية (IF NOT EXISTS)
-        self.connection.execute_batch(
+        // Disable foreign keys temporarily during structural migrations
+        self.connection.execute_batch("PRAGMA foreign_keys = OFF;")?;
+
+        let result = self.perform_migrations();
+
+        // Re-enable foreign keys
+        self.connection.execute_batch("PRAGMA foreign_keys = ON;")?;
+        
+        result
+    }
+
+    fn perform_migrations(&self) -> SqlResult<()> {
+        
+        // Start a transaction for all initialization and migrations
+        // Using unchecked_transaction because we might be doing complex DDL
+        let tx = self.connection.unchecked_transaction()?;
+
+        // 1. إنشاء الجداول الأساسية (IF NOT EXISTS)
+        tx.execute_batch(
             "
-            -- جدول الألعاب
             CREATE TABLE IF NOT EXISTS games (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
-            -- جدول الأفرع (جديد)
             CREATE TABLE IF NOT EXISTS game_branches (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 game_id INTEGER NOT NULL,
@@ -75,7 +90,6 @@ impl Database {
                 FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
             );
 
-            -- جدول الحسابات
             CREATE TABLE IF NOT EXISTS accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 game_id INTEGER NOT NULL,
@@ -91,7 +105,6 @@ impl Database {
                 FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE SET NULL
             );
 
-            -- جدول المستويات
             CREATE TABLE IF NOT EXISTS levels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 game_id INTEGER NOT NULL,
@@ -105,7 +118,6 @@ impl Database {
                 FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE CASCADE
             );
 
-            -- جدول التقدم
             CREATE TABLE IF NOT EXISTS account_level_progress (
                 account_id INTEGER NOT NULL,
                 level_id INTEGER NOT NULL,
@@ -116,7 +128,6 @@ impl Database {
                 FOREIGN KEY (level_id) REFERENCES levels(id) ON DELETE CASCADE
             );
 
-            -- جدول أحداث الشراء (إن لم يكن موجوداً)
             CREATE TABLE IF NOT EXISTS purchase_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 game_id INTEGER NOT NULL,
@@ -130,7 +141,6 @@ impl Database {
                 FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE CASCADE
             );
 
-            -- جدول تقدم أحداث الشراء
             CREATE TABLE IF NOT EXISTS account_purchase_event_progress (
                 account_id INTEGER NOT NULL,
                 purchase_event_id INTEGER NOT NULL,
@@ -145,11 +155,9 @@ impl Database {
             "
         )?;
 
-        // small helper to check column existence
+        // Helper to check column existence within transaction
         let column_exists = |table: &str, column: &str| -> SqlResult<bool> {
-            let mut stmt = self
-                .connection
-                .prepare(&format!("PRAGMA table_info({})", table))?;
+            let mut stmt = tx.prepare(&format!("PRAGMA table_info({})", table))?;
             let mut rows = stmt.query([])?;
             while let Some(row) = rows.next()? {
                 let name: String = row.get(1)?;
@@ -160,228 +168,178 @@ impl Database {
             Ok(false)
         };
 
-        // Ensure purchase_events table exists and has expected columns (handled previously)
-        // create table if missing
-        let mut tbl_stmt = self.connection.prepare(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='purchase_events'",
-        )?;
-        let mut tbl_rows = tbl_stmt.query([])?;
-        let purchase_events_exists = tbl_rows.next()?.is_some();
+        // 2. Incremental column migrations
+        if !column_exists("purchase_events", "game_id")? {
+            tx.execute("ALTER TABLE purchase_events ADD COLUMN game_id INTEGER NOT NULL DEFAULT 0", [])?;
+        }
+        if !column_exists("purchase_events", "is_restricted")? {
+            tx.execute("ALTER TABLE purchase_events ADD COLUMN is_restricted INTEGER NOT NULL DEFAULT 0", [])?;
+        }
+        if !column_exists("purchase_events", "max_days_offset")? {
+            tx.execute("ALTER TABLE purchase_events ADD COLUMN max_days_offset INTEGER", [])?;
+        }
+        if !column_exists("purchase_events", "days_offset")? {
+            tx.execute("ALTER TABLE purchase_events ADD COLUMN days_offset INTEGER", [])?;
+        }
+        if !column_exists("purchase_events", "created_at")? {
+            tx.execute("ALTER TABLE purchase_events ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP", [])?;
+        }
+        if !column_exists("levels", "is_bonus")? {
+            tx.execute("ALTER TABLE levels ADD COLUMN is_bonus INTEGER NOT NULL DEFAULT 0", [])?;
+        }
+        if !column_exists("accounts", "package_id")? {
+            tx.execute("ALTER TABLE accounts ADD COLUMN package_id INTEGER", [])?;
+        }
+        if !column_exists("accounts", "proxy_state")? {
+            tx.execute("ALTER TABLE accounts ADD COLUMN proxy_state TEXT", [])?;
+        }
+        if !column_exists("accounts", "branch_id")? {
+            tx.execute("ALTER TABLE accounts ADD COLUMN branch_id INTEGER", [])?;
+        }
+        if !column_exists("levels", "branch_id")? {
+            tx.execute("ALTER TABLE levels ADD COLUMN branch_id INTEGER", [])?;
+        }
+        if !column_exists("purchase_events", "branch_id")? {
+            tx.execute("ALTER TABLE purchase_events ADD COLUMN branch_id INTEGER", [])?;
+        }
 
-        if !purchase_events_exists {
-            self.connection.execute_batch(
-                "
-                CREATE TABLE IF NOT EXISTS purchase_events (
+        // 3. Structural migration for UNIQUE constraints (Table Recreation)
+        // Check if levels table has the new branch-aware UNIQUE constraint inline
+        // If it has a UNIQUE constraint but NOT for branch_id, it must be recreated
+        let levels_needs_recreate: bool = tx.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='levels' AND sql LIKE '%UNIQUE%' AND sql NOT LIKE '%UNIQUE%branch_id%'",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0) > 0;
+
+        if levels_needs_recreate {
+            println!("Recreating levels table for structural migration...");
+            tx.execute_batch("
+                CREATE TABLE levels_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     game_id INTEGER NOT NULL,
+                    branch_id INTEGER,
+                    event_token TEXT NOT NULL,
+                    level_name TEXT NOT NULL,
+                    days_offset INTEGER NOT NULL DEFAULT 0,
+                    time_spent INTEGER NOT NULL DEFAULT 0,
+                    is_bonus INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+                    FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE CASCADE,
+                    UNIQUE(game_id, branch_id, event_token, days_offset)
+                );
+                INSERT INTO levels_new (id, game_id, branch_id, event_token, level_name, days_offset, time_spent, is_bonus)
+                SELECT id, game_id, branch_id, event_token, level_name, days_offset, time_spent, is_bonus FROM levels;
+                DROP TABLE levels;
+                ALTER TABLE levels_new RENAME TO levels;
+            ")?;
+        }
+
+        let pe_needs_recreate: bool = tx.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='purchase_events' AND sql LIKE '%UNIQUE%' AND sql NOT LIKE '%UNIQUE%branch_id%'",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0) > 0;
+
+        if pe_needs_recreate {
+            println!("Recreating purchase_events table for structural migration...");
+            tx.execute_batch("
+                CREATE TABLE purchase_events_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    game_id INTEGER NOT NULL,
+                    branch_id INTEGER,
                     event_token TEXT NOT NULL,
                     is_restricted INTEGER NOT NULL DEFAULT 0,
                     max_days_offset INTEGER,
                     days_offset INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
-                    UNIQUE(game_id, event_token)
+                    FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE CASCADE,
+                    UNIQUE(game_id, branch_id, event_token)
                 );
-                ",
-            )?;
-        } else {
-            if !column_exists("purchase_events", "game_id")? {
-                self.connection.execute(
-                    "ALTER TABLE purchase_events ADD COLUMN game_id INTEGER NOT NULL DEFAULT 0",
-                    [],
-                )?;
-            }
-            if !column_exists("purchase_events", "is_restricted")? {
-                self.connection.execute(
-                    "ALTER TABLE purchase_events ADD COLUMN is_restricted INTEGER NOT NULL DEFAULT 0",
-                    [],
-                )?;
-            }
-            if !column_exists("purchase_events", "max_days_offset")? {
-                self.connection.execute(
-                    "ALTER TABLE purchase_events ADD COLUMN max_days_offset INTEGER",
-                    [],
-                )?;
-            }
-            if !column_exists("purchase_events", "days_offset")? {
-                self.connection.execute(
-                    "ALTER TABLE purchase_events ADD COLUMN days_offset INTEGER",
-                    [],
-                )?;
-            }
-            if !column_exists("purchase_events", "created_at")? {
-                self.connection.execute(
-                    "ALTER TABLE purchase_events ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-                    [],
-                )?;
-            }
+                INSERT INTO purchase_events_new (id, game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset, created_at)
+                SELECT id, game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset, created_at FROM purchase_events;
+                DROP TABLE purchase_events;
+                ALTER TABLE purchase_events_new RENAME TO purchase_events;
+            ")?;
         }
 
-        // --- NEW: ensure levels.has is_bonus column exists (migration for older DBs) ---
-        let mut levels_tbl_stmt = self
-            .connection
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='levels'")?;
-        let mut levels_tbl_rows = levels_tbl_stmt.query([])?;
-        let levels_exists = levels_tbl_rows.next()?.is_some();
-
-        if levels_exists {
-            if !column_exists("levels", "is_bonus")? {
-                // add column with default 0
-                self.connection.execute(
-                    "ALTER TABLE levels ADD COLUMN is_bonus INTEGER NOT NULL DEFAULT 0",
-                    [],
-                )?;
-            }
-
-            // Migration: Update unique constraint to include days_offset
-            // First drop the old constraint (if it exists), then add the new one
-            // Note: SQLite doesn't support DROP CONSTRAINT directly, so we recreate the table
-            // But for simplicity, we'll try to add the new constraint and ignore if it fails
-            let _ = self.connection.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_levels_unique ON levels(game_id, event_token, days_offset)",
-                [],
-            );
-        } else {
-            // if levels table somehow missing, create (already created above with CREATE TABLE IF NOT EXISTS)
-            // nothing more to do
-        }
-
-        // الآن نُنشئ الفهارس بأمان
-        self.connection.execute_batch(
-            "
+        // 4. Create proper indexes
+        tx.execute_batch("
             CREATE INDEX IF NOT EXISTS idx_levels_game_id ON levels(game_id);
+            CREATE INDEX IF NOT EXISTS idx_levels_branch_id ON levels(branch_id);
             CREATE INDEX IF NOT EXISTS idx_accounts_game_id ON accounts(game_id);
             CREATE INDEX IF NOT EXISTS idx_purchase_events_game_id ON purchase_events(game_id);
+            CREATE INDEX IF NOT EXISTS idx_purchase_events_branch_id ON purchase_events(branch_id);
             CREATE INDEX IF NOT EXISTS idx_account_level_progress_account ON account_level_progress(account_id);
             CREATE INDEX IF NOT EXISTS idx_account_level_progress_level ON account_level_progress(level_id);
             CREATE INDEX IF NOT EXISTS idx_account_purchase_progress_account ON account_purchase_event_progress(account_id);
             CREATE INDEX IF NOT EXISTS idx_account_purchase_progress_event ON account_purchase_event_progress(purchase_event_id);
-            "
-        )?;
+            
+            -- Ensure any remaining old style unique index is gone
+            DROP INDEX IF EXISTS idx_levels_unique;
+            DROP INDEX IF EXISTS idx_purchase_events_unique;
+            
+            -- Create formal unique indexes if not already handled by table recreation
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_levels_unique_v2 ON levels(game_id, branch_id, event_token, days_offset);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_events_unique_v2 ON purchase_events(game_id, branch_id, event_token);
+        ")?;
 
-        // Ensure accounts has package_id and proxy_state
-        if !column_exists("accounts", "package_id")? {
-            let _ = self
-                .connection
-                .execute("ALTER TABLE accounts ADD COLUMN package_id INTEGER", []);
-        }
-        if !column_exists("accounts", "proxy_state")? {
-            let _ = self
-                .connection
-                .execute("ALTER TABLE accounts ADD COLUMN proxy_state TEXT", []);
-        }
-
-        // --- NEW: Branching Migration ---
-        self.migrate_branches()?;
-
-        // Migrate existing accounts if they don't have package data
-        let _ = self.migrate_account_packages();
-
-        Ok(())
-    }
-
-    /// Migration to initialize branches for existing games
-    fn migrate_branches(&self) -> SqlResult<()> {
-        let column_exists = |table: &str, column: &str| -> SqlResult<bool> {
-            let mut stmt = self
-                .connection
-                .prepare(&format!("PRAGMA table_info({})", table))?;
-            let mut rows = stmt.query([])?;
-            while let Some(row) = rows.next()? {
-                let name: String = row.get(1)?;
-                if name == column {
-                    return Ok(true);
-                }
-            }
-            Ok(false)
+        // 5. Data Migration: Default Branches
+        let game_ids: Vec<i64> = {
+            let mut stmt = tx.prepare("SELECT id FROM games")?;
+            let ids = stmt.query_map([], |row| row.get(0))?
+                .collect::<SqlResult<Vec<i64>>>()?;
+            ids
         };
 
-        // 1. Add branch_id columns if they don't exist
-        for table in &["accounts", "levels", "purchase_events"] {
-            if !column_exists(table, "branch_id")? {
-                self.connection.execute(
-                    &format!("ALTER TABLE {} ADD COLUMN branch_id INTEGER", table),
-                    [],
-                )?;
-            }
-        }
-
-        // 2. For each game, ensure it has at least one default branch
-        let mut stmt = self.connection.prepare("SELECT id FROM games")?;
-        let game_ids: Vec<i64> = stmt
-            .query_map([], |row| row.get(0))?
-            .collect::<SqlResult<Vec<_>>>()?;
-
         for game_id in game_ids {
-            // Check if game has a default branch
-            let has_default: bool = self.connection.query_row(
+            let has_default: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM game_branches WHERE game_id = ?1 AND is_default = 1)",
                 params![game_id],
                 |row| row.get(0),
             )?;
 
             if !has_default {
-                self.connection.execute(
+                tx.execute(
                     "INSERT INTO game_branches (game_id, name, is_default) VALUES (?1, ?2, ?3)",
                     params![game_id, "Default", 1],
                 )?;
-                let branch_id = self.connection.last_insert_rowid();
+                let branch_id = tx.last_insert_rowid();
 
-                // 3. Link existing data to this new default branch
-                self.connection.execute(
-                    "UPDATE accounts SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL",
-                    params![branch_id, game_id],
-                )?;
-                self.connection.execute(
-                    "UPDATE levels SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL",
-                    params![branch_id, game_id],
-                )?;
-                self.connection.execute(
-                    "UPDATE purchase_events SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL",
-                    params![branch_id, game_id],
+                tx.execute("UPDATE accounts SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL", params![branch_id, game_id])?;
+                tx.execute("UPDATE levels SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL", params![branch_id, game_id])?;
+                tx.execute("UPDATE purchase_events SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL", params![branch_id, game_id])?;
+            }
+        }
+
+        // 6. Data Migration: Account Packages
+        let accounts: Vec<(i64, i64)> = {
+            let mut stmt = tx.prepare("SELECT id, game_id FROM accounts WHERE package_id IS NULL")?;
+            let accs = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<SqlResult<Vec<_>>>()?;
+            accs
+        };
+
+        if !accounts.is_empty() {
+            use crate::models::account::PROXY_STATES;
+            let mut game_counters: HashMap<i64, i32> = HashMap::new();
+
+            for (id, game_id) in accounts {
+                let counter = game_counters.entry(game_id).or_insert(0);
+                *counter += 1;
+                let package_id = *counter;
+                let state_idx = (package_id - 1) as usize % PROXY_STATES.len();
+                let proxy_state = PROXY_STATES[state_idx];
+
+                tx.execute(
+                    "UPDATE accounts SET package_id = ?1, proxy_state = ?2 WHERE id = ?3",
+                    params![package_id, proxy_state, id],
                 )?;
             }
         }
 
-        Ok(())
-    }
-
-    /// Migrate existing accounts to have a package_id and proxy_state
-    fn migrate_account_packages(&self) -> SqlResult<()> {
-        let mut stmt = self
-            .connection
-            .prepare("SELECT id, game_id FROM accounts WHERE package_id IS NULL")?;
-        let accounts: Vec<(i64, i64)> = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .collect::<SqlResult<Vec<_>>>()?;
-
-        if accounts.is_empty() {
-            return Ok(());
-        }
-
-        use crate::models::account::PROXY_STATES;
-
-        // Group by game_id to assign them sequentially to packages
-        // This is a simple migration:
-        // 1st account of game A -> package 1
-        // 2nd account of game A -> package 2
-        // etc.
-
-        let mut game_counters: HashMap<i64, i32> = HashMap::new();
-
-        for (id, game_id) in accounts {
-            let counter = game_counters.entry(game_id).or_insert(0);
-            *counter += 1;
-            let package_id = *counter;
-            let state_idx = (package_id - 1) as usize % PROXY_STATES.len();
-            let proxy_state = PROXY_STATES[state_idx];
-
-            self.connection.execute(
-                "UPDATE accounts SET package_id = ?1, proxy_state = ?2 WHERE id = ?3",
-                params![package_id, proxy_state, id],
-            )?;
-        }
-
+        tx.commit()?;
         Ok(())
     }
 }

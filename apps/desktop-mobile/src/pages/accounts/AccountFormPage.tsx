@@ -341,6 +341,7 @@ export default function AccountFormPage() {
         setBranches(data);
         
         // If no branch selected yet, select default
+        // We check selectedBranchId locally or just rely on it being null initially
         if (selectedBranchId === null) {
             const defaultBranch = data.find(b => b.is_default) || data[0];
             if (defaultBranch) {
@@ -350,7 +351,8 @@ export default function AccountFormPage() {
       };
       loadBranches();
     }
-  }, [currentGameId, fetchBranches, selectedBranchId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentGameId, fetchBranches]); 
 
   // Format date for display
   const formatDateForDisplay = (date: Date | null): string => {

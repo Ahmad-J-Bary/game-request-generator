@@ -2,12 +2,23 @@
 
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
+import { fileURLToPath } from "node:url";
 
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+  // Define global for compatibility with some Node-based libraries
+  define: {
+    'global': 'window',
+    'process.env': {},
+  },
+  resolve: {
+    alias: {
+      'stream': fileURLToPath(new URL('./src/stream-shim.ts', import.meta.url)),
+    }
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

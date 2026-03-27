@@ -208,7 +208,7 @@ export default function AccountDetailPage() {
           const syntheticLevel = columns.find(col => col.kind === 'level' && col.id === levelId);
           if (syntheticLevel) {
             const newLevel = {
-              game_id: account!.game_id,
+              branch_id: account!.branch_id!,
               level_name: syntheticLevel.name,
               event_token: `${syntheticLevel.token}_day${syntheticLevel.daysOffset}`,
               days_offset: syntheticLevel.daysOffset as number,
@@ -219,7 +219,10 @@ export default function AccountDetailPage() {
             const existingLevel = existingLevels.find(l => l.days_offset === newLevel.days_offset && l.event_token === newLevel.event_token);
             if (existingLevel) actualLevelId = existingLevel.id.toString();
             else {
-              const createdLevelId = await TauriService.addLevel(newLevel);
+              const createdLevelId = await TauriService.addLevel({
+                ...newLevel,
+                game_id: account!.game_id,
+              });
               actualLevelId = createdLevelId.toString();
             }
           } else continue;

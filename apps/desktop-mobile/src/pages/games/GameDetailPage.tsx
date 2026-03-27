@@ -15,7 +15,7 @@ import { Button } from '@grq/ui/atoms/button';
 import { Label } from '@grq/ui/atoms/label';
 import { Settings, Trash2, Upload, Download, Edit3, Save, X, Plus } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@grq/ui/atoms/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@grq/ui/atoms/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@grq/ui/atoms/dialog';
 import { Input } from '@grq/ui/atoms/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 
@@ -776,6 +776,9 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
         <DialogContent className="sm:max-w-md">
             <DialogHeader>
                 <DialogTitle>{t('branches.manageTitle', 'Manage Branches')}</DialogTitle>
+                <DialogDescription>
+                    {t('branches.manageDescription', 'Create, delete or duplicate branches for your game levels and events.')}
+                </DialogDescription>
             </DialogHeader>
             
             <div className="space-y-4 py-4">
