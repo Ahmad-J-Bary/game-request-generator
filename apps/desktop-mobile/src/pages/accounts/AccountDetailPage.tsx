@@ -4,6 +4,8 @@ import { useMemo, useState, useEffect } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@grq/ui/atoms/card';
+import { Badge } from '@grq/ui/atoms/badge';
+import { cn } from '@grq/ui/lib/utils';
 import { Download, Upload, Edit3, Save, X, CheckSquare, ArrowLeft, ArrowRight, MoreVertical } from 'lucide-react';
 import type { ColumnData } from '@grq/ui/organisms/tables/AccountDataTable';
 import { LayoutToggle, Layout } from '@grq/ui/molecules/LayoutToggle';
@@ -428,7 +430,20 @@ export default function AccountDetailPage() {
       <div className="flex-1">
         <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex-1 min-w-0">
-                <h2 className="text-xl md:text-2xl font-bold truncate">{account.name}</h2>
+                <div className="flex items-center gap-2">
+                    <h2 className="text-xl md:text-2xl font-bold truncate">{account.name}</h2>
+                    {account.proxy_state && (
+                      <Badge variant="outline" className={cn(
+                        "text-[10px] font-bold uppercase tracking-wider px-2 py-0 border-2 shrink-0",
+                        account.proxy_state === 'FLORIDA' && "border-orange-500/50 text-orange-600 bg-orange-50 dark:bg-orange-900/20 dark:text-orange-400",
+                        account.proxy_state === 'CALIFORNIA' && "border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400",
+                        account.proxy_state === 'TEXAS' && "border-red-500/50 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400",
+                        account.proxy_state === 'New York' && "border-slate-500/50 text-slate-600 bg-slate-50 dark:bg-slate-900/20 dark:text-slate-400",
+                      )}>
+                        {account.proxy_state}
+                      </Badge>
+                    )}
+                </div>
                 <div className="text-xs md:text-sm text-muted-foreground">{account.start_date} • {account.start_time}</div>
             </div>
             

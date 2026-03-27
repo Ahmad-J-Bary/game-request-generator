@@ -108,7 +108,20 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <CardTitle className="flex flex-wrap items-center gap-2 text-lg font-bold tracking-tight">
-                {task.account.name}
+                <div className="flex items-center gap-2">
+                  {task.account.name}
+                  {task.account.proxy_state && (
+                    <Badge variant="outline" className={cn(
+                      "text-[10px] font-bold uppercase tracking-wider px-2 py-0 border-2",
+                      task.account.proxy_state === 'FLORIDA' && "border-orange-500/50 text-orange-600 bg-orange-50 dark:bg-orange-900/20 dark:text-orange-400",
+                      task.account.proxy_state === 'CALIFORNIA' && "border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400",
+                      task.account.proxy_state === 'TEXAS' && "border-red-500/50 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400",
+                      task.account.proxy_state === 'New York' && "border-slate-500/50 text-slate-600 bg-slate-50 dark:bg-slate-900/20 dark:text-slate-400",
+                    )}>
+                      {task.account.proxy_state}
+                    </Badge>
+                  )}
+                </div>
                 <Badge variant="outline" className="font-normal opacity-70">
                   {t('dailyTasks.taskCount', {
                     count: task.requests.length,

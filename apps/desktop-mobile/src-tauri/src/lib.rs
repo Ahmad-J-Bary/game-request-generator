@@ -249,6 +249,14 @@ fn get_accounts(state: tauri::State<AppState>, game_id: i64) -> Result<Vec<Accou
 }
 
 #[tauri::command]
+fn get_all_accounts(state: tauri::State<AppState>) -> Result<Vec<Account>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = AccountService::new();
+    service.get_all_accounts(conn)
+}
+
+#[tauri::command]
 fn get_completed_accounts(state: tauri::State<AppState>) -> Result<Vec<CompletedAccount>, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
@@ -873,6 +881,8 @@ pub fn run() {
             delete_level,
             add_account,
             get_accounts,
+            get_accounts,
+            get_all_accounts,
             get_completed_accounts,
             get_account_by_id,
             update_account,

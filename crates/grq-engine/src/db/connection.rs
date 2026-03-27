@@ -1,7 +1,8 @@
 // src-tauri/src/db/connection.rs
 
-use rusqlite::{Connection, Result as SqlResult};
+use rusqlite::{params, Connection, Result as SqlResult};
 use std::path::PathBuf;
+use std::collections::HashMap;
 use tauri::{AppHandle, Manager};
 
 /// Wrapper حول rusqlite::Connection مع وظائف إعداد الجداول
@@ -73,6 +74,8 @@ impl Database {
                 start_time TEXT NOT NULL,
                 request_template TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                package_id INTEGER,
+                proxy_state TEXT,
                 FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
             );
 
@@ -229,6 +232,54 @@ impl Database {
             "
         )?;
 
+        // Ensure accounts has package_id and proxy_state
+        if !column_exists("accounts", "package_id")? {
+            let _ = self.connection.execute("ALTER TABLE accounts ADD COLUMN package_id INTEGER", []);
+        }
+        if !column_exists("accounts", "proxy_state")? {
+            let _ = self.connection.execute("ALTER TABLE accounts ADD COLUMN proxy_state TEXT", []);
+        }
+
+        // Migrate existing accounts if they don't have package data
+        let _ = self.migrate_account_packages();
+
+        Ok(())
+    }
+
+    /// Migrate existing accounts to have a package_id and proxy_state
+    fn migrate_account_packages(&self) -> SqlResult<()> {
+        let mut stmt = self.connection.prepare("SELECT id, game_id FROM accounts WHERE package_id IS NULL")?;
+        let accounts: Vec<(i64, i64)> = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<SqlResult<Vec<_>>>()?;
+
+        if accounts.is_empty() {
+            return Ok(());
+        }
+
+        use crate::models::account::PROXY_STATES;
+        
+        // Group by game_id to assign them sequentially to packages
+        // This is a simple migration: 
+        // 1st account of game A -> package 1
+        // 2nd account of game A -> package 2
+        // etc.
+        
+        use std::collections::HashMap;
+        let mut game_counters: HashMap<i64, i32> = HashMap::new();
+        
+        for (id, game_id) in accounts {
+            let counter = game_counters.entry(game_id).or_insert(0);
+            *counter += 1;
+            let package_id = *counter;
+            let state_idx = (package_id - 1) as usize % PROXY_STATES.len();
+            let proxy_state = PROXY_STATES[state_idx];
+            
+            self.connection.execute(
+                "UPDATE accounts SET package_id = ?1, proxy_state = ?2 WHERE id = ?3",
+                params![package_id, proxy_state, id],
+            )?;
+        }
+        
         Ok(())
     }
 }

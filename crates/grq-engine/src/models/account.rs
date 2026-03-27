@@ -11,7 +11,11 @@ pub struct Account {
     pub start_time: String,
     pub request_template: String,
     pub created_at: Option<String>,
+    pub package_id: Option<i32>,
+    pub proxy_state: Option<String>,
 }
+
+pub const PROXY_STATES: &[&str] = &["FLORIDA", "CALIFORNIA", "TEXAS", "New York"];
 
 #[derive(Debug, Deserialize)]
 pub struct CreateAccountRequest {

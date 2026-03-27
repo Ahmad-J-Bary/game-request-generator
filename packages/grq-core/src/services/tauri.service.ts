@@ -57,6 +57,10 @@ export class TauriService {
     return await invoke<Account[]>('get_accounts', { gameId });
   }
 
+  static async getAllAccounts(): Promise<Account[]> {
+    return await invoke<Account[]>('get_all_accounts');
+  }
+
   static async getCompletedAccounts(): Promise<CompletedAccount[]> {
     return await invoke<CompletedAccount[]>('get_completed_accounts');
   }

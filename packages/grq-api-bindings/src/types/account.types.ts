@@ -6,6 +6,8 @@ export interface Account {
   start_time: string;
   request_template: string;
   created_at?: string;
+  package_id?: number;
+  proxy_state?: string;
 }
 
 export interface CompletedAccount extends Account {
