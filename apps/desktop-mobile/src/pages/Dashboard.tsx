@@ -135,8 +135,10 @@ export default function Dashboard() {
         </div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
-            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight flex items-center gap-3 italic">
-              <Zap className="h-8 w-8 text-yellow-500 fill-yellow-500 animate-pulse" />
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight flex items-center gap-4 italic font-outfit">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl overflow-hidden bg-background shadow-lg border-2 border-primary/20 animate-in zoom-in duration-500">
+                <img src="/icon.png" alt="Logo" className="h-full w-full object-cover" />
+              </div>
               {t('dashboard.title')}
             </h2>
             <p className="text-muted-foreground text-lg max-w-lg">

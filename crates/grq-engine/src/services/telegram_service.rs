@@ -1,5 +1,5 @@
 use serde_json::json;
-use crate::db::config::{AppConfig, ConfigService};
+use crate::db::config::ConfigService;
 use tauri::AppHandle;
 
 pub struct TelegramService;

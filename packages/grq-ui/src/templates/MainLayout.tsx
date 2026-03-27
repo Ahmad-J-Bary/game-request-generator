@@ -58,8 +58,8 @@ export function MainLayout({ children }: MainLayoutProps) {
       >
         {/* Logo */}
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-md">
-            <Gamepad2 className="h-4 w-4 text-primary-foreground" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl overflow-hidden bg-background shadow-md">
+            <img src="/icon.png" alt="Logo" className="h-full w-full object-cover" />
           </div>
           <span className="font-bold text-base tracking-tight bg-gradient-to-r from-primary via-primary/80 to-primary/50 bg-clip-text text-transparent">
             Game Manager
@@ -192,11 +192,15 @@ export function MainLayout({ children }: MainLayoutProps) {
           <div className="flex h-16 items-center border-b px-4 justify-between">
             {!sidebarCollapsed ? (
               <div className="flex items-center gap-2">
-                <Gamepad2 className="h-6 w-6 text-primary" />
+                <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center">
+                  <img src="/icon.png" alt="Logo" className="h-full w-full object-cover" />
+                </div>
                 <span className="text-lg font-semibold whitespace-nowrap">Game Manager</span>
               </div>
             ) : (
-              <Gamepad2 className="h-6 w-6 text-primary mx-auto" />
+              <div className="h-8 w-8 mx-auto rounded-lg overflow-hidden flex items-center justify-center">
+                <img src="/icon.png" alt="Logo" className="h-full w-full object-cover" />
+              </div>
             )}
           </div>
 
