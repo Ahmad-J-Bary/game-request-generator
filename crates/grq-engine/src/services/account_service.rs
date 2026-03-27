@@ -104,10 +104,18 @@ impl AccountService {
         };
 
         conn.execute(
-            "INSERT INTO accounts (game_id, name, start_date, start_time, request_template, package_id, proxy_state)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO accounts (game_id, branch_id, name, start_date, start_time, request_template, package_id, proxy_state)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 request.game_id,
+                request.branch_id.or_else(|| {
+                    // Try to find default branch if not provided
+                    conn.query_row(
+                        "SELECT id FROM game_branches WHERE game_id = ?1 AND is_default = 1",
+                        params![request.game_id],
+                        |row| row.get::<_, i64>(0),
+                    ).ok()
+                }),
                 request.name,
                 request.start_date,
                 request.start_time,
@@ -127,7 +135,7 @@ impl AccountService {
         game_id: i64,
     ) -> Result<Vec<Account>, String> {
         let mut stmt = conn.prepare(
-            "SELECT id, game_id, name, start_date, start_time, request_template, created_at, package_id, proxy_state
+            "SELECT id, game_id, branch_id, name, start_date, start_time, request_template, created_at, package_id, proxy_state
              FROM accounts WHERE game_id = ?1 ORDER BY created_at"
         )
         .map_err(|e| format!("Failed to prepare statement: {}", e))?;
@@ -137,13 +145,14 @@ impl AccountService {
                 Ok(Account {
                     id: row.get(0)?,
                     game_id: row.get(1)?,
-                    name: row.get(2)?,
-                    start_date: row.get(3)?,
-                    start_time: row.get(4)?,
-                    request_template: row.get(5)?,
-                    created_at: row.get(6).ok(),
-                    package_id: row.get(7).ok(),
-                    proxy_state: row.get(8).ok(),
+                    branch_id: row.get(2).ok(),
+                    name: row.get(3)?,
+                    start_date: row.get(4)?,
+                    start_time: row.get(5)?,
+                    request_template: row.get(6)?,
+                    created_at: row.get(7).ok(),
+                    package_id: row.get(8).ok(),
+                    proxy_state: row.get(9).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query accounts: {}", e))?;
@@ -165,14 +174,14 @@ impl AccountService {
             FROM accounts a
             JOIN games g ON a.game_id = g.id
             WHERE 
-                (SELECT COUNT(*) FROM levels l WHERE l.game_id = a.game_id) > 0
+                (SELECT COUNT(*) FROM levels l WHERE l.branch_id = a.branch_id) > 0
                 AND 
-                (SELECT COUNT(*) FROM levels l WHERE l.game_id = a.game_id) = 
+                (SELECT COUNT(*) FROM levels l WHERE l.branch_id = a.branch_id) = 
                 (SELECT COUNT(*) FROM account_level_progress alp 
                  JOIN levels l ON alp.level_id = l.id 
                  WHERE alp.account_id = a.id AND alp.is_completed = 1)
                 AND
-                (SELECT COUNT(*) FROM purchase_events pe WHERE pe.game_id = a.game_id) =
+                (SELECT COUNT(*) FROM purchase_events pe WHERE pe.branch_id = a.branch_id) =
                 (SELECT COUNT(*) FROM account_purchase_event_progress apep
                  JOIN purchase_events pe ON apep.purchase_event_id = pe.id
                  WHERE apep.account_id = a.id AND apep.is_completed = 1)
@@ -206,20 +215,21 @@ impl AccountService {
 
     pub fn get_account_by_id(&self, conn: &Connection, id: i64) -> Result<Option<Account>, String> {
         conn.query_row(
-            "SELECT id, game_id, name, start_date, start_time, request_template, created_at, package_id, proxy_state
+            "SELECT id, game_id, branch_id, name, start_date, start_time, request_template, created_at, package_id, proxy_state
              FROM accounts WHERE id = ?1",
             params![id],
             |row| {
                 Ok(Account {
                     id: row.get(0)?,
                     game_id: row.get(1)?,
-                    name: row.get(2)?,
-                    start_date: row.get(3)?,
-                    start_time: row.get(4)?,
-                    request_template: row.get(5)?,
-                    created_at: row.get(6).ok(),
-                    package_id: row.get(7).ok(),
-                    proxy_state: row.get(8).ok(),
+                    branch_id: row.get(2).ok(),
+                    name: row.get(3)?,
+                    start_date: row.get(4)?,
+                    start_time: row.get(5)?,
+                    request_template: row.get(6)?,
+                    created_at: row.get(7).ok(),
+                    package_id: row.get(8).ok(),
+                    proxy_state: row.get(9).ok(),
                 })
             }
         )
@@ -229,7 +239,7 @@ impl AccountService {
 
     pub fn get_all_accounts(&self, conn: &Connection) -> Result<Vec<Account>, String> {
         let mut stmt = conn.prepare(
-            "SELECT id, game_id, name, start_date, start_time, request_template, created_at, package_id, proxy_state
+            "SELECT id, game_id, branch_id, name, start_date, start_time, request_template, created_at, package_id, proxy_state
              FROM accounts ORDER BY package_id"
         )
         .map_err(|e| format!("Failed to prepare statement: {}", e))?;
@@ -239,13 +249,14 @@ impl AccountService {
                 Ok(Account {
                     id: row.get(0)?,
                     game_id: row.get(1)?,
-                    name: row.get(2)?,
-                    start_date: row.get(3)?,
-                    start_time: row.get(4)?,
-                    request_template: row.get(5)?,
-                    created_at: row.get(6).ok(),
-                    package_id: row.get(7).ok(),
-                    proxy_state: row.get(8).ok(),
+                    branch_id: row.get(2).ok(),
+                    name: row.get(3)?,
+                    start_date: row.get(4)?,
+                    start_time: row.get(5)?,
+                    request_template: row.get(6)?,
+                    created_at: row.get(7).ok(),
+                    package_id: row.get(8).ok(),
+                    proxy_state: row.get(9).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query all accounts: {}", e))?;
@@ -281,9 +292,9 @@ impl AccountService {
             values.push(start_time as &dyn rusqlite::ToSql);
         }
 
-        if let Some(request_template) = &request.request_template {
-            updates.push("request_template = ?");
-            values.push(request_template as &dyn rusqlite::ToSql);
+        if let Some(branch_id) = &request.branch_id {
+            updates.push("branch_id = ?");
+            values.push(branch_id as &dyn rusqlite::ToSql);
         }
 
         if updates.is_empty() {
@@ -310,14 +321,14 @@ impl AccountService {
         let is_completed: bool = conn
             .query_row(
                 "SELECT 
-                ((SELECT COUNT(*) FROM levels l WHERE l.game_id = a.game_id) > 0
+                ((SELECT COUNT(*) FROM levels l WHERE l.branch_id = a.branch_id) > 0
                 AND 
-                (SELECT COUNT(*) FROM levels l WHERE l.game_id = a.game_id) = 
+                (SELECT COUNT(*) FROM levels l WHERE l.branch_id = a.branch_id) = 
                 (SELECT COUNT(*) FROM account_level_progress alp 
                  JOIN levels l ON alp.level_id = l.id 
                  WHERE alp.account_id = a.id AND alp.is_completed = 1)
                 AND
-                (SELECT COUNT(*) FROM purchase_events pe WHERE pe.game_id = a.game_id) =
+                (SELECT COUNT(*) FROM purchase_events pe WHERE pe.branch_id = a.branch_id) =
                 (SELECT COUNT(*) FROM account_purchase_event_progress apep
                  JOIN purchase_events pe ON apep.purchase_event_id = pe.id
                  WHERE apep.account_id = a.id AND apep.is_completed = 1)) as is_comp

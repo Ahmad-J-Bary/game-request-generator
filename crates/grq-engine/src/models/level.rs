@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct Level {
     pub id: i64,
     pub game_id: i64,
+    pub branch_id: Option<i64>,
     pub event_token: String,
     pub level_name: String,
     pub days_offset: i32,
@@ -16,6 +17,7 @@ pub struct Level {
 #[derive(Debug, Deserialize)]
 pub struct CreateLevelRequest {
     pub game_id: i64,
+    pub branch_id: i64,
     pub event_token: String,
     pub level_name: String,
     pub days_offset: i32,
@@ -27,6 +29,7 @@ pub struct CreateLevelRequest {
 pub struct UpdateLevelRequest {
     pub id: i64,
     pub game_id: Option<i64>,
+    pub branch_id: Option<i64>,
     pub event_token: Option<String>,
     pub level_name: Option<String>,
     pub days_offset: Option<i32>,

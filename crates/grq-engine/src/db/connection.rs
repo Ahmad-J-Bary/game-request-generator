@@ -65,10 +65,21 @@ impl Database {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            -- جدول الأفرع (جديد)
+            CREATE TABLE IF NOT EXISTS game_branches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                game_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+            );
+
             -- جدول الحسابات
             CREATE TABLE IF NOT EXISTS accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 game_id INTEGER NOT NULL,
+                branch_id INTEGER,
                 name TEXT NOT NULL,
                 start_date TEXT NOT NULL,
                 start_time TEXT NOT NULL,
@@ -76,23 +87,25 @@ impl Database {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 package_id INTEGER,
                 proxy_state TEXT,
-                FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+                FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+                FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE SET NULL
             );
 
-            -- جدول المستويات (مع is_bonus) — سينجح إن لم يكن موجوداً؛ إذا كان موجوداً بدون العمود سنضيفه لاحقاً
+            -- جدول المستويات
             CREATE TABLE IF NOT EXISTS levels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 game_id INTEGER NOT NULL,
+                branch_id INTEGER,
                 event_token TEXT NOT NULL,
                 level_name TEXT NOT NULL,
                 days_offset INTEGER NOT NULL DEFAULT 0,
                 time_spent INTEGER NOT NULL DEFAULT 0,
                 is_bonus INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
-                UNIQUE(game_id, event_token, days_offset)
+                FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE CASCADE
             );
 
-            -- جدول تقدم الحسابات في المستويات
+            -- جدول التقدم
             CREATE TABLE IF NOT EXISTS account_level_progress (
                 account_id INTEGER NOT NULL,
                 level_id INTEGER NOT NULL,
@@ -103,7 +116,21 @@ impl Database {
                 FOREIGN KEY (level_id) REFERENCES levels(id) ON DELETE CASCADE
             );
 
-            -- جدول تقدم الحسابات في أحداث الشراء
+            -- جدول أحداث الشراء (إن لم يكن موجوداً)
+            CREATE TABLE IF NOT EXISTS purchase_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                game_id INTEGER NOT NULL,
+                branch_id INTEGER,
+                event_token TEXT NOT NULL,
+                is_restricted INTEGER NOT NULL DEFAULT 0,
+                max_days_offset INTEGER,
+                days_offset INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+                FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE CASCADE
+            );
+
+            -- جدول تقدم أحداث الشراء
             CREATE TABLE IF NOT EXISTS account_purchase_event_progress (
                 account_id INTEGER NOT NULL,
                 purchase_event_id INTEGER NOT NULL,
@@ -244,8 +271,77 @@ impl Database {
                 .execute("ALTER TABLE accounts ADD COLUMN proxy_state TEXT", []);
         }
 
+        // --- NEW: Branching Migration ---
+        self.migrate_branches()?;
+
         // Migrate existing accounts if they don't have package data
         let _ = self.migrate_account_packages();
+
+        Ok(())
+    }
+
+    /// Migration to initialize branches for existing games
+    fn migrate_branches(&self) -> SqlResult<()> {
+        let column_exists = |table: &str, column: &str| -> SqlResult<bool> {
+            let mut stmt = self
+                .connection
+                .prepare(&format!("PRAGMA table_info({})", table))?;
+            let mut rows = stmt.query([])?;
+            while let Some(row) = rows.next()? {
+                let name: String = row.get(1)?;
+                if name == column {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        };
+
+        // 1. Add branch_id columns if they don't exist
+        for table in &["accounts", "levels", "purchase_events"] {
+            if !column_exists(table, "branch_id")? {
+                self.connection.execute(
+                    &format!("ALTER TABLE {} ADD COLUMN branch_id INTEGER", table),
+                    [],
+                )?;
+            }
+        }
+
+        // 2. For each game, ensure it has at least one default branch
+        let mut stmt = self.connection.prepare("SELECT id FROM games")?;
+        let game_ids: Vec<i64> = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<SqlResult<Vec<_>>>()?;
+
+        for game_id in game_ids {
+            // Check if game has a default branch
+            let has_default: bool = self.connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM game_branches WHERE game_id = ?1 AND is_default = 1)",
+                params![game_id],
+                |row| row.get(0),
+            )?;
+
+            if !has_default {
+                self.connection.execute(
+                    "INSERT INTO game_branches (game_id, name, is_default) VALUES (?1, ?2, ?3)",
+                    params![game_id, "Default", 1],
+                )?;
+                let branch_id = self.connection.last_insert_rowid();
+
+                // 3. Link existing data to this new default branch
+                self.connection.execute(
+                    "UPDATE accounts SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL",
+                    params![branch_id, game_id],
+                )?;
+                self.connection.execute(
+                    "UPDATE levels SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL",
+                    params![branch_id, game_id],
+                )?;
+                self.connection.execute(
+                    "UPDATE purchase_events SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL",
+                    params![branch_id, game_id],
+                )?;
+            }
+        }
 
         Ok(())
     }

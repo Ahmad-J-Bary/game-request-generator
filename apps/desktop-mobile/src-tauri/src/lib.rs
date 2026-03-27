@@ -8,7 +8,7 @@ use chrono::Datelike;
 use grq_engine::db::Database;
 
 use grq_engine::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
-use grq_engine::models::game::{CreateGameRequest, Game, UpdateGameRequest};
+use grq_engine::models::game::{CreateBranchRequest, CreateGameRequest, Game, GameBranch, UpdateBranchRequest, UpdateGameRequest};
 use grq_engine::models::level::{CreateLevelRequest, Level, UpdateLevelRequest};
 use grq_engine::models::progress::{
     AccountLevelProgress, AccountPurchaseEventProgress, CreateAccountLevelProgressRequest,
@@ -229,6 +229,39 @@ fn delete_game(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
     service.delete_game(conn, id)
 }
 
+// ==================== أوامر الأفرع ====================
+#[tauri::command]
+fn get_game_branches(state: tauri::State<AppState>, game_id: i64) -> Result<Vec<GameBranch>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = GameService::new();
+    service.get_branches(conn, game_id)
+}
+
+#[tauri::command]
+fn add_branch(state: tauri::State<AppState>, request: CreateBranchRequest) -> Result<i64, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = GameService::new();
+    service.create_branch(conn, request)
+}
+
+#[tauri::command]
+fn update_branch(state: tauri::State<AppState>, request: UpdateBranchRequest) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = GameService::new();
+    service.update_branch(conn, request)
+}
+
+#[tauri::command]
+fn delete_branch(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = GameService::new();
+    service.delete_branch(conn, id)
+}
+
 // ==================== أوامر المستويات ====================
 #[tauri::command]
 fn add_level(state: tauri::State<AppState>, request: CreateLevelRequest) -> Result<i64, String> {
@@ -239,11 +272,11 @@ fn add_level(state: tauri::State<AppState>, request: CreateLevelRequest) -> Resu
 }
 
 #[tauri::command]
-fn get_game_levels(state: tauri::State<AppState>, game_id: i64) -> Result<Vec<Level>, String> {
+fn get_game_levels(state: tauri::State<AppState>, branch_id: i64) -> Result<Vec<Level>, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = LevelService::new();
-    service.get_levels_by_game(conn, game_id)
+    service.get_levels_by_branch(conn, branch_id)
 }
 
 #[tauri::command]
@@ -351,12 +384,12 @@ fn add_purchase_event(
 #[tauri::command]
 fn get_game_purchase_events(
     state: tauri::State<AppState>,
-    game_id: i64,
+    branch_id: i64,
 ) -> Result<Vec<PurchaseEvent>, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = PurchaseEventService::new();
-    service.get_purchase_events_by_game(conn, game_id)
+    service.get_purchase_events_by_branch(conn, branch_id)
 }
 
 #[tauri::command]
@@ -548,8 +581,8 @@ fn get_daily_requests(
 
     let level_service = LevelService::new();
     let levels = level_service
-        .get_levels_by_game(conn, account.game_id)
-        .map_err(|_| "Failed to get game levels".to_string())?;
+        .get_levels_by_branch(conn, account.branch_id.unwrap_or(0))
+        .map_err(|e| format!("Failed to get levels: {}", e))?;
 
     let progress_service = ProgressService::new();
     let level_progress = progress_service
@@ -615,6 +648,7 @@ fn get_daily_requests(
                     let synthetic_level = Level {
                         id: -(day as i64),
                         game_id: account.game_id,
+                        branch_id: account.branch_id,
                         level_name: "-".to_string(),
                         event_token: format!("{}_day{}", token, day),
                         days_offset: day,
@@ -729,8 +763,8 @@ fn get_daily_requests(
 
     let purchase_event_service = PurchaseEventService::new();
     let purchase_events = purchase_event_service
-        .get_purchase_events_by_game(conn, account.game_id)
-        .map_err(|_| "Failed to get purchase events".to_string())?;
+        .get_purchase_events_by_branch(conn, account.branch_id.unwrap_or(0))
+        .map_err(|e| format!("Failed to get purchase events: {}", e))?;
 
     let purchase_progress = progress_service
         .get_account_purchase_event_progress(conn, account_id)
@@ -980,7 +1014,6 @@ pub fn run() {
             delete_level,
             add_account,
             get_accounts,
-            get_accounts,
             get_all_accounts,
             get_completed_accounts,
             get_account_by_id,
@@ -1007,6 +1040,10 @@ pub fn run() {
             set_telegram_config,
             test_telegram_connection,
             send_to_telegram,
+            get_game_branches,
+            add_branch,
+            update_branch,
+            delete_branch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -107,6 +107,75 @@ export function useGames() {
     }
   };
 
+  // ========== Branch Methods ==========
+
+  const fetchBranches = async (gameId: number) => {
+    try {
+      setLoading(true);
+      const data = await TauriService.getGameBranches(gameId);
+      return data;
+    } catch (err) {
+      const message = extractErrorMessage(err);
+      NotificationService.error(message);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addBranch = async (request: any) => {
+    try {
+      setLoading(true);
+      const id = await TauriService.addBranch(request);
+      NotificationService.success('Branch created successfully');
+      window.dispatchEvent(new CustomEvent('branches-updated', { detail: { gameId: request.game_id } }));
+      return id;
+    } catch (err) {
+      const message = extractErrorMessage(err);
+      NotificationService.error(message);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateBranch = async (request: any) => {
+    try {
+      setLoading(true);
+      const success = await TauriService.updateBranch(request);
+      if (success) {
+        NotificationService.success('Branch updated successfully');
+        // We don't have gameId in request here easily unless we pass it
+        window.dispatchEvent(new CustomEvent('branches-updated'));
+      }
+      return success;
+    } catch (err) {
+      const message = extractErrorMessage(err);
+      NotificationService.error(message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteBranch = async (id: number) => {
+    try {
+      setLoading(true);
+      const success = await TauriService.deleteBranch(id);
+      if (success) {
+        NotificationService.success('Branch deleted successfully');
+        window.dispatchEvent(new CustomEvent('branches-updated'));
+      }
+      return success;
+    } catch (err) {
+      const message = extractErrorMessage(err);
+      NotificationService.error(message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     games,
     loading,
@@ -115,5 +184,9 @@ export function useGames() {
     addGame,
     updateGame,
     deleteGame,
+    fetchBranches,
+    addBranch,
+    updateBranch,
+    deleteBranch,
   };
 }

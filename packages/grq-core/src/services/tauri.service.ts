@@ -5,6 +5,9 @@ import type {
   Game, 
   CreateGameRequest, 
   UpdateGameRequest,
+  GameBranch,
+  CreateBranchRequest,
+  UpdateBranchRequest,
   Account,
   CompletedAccount,
   CreateAccountRequest,
@@ -46,6 +49,23 @@ export class TauriService {
 
   static async deleteGame(id: number): Promise<boolean> {
     return await invoke<boolean>('delete_game', { id });
+  }
+
+  // ========== Branch Commands ==========
+  static async getGameBranches(gameId: number): Promise<GameBranch[]> {
+    return await invoke<GameBranch[]>('get_game_branches', { gameId });
+  }
+
+  static async addBranch(request: CreateBranchRequest): Promise<number> {
+    return await invoke<number>('add_branch', { request });
+  }
+
+  static async updateBranch(request: UpdateBranchRequest): Promise<boolean> {
+    return await invoke<boolean>('update_branch', { request });
+  }
+
+  static async deleteBranch(id: number): Promise<boolean> {
+    return await invoke<boolean>('delete_branch', { id });
   }
 
   // ========== Account Commands ==========
@@ -91,8 +111,8 @@ static async addLevel(request: CreateLevelRequest): Promise<number> {
   }
 }
 
-  static async getGameLevels(gameId: number): Promise<Level[]> {
-    return await invoke<Level[]>('get_game_levels', { gameId });
+  static async getGameLevels(branchId: number): Promise<Level[]> {
+    return await invoke<Level[]>('get_game_levels', { branchId });
   }
 
   static async getLevelById(id: number): Promise<Level | null> {
@@ -108,9 +128,9 @@ static async addLevel(request: CreateLevelRequest): Promise<number> {
   }
 
   // ========== Purchase Event Commands (NEW) ==========
-// GET purchase events for a game
-static async getGamePurchaseEvents(gameId: number): Promise<PurchaseEvent[]> {
-  return await invoke<PurchaseEvent[]>('get_game_purchase_events', { gameId });
+// GET purchase events for a branch
+static async getGamePurchaseEvents(branchId: number): Promise<PurchaseEvent[]> {
+  return await invoke<PurchaseEvent[]>('get_game_purchase_events', { branchId });
 }
 
 // add purchase event

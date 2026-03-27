@@ -12,13 +12,13 @@ function extractErrorMessage(err: any): string {
   try { return JSON.stringify(err); } catch { return String(err); }
 }
 
-export const useLevels = (gameId?: number) => {
+export const useLevels = (branchId?: number) => {
   const [levels, setLevels] = useState<Level[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadLevels = useCallback(async () => {
-    if (!gameId) {
+    if (!branchId) {
       setLevels([]);
       return;
     }
@@ -26,7 +26,7 @@ export const useLevels = (gameId?: number) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await TauriService.getGameLevels(gameId);
+      const data = await TauriService.getGameLevels(branchId);
       setLevels(data);
     } catch (err) {
       const errorMessage = extractErrorMessage(err);
@@ -35,15 +35,15 @@ export const useLevels = (gameId?: number) => {
     } finally {
       setLoading(false);
     }
-  }, [gameId]);
+  }, [branchId]);
 
-  // Listen to levels-updated events and refresh only when it concerns this gameId
+  // Listen to levels-updated events and refresh only when it concerns this branchId
   useEffect(() => {
     loadLevels();
     const handler = (e: any) => {
-      // if detail not provided, refresh anyway; if provided and matches gameId, refresh
-      const detailGameId = e?.detail?.gameId;
-      if (detailGameId === undefined || detailGameId === gameId) {
+      // if detail not provided, refresh anyway; if provided and matches branchId, refresh
+      const detailBranchId = e?.detail?.branchId;
+      if (detailBranchId === undefined || detailBranchId === branchId) {
         loadLevels();
       }
     };
@@ -51,7 +51,7 @@ export const useLevels = (gameId?: number) => {
     return () => {
       window.removeEventListener('levels-updated', handler);
     };
-  }, [gameId, loadLevels]);
+  }, [branchId, loadLevels]);
 
   const addLevel = async (request: CreateLevelRequest) => {
     setLoading(true);
@@ -59,8 +59,8 @@ export const useLevels = (gameId?: number) => {
     try {
       const id = await TauriService.addLevel(request);
       NotificationService.success('Level added successfully');
-      // notify other listeners; include gameId in detail
-      window.dispatchEvent(new CustomEvent('levels-updated', { detail: { gameId: request.game_id, id } }));
+      // notify other listeners; include branchId in detail
+      window.dispatchEvent(new CustomEvent('levels-updated', { detail: { branchId: request.branch_id, id } }));
       await loadLevels();
       return true;
     } catch (err) {
@@ -80,9 +80,9 @@ export const useLevels = (gameId?: number) => {
       const success = await TauriService.updateLevel(request);
       if (success) {
         NotificationService.success('Level updated successfully');
-        // if request contains game_id detail use it, otherwise refresh all relevant
-        const detailGameId = (request as any).game_id ?? gameId;
-        window.dispatchEvent(new CustomEvent('levels-updated', { detail: { gameId: detailGameId, id: request.id } }));
+        // if request contains branch_id detail use it, otherwise refresh all relevant
+        const detailBranchId = (request as any).branch_id ?? branchId;
+        window.dispatchEvent(new CustomEvent('levels-updated', { detail: { branchId: detailBranchId, id: request.id } }));
         await loadLevels();
       }
       return success;
@@ -103,8 +103,8 @@ export const useLevels = (gameId?: number) => {
       const success = await TauriService.deleteLevel(id);
       if (success) {
         NotificationService.success('Level deleted successfully');
-        // dispatch with current gameId so listeners refresh that game's list
-        window.dispatchEvent(new CustomEvent('levels-updated', { detail: { gameId, id } }));
+        // dispatch with current branchId so listeners refresh that branch's list
+        window.dispatchEvent(new CustomEvent('levels-updated', { detail: { branchId, id } }));
         await loadLevels();
       }
       return success;

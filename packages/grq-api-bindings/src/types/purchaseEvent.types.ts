@@ -1,6 +1,7 @@
 export interface PurchaseEvent {
   id: number;
   game_id: number;
+  branch_id?: number | null;
   event_token: string;
   is_restricted: boolean;
   max_days_offset?: number | null;
@@ -10,6 +11,7 @@ export interface PurchaseEvent {
 
 export interface CreatePurchaseEventRequest {
   game_id: number;
+  branch_id: number;
   event_token: string;
   is_restricted: boolean;
   max_days_offset?: number | null;
@@ -18,6 +20,7 @@ export interface CreatePurchaseEventRequest {
 
 export interface UpdatePurchaseEventRequest {
   id: number;
+  branch_id?: number | null;
   event_token?: string;
   is_restricted?: boolean;
   max_days_offset?: number | null;

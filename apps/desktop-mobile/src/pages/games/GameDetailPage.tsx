@@ -12,9 +12,12 @@ import { ExportDialog } from '@grq/ui/molecules/ExportDialog';
 import type { ColumnData } from '@grq/ui/organisms/tables/AccountDataTable';
 import { ExcelTabBar } from '@grq/ui/organisms/ExcelTabBar';
 import { Button } from '@grq/ui/atoms/button';
-import { Download, Upload, Edit3, Save, X, Plus } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 import { Label } from '@grq/ui/atoms/label';
+import { Settings, Trash2, Upload, Download, Edit3, Save, X, Plus } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@grq/ui/atoms/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@grq/ui/atoms/dialog';
+import { Input } from '@grq/ui/atoms/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 
 
 import { useGames } from '@grq/core/hooks/useGames';
@@ -23,7 +26,8 @@ import { usePurchaseEvents } from '@grq/core/hooks/usePurchaseEvents';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
 import { useTheme } from '@grq/ui/contexts/ThemeContext';
 import { TauriService } from '@grq/core/services/tauri.service';
-import { Level, PurchaseEvent } from '@grq/api-bindings';
+import { Level, PurchaseEvent, GameBranch } from '@grq/api-bindings';
+import { useEffect } from 'react';
 
 type Mode = 'all' | 'event-only';
 
@@ -36,9 +40,45 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
   const { colors } = useSettings();
   const { theme } = useTheme();
 
-  const { games, deleteGame } = useGames();
-  const { levels = [] } = useLevels(gameId);
-  const { events: purchaseEvents = [] } = usePurchaseEvents(gameId);
+  const { games, deleteGame, fetchBranches, addBranch, deleteBranch } = useGames();
+  
+  const [branches, setBranches] = useState<GameBranch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const [showManageBranches, setShowManageBranches] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
+  const [copyFromBranchId, setCopyFromBranchId] = useState<number | null>(null);
+
+  const { levels = [] } = useLevels(selectedBranchId || undefined);
+  const { events: purchaseEvents = [] } = usePurchaseEvents(selectedBranchId || undefined);
+
+  // Fetch branches when game changed
+  useEffect(() => {
+    if (gameId) {
+      const loadBranches = async () => {
+        const data = await fetchBranches(gameId);
+        setBranches(data);
+        // Select default branch or first one
+        const defaultBranch = data.find(b => b.is_default) || data[0];
+        if (defaultBranch) {
+          setSelectedBranchId(defaultBranch.id);
+        }
+      };
+      loadBranches();
+    }
+  }, [gameId, fetchBranches]);
+
+  // Listen for branch updates
+  useEffect(() => {
+    const handler = (e: Event) => {
+        const detail = (e as CustomEvent)?.detail;
+        if (gameId && (detail?.gameId === undefined || detail?.gameId === gameId)) {
+            fetchBranches(gameId).then(setBranches);
+        }
+    };
+    window.addEventListener('branches-updated', handler);
+    return () => window.removeEventListener('branches-updated', handler);
+  }, [gameId, fetchBranches]);
 
   // Parse layout from query params if present
   const queryParams = new URLSearchParams(location.search);
@@ -254,28 +294,49 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
   };
 
   const handleAddLevel = async (data: { level_name: string; event_token: string; days_offset: number; time_spent: number; is_bonus: boolean }) => {
-    if (!gameId) return;
+    if (!gameId || !selectedBranchId) return;
     try {
       await TauriService.addLevel({
         game_id: gameId,
+        branch_id: selectedBranchId,
         ...data
       });
-      window.location.reload();
+      window.dispatchEvent(new CustomEvent('levels-updated', { detail: { branchId: selectedBranchId } }));
     } catch (error) {
       console.error('Error adding level:', error);
     }
   };
 
   const handleAddPurchaseEvent = async (data: { event_token: string; days_offset: number; max_days_offset: number | null; is_restricted: boolean }) => {
-    if (!gameId) return;
+    if (!gameId || !selectedBranchId) return;
     try {
       await TauriService.addPurchaseEvent({
         game_id: gameId,
+        branch_id: selectedBranchId,
         ...data
       });
-      window.location.reload();
+      window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { branchId: selectedBranchId } }));
     } catch (error) {
       console.error('Error adding purchase event:', error);
+    }
+  };
+
+  const handleCreateBranch = async () => {
+    if (!gameId || !newBranchName) return;
+    setIsCreatingBranch(true);
+    try {
+        const id = await addBranch({
+            game_id: gameId,
+            name: newBranchName,
+            copy_from_branch_id: copyFromBranchId || undefined
+        });
+        if (id) {
+            setNewBranchName('');
+            setCopyFromBranchId(null);
+            // new branch will be fetched by effect
+        }
+    } finally {
+        setIsCreatingBranch(false);
     }
   };
 
@@ -468,10 +529,41 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
     <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
       <div className="flex-1">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex-1">
-          <h1 className="text-2xl md:text-3xl font-bold truncate">
-            {game ? game.name : t('games.detailTitle')}
-          </h1>
+        <div className="flex-1 space-y-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl md:text-3xl font-bold truncate">
+                {game ? game.name : t('games.detailTitle')}
+            </h1>
+            
+            {branches.length > 0 && (
+                <div className="flex items-center gap-2 bg-accent/30 p-1 rounded-md border border-border/50">
+                    <Select 
+                        value={selectedBranchId?.toString()} 
+                        onValueChange={(val) => setSelectedBranchId(parseInt(val, 10))}
+                    >
+                        <SelectTrigger className="h-8 min-w-[120px] bg-transparent border-none shadow-none focus:ring-0">
+                            <SelectValue placeholder={t('branches.selectBranch', 'Select Branch')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {branches.map(b => (
+                                <SelectItem key={b.id} value={b.id.toString()}>
+                                    {b.name} {b.is_default && `(${t('common.default', 'Default')})`}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-7 w-7"
+                        onClick={() => setShowManageBranches(true)}
+                    >
+                        <Settings className="h-3.5 w-3.5" />
+                    </Button>
+                </div>
+            )}
+          </div>
           <p className="text-xs md:text-sm text-muted-foreground">
             {t('games.detailSubtitle')}
           </p>
@@ -678,6 +770,87 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
         data={columns}
       />
       </div>
+
+      {/* Manage Branches Dialog */}
+      <Dialog open={showManageBranches} onOpenChange={setShowManageBranches}>
+        <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+                <DialogTitle>{t('branches.manageTitle', 'Manage Branches')}</DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                    <Label>{t('branches.existingBranches', 'Existing Branches')}</Label>
+                    <div className="space-y-2 max-h-[200px] overflow-auto pr-2">
+                        {branches.map(b => (
+                            <div key={b.id} className="flex items-center justify-between p-2 rounded-md border bg-accent/10">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium">{b.name}</span>
+                                    {b.is_default && <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded uppercase">{t('common.default')}</span>}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    {!b.is_default && (
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-7 w-7 text-destructive"
+                                            onClick={() => deleteBranch(b.id)}
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                
+                <div className="h-px bg-border my-2" />
+                
+                <div className="space-y-3">
+                    <Label>{t('branches.createNew', 'Create New Branch')}</Label>
+                    <div className="flex flex-col gap-3">
+                        <Input 
+                            placeholder={t('branches.namePlaceholder', 'Branch Name')}
+                            value={newBranchName}
+                            onChange={(e) => setNewBranchName(e.target.value)}
+                        />
+                        
+                        <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">{t('branches.copyFrom', 'Copy levels from (Optional)')}</Label>
+                            <Select 
+                                value={copyFromBranchId?.toString() || 'none'} 
+                                onValueChange={(val) => setCopyFromBranchId(val === 'none' ? null : parseInt(val, 10))}
+                            >
+                                <SelectTrigger className="h-9">
+                                    <SelectValue placeholder={t('common.none', 'None')} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">{t('common.none', 'None')}</SelectItem>
+                                    {branches.map(b => (
+                                        <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        
+                        <Button 
+                            className="w-full gap-2" 
+                            disabled={!newBranchName || isCreatingBranch}
+                            onClick={handleCreateBranch}
+                        >
+                            {isCreatingBranch ? <span className="animate-spin mr-2">...</span> : <Plus className="h-4 w-4" />}
+                            {t('branches.createAction', 'Create Branch')}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+            
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setShowManageBranches(false)}>{t('common.close')}</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Excel-like Game Tabs Navigation */}
       <ExcelTabBar

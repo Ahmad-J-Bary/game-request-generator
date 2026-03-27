@@ -1,6 +1,7 @@
 export interface Account {
   id: number;
   game_id: number;
+  branch_id?: number | null;
   name: string;
   start_date: string;
   start_time: string;
@@ -16,6 +17,7 @@ export interface CompletedAccount extends Account {
 
 export interface CreateAccountRequest {
   game_id: number;
+  branch_id?: number | null;
   name: string;
   start_date: string;
   start_time: string;
@@ -24,6 +26,7 @@ export interface CreateAccountRequest {
 
 export interface UpdateAccountRequest {
   id: number;
+  branch_id?: number | null;
   name?: string;
   start_date?: string;
   start_time?: string;

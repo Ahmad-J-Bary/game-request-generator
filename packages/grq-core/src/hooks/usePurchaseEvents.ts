@@ -14,20 +14,20 @@ function extractErrorMessage(err: any): string {
   try { return JSON.stringify(err); } catch { return String(err); }
 }
 
-export const usePurchaseEvents = (gameId?: number) => {
+export const usePurchaseEvents = (branchId?: number) => {
   const [events, setEvents] = useState<PurchaseEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!gameId) {
+    if (!branchId) {
       setEvents([]);
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const data = await TauriService.getGamePurchaseEvents(gameId);
+      const data = await TauriService.getGamePurchaseEvents(branchId);
       setEvents(data);
     } catch (err) {
       const msg = extractErrorMessage(err);
@@ -36,17 +36,17 @@ export const usePurchaseEvents = (gameId?: number) => {
     } finally {
       setLoading(false);
     }
-  }, [gameId]);
+  }, [branchId]);
 
   useEffect(() => {
     load();
     const handler = (e: any) => {
-      const detailGameId = e?.detail?.gameId;
-      if (detailGameId === undefined || detailGameId === gameId) load();
+      const detailBranchId = e?.detail?.branchId;
+      if (detailBranchId === undefined || detailBranchId === branchId) load();
     };
     window.addEventListener('purchase-events-updated', handler);
     return () => window.removeEventListener('purchase-events-updated', handler);
-  }, [gameId, load]);
+  }, [branchId, load]);
 
   const add = async (request: CreatePurchaseEventRequest) => {
     setLoading(true);
@@ -54,7 +54,7 @@ export const usePurchaseEvents = (gameId?: number) => {
     try {
       const id = await TauriService.addPurchaseEvent(request);
       NotificationService.success('Purchase event added');
-      window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { gameId: request.game_id, id } }));
+      window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { branchId: request.branch_id, id } }));
       await load();
       return id;
     } catch (err) {
@@ -67,15 +67,15 @@ export const usePurchaseEvents = (gameId?: number) => {
     }
   };
 
-  const update = async (request: UpdatePurchaseEventRequest & { game_id?: number }) => {
+  const update = async (request: UpdatePurchaseEventRequest & { branch_id?: number }) => {
     setLoading(true);
     setError(null);
     try {
       const ok = await TauriService.updatePurchaseEvent(request);
       if (ok) {
         NotificationService.success('Purchase event updated');
-        const detailGameId = request.game_id ?? gameId;
-        window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { gameId: detailGameId, id: request.id } }));
+        const detailBranchId = request.branch_id ?? branchId;
+        window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { branchId: detailBranchId, id: request.id } }));
         await load();
       }
       return ok;
@@ -96,7 +96,7 @@ export const usePurchaseEvents = (gameId?: number) => {
       const ok = await TauriService.deletePurchaseEvent(id);
       if (ok) {
         NotificationService.success('Purchase event deleted');
-        window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { gameId } }));
+        window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { branchId } }));
         await load();
       }
       return ok;

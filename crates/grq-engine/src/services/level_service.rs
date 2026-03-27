@@ -11,26 +11,27 @@ impl LevelService {
     }
 
     pub fn create_level(&self, conn: &Connection, request: CreateLevelRequest) -> Result<i64, String> {
-        // تحقق من وجود اللعبة
-        let game_exists: i64 = conn
+        // تحقق من وجود الفرع
+        let branch_exists: i64 = conn
             .query_row(
-                "SELECT 1 FROM games WHERE id = ?1",
-                params![request.game_id],
+                "SELECT 1 FROM game_branches WHERE id = ?1",
+                params![request.branch_id],
                 |row| row.get(0),
             )
             .optional()
-            .map_err(|e| format!("Failed to check game existence: {}", e))?
+            .map_err(|e| format!("Failed to check branch existence: {}", e))?
             .unwrap_or(0);
 
-        if game_exists == 0 {
-            return Err(format!("Game with ID {} not found", request.game_id));
+        if branch_exists == 0 {
+            return Err(format!("Branch with ID {} not found", request.branch_id));
         }
 
         conn.execute(
-            "INSERT INTO levels (game_id, event_token, level_name, days_offset, time_spent, is_bonus)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO levels (game_id, branch_id, event_token, level_name, days_offset, time_spent, is_bonus)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 request.game_id,
+                request.branch_id,
                 request.event_token,
                 request.level_name,
                 request.days_offset,
@@ -43,24 +44,25 @@ impl LevelService {
         Ok(conn.last_insert_rowid())
     }
 
-    pub fn get_levels_by_game(&self, conn: &Connection, game_id: i64) -> Result<Vec<Level>, String> {
+    pub fn get_levels_by_branch(&self, conn: &Connection, branch_id: i64) -> Result<Vec<Level>, String> {
         let mut stmt = conn
             .prepare(
-                "SELECT id, game_id, event_token, level_name, days_offset, time_spent, is_bonus
-                 FROM levels WHERE game_id = ?1 ORDER BY days_offset",
+                "SELECT id, game_id, branch_id, event_token, level_name, days_offset, time_spent, is_bonus
+                 FROM levels WHERE branch_id = ?1 ORDER BY days_offset",
             )
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let levels_iter = stmt
-            .query_map(params![game_id], |row| {
+            .query_map(params![branch_id], |row| {
                 Ok(Level {
                     id: row.get(0)?,
                     game_id: row.get(1)?,
-                    event_token: row.get(2)?,
-                    level_name: row.get(3)?,
-                    days_offset: row.get(4)?,
-                    time_spent: row.get(5)?,
-                    is_bonus: row.get::<_, i32>(6)? != 0,
+                    branch_id: row.get(2).ok(),
+                    event_token: row.get(3)?,
+                    level_name: row.get(4)?,
+                    days_offset: row.get(5)?,
+                    time_spent: row.get(6)?,
+                    is_bonus: row.get::<_, i32>(7)? != 0,
                 })
             })
             .map_err(|e| format!("Failed to query levels: {}", e))?;
@@ -75,18 +77,19 @@ impl LevelService {
 
     pub fn get_level_by_id(&self, conn: &Connection, id: i64) -> Result<Option<Level>, String> {
         conn.query_row(
-            "SELECT id, game_id, event_token, level_name, days_offset, time_spent, is_bonus 
+            "SELECT id, game_id, branch_id, event_token, level_name, days_offset, time_spent, is_bonus 
              FROM levels WHERE id = ?1",
             params![id],
             |row| {
                 Ok(Level {
                     id: row.get(0)?,
                     game_id: row.get(1)?,
-                    event_token: row.get(2)?,
-                    level_name: row.get(3)?,
-                    days_offset: row.get(4)?,
-                    time_spent: row.get(5)?,
-                    is_bonus: row.get::<_, i32>(6)? != 0,
+                    branch_id: row.get(2).ok(),
+                    event_token: row.get(3)?,
+                    level_name: row.get(4)?,
+                    days_offset: row.get(5)?,
+                    time_spent: row.get(6)?,
+                    is_bonus: row.get::<_, i32>(7)? != 0,
                 })
             },
         )
@@ -98,64 +101,67 @@ impl LevelService {
         // Fetch the current level to determine what cascade cleanup is needed
         let current_row = conn
             .query_row(
-                "SELECT event_token, days_offset FROM levels WHERE id = ?1",
+                "SELECT event_token, days_offset, branch_id FROM levels WHERE id = ?1",
                 params![request.id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?)),
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?, row.get::<_, Option<i64>>(2)?)),
             )
             .optional()
             .map_err(|e| format!("Failed to fetch current level: {}", e))?;
 
-        if let Some((old_token, old_days_offset)) = current_row {
-            let new_days_offset = request.days_offset.unwrap_or(old_days_offset);
-            let new_token = request.event_token.as_deref().unwrap_or(&old_token);
+        let (old_token, old_days_offset, old_branch_id) = match current_row {
+            Some(row) => row,
+            None => return Ok(false), // Level not found
+        };
 
-            // If days_offset is changing, clear completion records so accounts redo it on the new day
-            if old_days_offset != new_days_offset {
-                conn.execute(
-                    "DELETE FROM account_level_progress WHERE level_id = ?1",
-                    params![request.id],
-                )
-                .map_err(|e| format!("Failed to reset level progress on days_offset change: {}", e))?;
-            }
+        let new_days_offset = request.days_offset.unwrap_or(old_days_offset);
+        let new_token = request.event_token.as_deref().unwrap_or(&old_token);
 
-            // Synthetic sessions derived from this level have level_name = '-'
-            // and event_token like '{base_token}_day{N}'.
-            // When any key field changes, delete them so they recompute correctly.
-            let any_key_changed = old_days_offset != new_days_offset
-                || new_token != old_token
-                || request.time_spent.is_some();
+        // If days_offset is changing, clear completion records so accounts redo it on the new day
+        if old_days_offset != new_days_offset {
+            conn.execute(
+                "DELETE FROM account_level_progress WHERE level_id = ?1",
+                params![request.id],
+            )
+            .map_err(|e| format!("Failed to reset level progress on days_offset change: {}", e))?;
+        }
 
-            if any_key_changed {
-                // Extract the base token (part before the first '_day')
-                let old_base = old_token
+        // Synthetic sessions derived from this level have level_name = '-'
+        // and event_token like '{base_token}_day{N}'.
+        // When any key field changes, delete them so they recompute correctly.
+        let any_key_changed = old_days_offset != new_days_offset
+            || new_token != old_token
+            || request.time_spent.is_some();
+
+        if any_key_changed {
+            // Extract the base token (part before the first '_day')
+            let old_base = old_token
+                .split("_day")
+                .next()
+                .unwrap_or(&old_token)
+                .to_string();
+            let like_pattern = format!("{}\\_%", old_base);
+
+            conn.execute(
+                "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\'",
+                params![like_pattern],
+            )
+            .map_err(|e| format!("Failed to delete synthetic child sessions: {}", e))?;
+
+            // If event_token changed, also clean up any synthetics with the NEW base
+            // (in case partial synthetics from a previous run exist with that token)
+            if new_token != old_token {
+                let new_base = new_token
                     .split("_day")
                     .next()
-                    .unwrap_or(&old_token)
+                    .unwrap_or(new_token)
                     .to_string();
-                let like_pattern = format!("{}\\_%", old_base);
-
-                conn.execute(
-                    "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\'",
-                    params![like_pattern],
-                )
-                .map_err(|e| format!("Failed to delete synthetic child sessions: {}", e))?;
-
-                // If event_token changed, also clean up any synthetics with the NEW base
-                // (in case partial synthetics from a previous run exist with that token)
-                if new_token != old_token {
-                    let new_base = new_token
-                        .split("_day")
-                        .next()
-                        .unwrap_or(new_token)
-                        .to_string();
-                    if new_base != old_base {
-                        let new_like = format!("{}\\_%", new_base);
-                        conn.execute(
-                            "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\'",
-                            params![new_like],
-                        )
-                        .map_err(|e| format!("Failed to delete synthetic child sessions (new token): {}", e))?;
-                    }
+                if new_base != old_base {
+                    let new_like = format!("{}\\_%", new_base);
+                    conn.execute(
+                        "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\'",
+                        params![new_like],
+                    )
+                    .map_err(|e| format!("Failed to delete synthetic child sessions (new token): {}", e))?;
                 }
             }
         }
@@ -191,6 +197,22 @@ impl LevelService {
         if let Some(is_bonus) = request.is_bonus {
             updates.push("is_bonus = ?");
             values.push(Box::new(if is_bonus { 1 } else { 0 }));
+        }
+
+        if let Some(branch_id) = request.branch_id {
+            updates.push("branch_id = ?");
+            values.push(Box::new(branch_id));
+
+            // If branch is changing, clear progress
+            if let Some(old_id) = old_branch_id {
+                if old_id != branch_id {
+                    conn.execute(
+                        "DELETE FROM account_level_progress WHERE level_id = ?1",
+                        params![request.id],
+                    )
+                    .map_err(|e| format!("Failed to reset level progress on branch change: {}", e))?;
+                }
+            }
         }
 
         if updates.is_empty() {

@@ -17,26 +17,27 @@ impl PurchaseEventService {
         conn: &Connection,
         request: CreatePurchaseEventRequest,
     ) -> Result<i64, String> {
-        // تحقق من وجود اللعبة
-        let game_exists: i64 = conn
+        // تحقق من وجود الفرع
+        let branch_exists: i64 = conn
             .query_row(
-                "SELECT 1 FROM games WHERE id = ?1",
-                params![request.game_id],
+                "SELECT 1 FROM game_branches WHERE id = ?1",
+                params![request.branch_id],
                 |row| row.get(0),
             )
             .optional()
-            .map_err(|e| format!("Failed to check game existence: {}", e))?
+            .map_err(|e| format!("Failed to check branch existence: {}", e))?
             .unwrap_or(0);
 
-        if game_exists == 0 {
-            return Err(format!("Game with ID {} not found", request.game_id));
+        if branch_exists == 0 {
+            return Err(format!("Branch with ID {} not found", request.branch_id));
         }
 
         conn.execute(
-            "INSERT INTO purchase_events (game_id, event_token, is_restricted, max_days_offset, days_offset)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO purchase_events (game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 request.game_id,
+                request.branch_id,
                 request.event_token,
                 if request.is_restricted { 1 } else { 0 },
                 request.max_days_offset,
@@ -48,28 +49,29 @@ impl PurchaseEventService {
         Ok(conn.last_insert_rowid())
     }
 
-    pub fn get_purchase_events_by_game(
+    pub fn get_purchase_events_by_branch(
         &self,
         conn: &Connection,
-        game_id: i64,
+        branch_id: i64,
     ) -> Result<Vec<PurchaseEvent>, String> {
         let mut stmt = conn
             .prepare(
-                "SELECT id, game_id, event_token, is_restricted, max_days_offset, days_offset, created_at
-                 FROM purchase_events WHERE game_id = ?1 ORDER BY id",
+                "SELECT id, game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset, created_at
+                 FROM purchase_events WHERE branch_id = ?1 ORDER BY id",
             )
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let events_iter = stmt
-            .query_map(params![game_id], |row| {
+            .query_map(params![branch_id], |row| {
                 Ok(PurchaseEvent {
                     id: row.get(0)?,
                     game_id: row.get(1)?,
-                    event_token: row.get(2)?,
-                    is_restricted: row.get::<_, i32>(3)? != 0,
-                    max_days_offset: row.get(4).ok(),
-                    days_offset: row.get(5).ok(),
-                    created_at: row.get(6).ok(),
+                    branch_id: row.get(2).ok(),
+                    event_token: row.get(3)?,
+                    is_restricted: row.get::<_, i32>(4)? != 0,
+                    max_days_offset: row.get(5).ok(),
+                    days_offset: row.get(6).ok(),
+                    created_at: row.get(7).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query purchase events: {}", e))?;
@@ -88,18 +90,19 @@ impl PurchaseEventService {
         id: i64,
     ) -> Result<Option<PurchaseEvent>, String> {
         conn.query_row(
-            "SELECT id, game_id, event_token, is_restricted, max_days_offset, days_offset, created_at 
+            "SELECT id, game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset, created_at 
              FROM purchase_events WHERE id = ?1",
             params![id],
             |row| {
                 Ok(PurchaseEvent {
                     id: row.get(0)?,
                     game_id: row.get(1)?,
-                    event_token: row.get(2)?,
-                    is_restricted: row.get::<_, i32>(3)? != 0,
-                    max_days_offset: row.get(4).ok(),
-                    days_offset: row.get(5).ok(),
-                    created_at: row.get(6).ok(),
+                    branch_id: row.get(2).ok(),
+                    event_token: row.get(3)?,
+                    is_restricted: row.get::<_, i32>(4)? != 0,
+                    max_days_offset: row.get(5).ok(),
+                    days_offset: row.get(6).ok(),
+                    created_at: row.get(7).ok(),
                 })
             },
         )

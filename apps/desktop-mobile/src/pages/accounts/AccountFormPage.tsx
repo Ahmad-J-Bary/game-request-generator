@@ -12,8 +12,10 @@ import { Textarea } from '@grq/ui/atoms/textarea';
 import { Card, CardContent } from '@grq/ui/atoms/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 import { BackButton } from '@grq/ui/molecules/BackButton';
-import { CreateAccountRequest, UpdateAccountRequest } from '@grq/api-bindings';
+import { CreateAccountRequest, UpdateAccountRequest, GameBranch } from '@grq/api-bindings';
 import { NotificationService } from '@grq/core/utils/notifications';
+import { useGames } from '@grq/core/hooks/useGames';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@grq/ui/atoms/select';
 
 // Simple Calendar Component
 const SimpleCalendar = ({
@@ -324,6 +326,31 @@ export default function AccountFormPage() {
   const [startTime, setStartTime] = useState(account?.start_time || '');
   const [requestTemplate, setRequestTemplate] = useState(account?.request_template || '');
   const [loading, setLoading] = useState(false);
+  
+  const { fetchBranches } = useGames();
+  const [branches, setBranches] = useState<GameBranch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(account?.branch_id || null);
+
+  const currentGameId = account ? account.game_id : gameId;
+
+  // Fetch branches when game changed
+  useEffect(() => {
+    if (currentGameId) {
+      const loadBranches = async () => {
+        const data = await fetchBranches(currentGameId);
+        setBranches(data);
+        
+        // If no branch selected yet, select default
+        if (selectedBranchId === null) {
+            const defaultBranch = data.find(b => b.is_default) || data[0];
+            if (defaultBranch) {
+                setSelectedBranchId(defaultBranch.id);
+            }
+        }
+      };
+      loadBranches();
+    }
+  }, [currentGameId, fetchBranches, selectedBranchId]);
 
   // Format date for display
   const formatDateForDisplay = (date: Date | null): string => {
@@ -378,6 +405,7 @@ export default function AccountFormPage() {
       if (account) {
         const request: UpdateAccountRequest = {
           id: account.id,
+          branch_id: selectedBranchId,
           name,
           start_date: formatDateForAPI(startDate),
           start_time: startTime,
@@ -387,6 +415,7 @@ export default function AccountFormPage() {
       } else {
         const request: CreateAccountRequest = {
           game_id: currentGameId,
+          branch_id: selectedBranchId,
           name,
           start_date: formatDateForAPI(startDate),
           start_time: startTime,
@@ -428,6 +457,25 @@ export default function AccountFormPage() {
                 placeholder={t('accounts.accountNamePlaceholder')}
                 required
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t('branches.branch', 'Branch')}</Label>
+              <Select 
+                value={selectedBranchId?.toString()} 
+                onValueChange={(val) => setSelectedBranchId(parseInt(val, 10))}
+              >
+                <SelectTrigger>
+                    <SelectValue placeholder={t('branches.selectBranch', 'Select Branch')} />
+                </SelectTrigger>
+                <SelectContent>
+                    {branches.map(b => (
+                        <SelectItem key={b.id} value={b.id.toString()}>
+                            {b.name} {b.is_default && `(${t('common.default', 'Default')})`}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">

@@ -57,17 +57,17 @@ export class TaskGenerator {
     let batchIndex = 0;
     const scheduledTimes: { [accountId: number]: number[] } = {};
 
-    // 2. Prepare game data cache to avoid repeated backend calls
-    const gameDataCache: { [gameId: number]: { levels: any[], purchases: any[] } } = {};
-    const getGameData = async (gameId: number) => {
-      if (!gameDataCache[gameId]) {
+    // 2. Prepare branch data cache to avoid repeated backend calls
+    const branchDataCache: { [branchId: number]: { levels: any[], purchases: any[] } } = {};
+    const getBranchData = async (branchId: number) => {
+      if (!branchDataCache[branchId]) {
         const [levels, purchases] = await Promise.all([
-          TauriService.getGameLevels(gameId),
-          TauriService.getGamePurchaseEvents(gameId)
+          TauriService.getGameLevels(branchId),
+          TauriService.getGamePurchaseEvents(branchId)
         ]);
-        gameDataCache[gameId] = { levels, purchases };
+        branchDataCache[branchId] = { levels, purchases };
       }
-      return gameDataCache[gameId];
+      return branchDataCache[branchId];
     };
 
     // 3. Process states in order, then packages within them
@@ -83,7 +83,8 @@ export class TaskGenerator {
 
         for (const account of packageAccounts) {
           try {
-            const { levels: gameLevels, purchases: gamePurchaseEvents } = await getGameData(account.game_id);
+            const branchId = account.branch_id || 0; // Backend handles 0/default mapping if needed, but should have valid branch_id
+            const { levels: gameLevels, purchases: gamePurchaseEvents } = await getBranchData(branchId);
             const response = await TauriService.getDailyRequests(account.id, today);
             
             const validRequests: any[] = [];

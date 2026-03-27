@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct Account {
     pub id: i64,
     pub game_id: i64,
+    pub branch_id: Option<i64>,
     pub name: String,
     pub start_date: String,
     pub start_time: String,
@@ -20,6 +21,7 @@ pub const PROXY_STATES: &[&str] = &["FLORIDA", "CALIFORNIA", "TEXAS", "New York"
 #[derive(Debug, Deserialize)]
 pub struct CreateAccountRequest {
     pub game_id: i64,
+    pub branch_id: Option<i64>,
     pub name: String,
     pub start_date: String,
     pub start_time: String,
@@ -29,6 +31,7 @@ pub struct CreateAccountRequest {
 #[derive(Debug, Deserialize, Default)]
 pub struct UpdateAccountRequest {
     pub id: i64,
+    pub branch_id: Option<i64>,
     pub name: Option<String>,
     pub start_date: Option<String>,
     pub start_time: Option<String>,
