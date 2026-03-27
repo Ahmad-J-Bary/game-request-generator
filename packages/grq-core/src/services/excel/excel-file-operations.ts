@@ -10,12 +10,12 @@ export async function saveExcelFile(filename: string, buffer: any): Promise<bool
   const appDir = 'GameRequestGenerator';
 
   try {
-    // Try saving to filesystem using BaseDirectory.Home (Tauri 2.0 way)
-    // This is more robust than raw absolute paths for security reasons
-    await mkdir(appDir, { recursive: true, baseDir: BaseDirectory.Home });
+    // Try saving to filesystem using BaseDirectory.Download
+    // This ensures files are easily accessible to the user (especially on Android)
+    await mkdir(appDir, { recursive: true, baseDir: BaseDirectory.Download });
     const filePath = `${appDir}/${filename}`;
-    await writeFile(filePath, uint8Array, { baseDir: BaseDirectory.Home });
-    console.log(`File saved to: ${appDir}/${filename} in Home directory`);
+    await writeFile(filePath, uint8Array, { baseDir: BaseDirectory.Download });
+    console.log(`File saved to: ${appDir}/${filename} in Downloads directory`);
     return true;
   } catch (error) {
     console.error('Failed to save file to filesystem, trying fallback:', error);

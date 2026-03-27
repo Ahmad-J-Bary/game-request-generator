@@ -407,6 +407,23 @@ function AccountsDetailContent({
                   <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.filter')}</Label>
                   <GameSelector selectedGameId={selectedGameId} onGameChange={setSelectedGameId} />
                 </div>
+
+                <div className="space-y-2 pt-2 border-t font-semibold">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.actions')}</Label>
+                  <div className="grid grid-cols-1 gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)} className="flex items-center justify-start gap-2 h-9 w-full">
+                      <Upload className="h-4 w-4" /> {t('common.import', 'Import')}
+                    </Button>
+                    
+                    <Button variant="outline" size="sm" onClick={() => { setExportType('game'); setSelectedBranchId(undefined); setShowExportDialog(true); }} className="flex items-center justify-start gap-2 h-9 w-full">
+                      <Download className="h-4 w-4" /> {t('export.gameAccounts', 'Export All Game Accounts')}
+                    </Button>
+                    
+                    <Button variant="outline" size="sm" onClick={() => { setExportType('all'); setShowExportDialog(true); }} className="flex items-center justify-start gap-2 h-9 w-full">
+                      <Download className="h-4 w-4" /> {t('export.allGames', 'Export All Games')}
+                    </Button>
+                  </div>
+                </div>
               </PopoverContent>
             </Popover>
           </div>

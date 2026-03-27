@@ -196,10 +196,9 @@ export class ExcelService {
   }
 
   /**
-   * Create a worksheet for a game using matrix layout (helper method)
-   * This is used by both exportToExcelMatrix and exportAllGamesData
+   * Generate matrix data for a game/branch using matrix layout (helper method)
    */
-  private static async createGameMatrixWorksheet(
+  private static async generateGameMatrixData(
     _levels: Level[],
     _purchaseEvents: PurchaseEvent[],
     accounts: Account[],
@@ -208,8 +207,9 @@ export class ExcelService {
     colorSettings: ColorSettings,
     theme: 'light' | 'dark',
     levelsProgress?: Record<string, any>,
-    purchaseProgress?: Record<string, any>
-  ): Promise<XLSX.WorkSheet> {
+    purchaseProgress?: Record<string, any>,
+    branchName?: string
+  ): Promise<{ wsData: any[][]; merges: any[]; cols: any[] }> {
     const getCellStyleLocal = (backgroundColor: string, isHeader: boolean = false, isSynthetic: boolean = false) =>
       this.getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
 
@@ -224,6 +224,15 @@ export class ExcelService {
     const matrix = createDateMatrix(accounts, columns, formatDateShort, parseDate, addDays);
 
     const wsData: any[][] = [];
+    const merges: any[] = [];
+
+    // Add Branch Title if provided
+    if (branchName) {
+      wsData.push([`Branch: ${branchName}`]);
+      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 3 + columns.length } });
+    }
+
+    const rowOffset = wsData.length;
 
     if (layout === 'vertical') {
       // Vertical layout: Accounts as rows, Levels as columns
@@ -259,7 +268,7 @@ export class ExcelService {
           }
         }
 
-        const row = [acc.name, formatDateWithYear(acc.start_date), formatTimeAMPM(acc.start_time), lastCompletedToken];
+        const row: any[] = [acc.name, formatDateWithYear(acc.start_date), formatTimeAMPM(acc.start_time), lastCompletedToken];
         matrixRow.forEach((date, colIdx) => {
           const col = columns[colIdx];
           const progressKey = `${acc.id}_${col.id}`;
@@ -268,8 +277,6 @@ export class ExcelService {
           
           let displayDate = date;
           
-          // For purchase events, if there is progress with a specific days_offset, recalculate the date
-          // This ensures that manually modified dates are exported correctly
           if (col.kind === 'purchase' && progress && typeof progress.days_offset === 'number') {
              const start = parseDate(acc.start_date);
              if (start) {
@@ -283,55 +290,60 @@ export class ExcelService {
         wsData.push(row);
       });
 
-      const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+      // Apply merging relative to rowOffset
+      merges.push(
+        { s: { r: rowOffset + 0, c: 0 }, e: { r: rowOffset + 0, c: 3 } },
+        { s: { r: rowOffset + 1, c: 0 }, e: { r: rowOffset + 1, c: 3 } },
+        { s: { r: rowOffset + 2, c: 0 }, e: { r: rowOffset + 2, c: 3 } },
+        { s: { r: rowOffset + 3, c: 0 }, e: { r: rowOffset + 3, c: 3 } },
+      );
 
-      // Apply merging
-      (worksheet as any)['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } },
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 3 } },
-      ];
-
-      // Apply styling
+      // Apply styling directly to cell content in wsData
       const headerStyle = getCellStyleLocal(colorSettings.headerColor, true);
       const dataRowStyle = getCellStyleLocal(colorSettings.dataRowColor);
+      const branchTitleStyle = getCellStyleLocal(colorSettings.headerColor, true);
 
-    for (let r = 0; r < wsData.length; r++) {
+      // Branch Title Styling
+      if (branchName) {
+        wsData[0][0] = { v: wsData[0][0], s: branchTitleStyle };
+      }
+
+      for (let r = rowOffset; r < wsData.length; r++) {
+        const localRowIdx = r - rowOffset;
         for (let c = 0; c < wsData[r].length; c++) {
-          const cellAddress = XLSX.utils.encode_cell({ r, c });
-          const cell = (worksheet as any)[cellAddress];
-          if (!cell) continue;
-
-          if (r < 5) {
+          const val = wsData[r][c];
+          const cellObj = typeof val === 'object' && val !== null && 'v' in val ? val : { v: val };
+          
+          if (localRowIdx < 5) {
             if (c < 4) {
-              cell.s = headerStyle;
+              cellObj.s = headerStyle;
             } else {
               const col = columns[c - 4];
-              cell.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, true);
+              cellObj.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, true);
             }
           } else {
             if (c < 4) {
-              cell.s = dataRowStyle;
+              cellObj.s = dataRowStyle;
             } else {
               const col = columns[c - 4];
-              const acc = accounts[r - 5];
+              const acc = accounts[localRowIdx - 5];
               const progressKey = `${acc.id}_${col.id}`;
               const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
               const isCompleted = progress?.is_completed ?? false;
               const bgColor = isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
-              cell.s = getCellStyleLocal(bgColor, false, col.synthetic);
+              cellObj.s = getCellStyleLocal(bgColor, false, col.synthetic);
             }
           }
+          wsData[r][c] = cellObj;
         }
       }
 
-      (worksheet as any)['!cols'] = [
+      const cols = [
         { wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 25 },
         ...columns.map(() => ({ wch: 12 }))
       ];
 
-      return worksheet;
+      return { wsData, merges, cols };
     } else {
       // Horizontal layout: Levels as rows, Accounts as columns
       const headerRow = ['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)'];
@@ -354,41 +366,46 @@ export class ExcelService {
         wsData.push(row);
       });
 
-      const worksheet = XLSX.utils.aoa_to_sheet(wsData);
-
       const headerStyle = getCellStyleLocal(colorSettings.headerColor, true);
+      const branchTitleStyle = getCellStyleLocal(colorSettings.headerColor, true);
 
-      for (let r = 0; r < wsData.length; r++) {
+      // Branch Title Styling
+      if (branchName) {
+        wsData[0][0] = { v: wsData[0][0], s: branchTitleStyle };
+      }
+
+      for (let r = rowOffset; r < wsData.length; r++) {
+        const localRowIdx = r - rowOffset;
         for (let c = 0; c < wsData[r].length; c++) {
-          const cellAddress = XLSX.utils.encode_cell({ r, c });
-          const cell = (worksheet as any)[cellAddress];
-          if (!cell) continue;
+          const val = wsData[r][c];
+          const cellObj = typeof val === 'object' && val !== null && 'v' in val ? val : { v: val };
 
-          if (r === 0) {
-            cell.s = headerStyle;
+          if (localRowIdx === 0) {
+            cellObj.s = headerStyle;
           } else {
             if (c < 4) {
-              const col = columns[r - 1];
-              cell.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, false);
+              const col = columns[localRowIdx - 1];
+              cellObj.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, false);
             } else {
               const acc = accounts[c - 4];
-              const col = columns[r - 1];
+              const col = columns[localRowIdx - 1];
               const progressKey = `${acc.id}_${col.id}`;
               const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
               const isCompleted = progress?.is_completed ?? false;
               const bgColor = isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
-              cell.s = getCellStyleLocal(bgColor, false, col.synthetic);
+              cellObj.s = getCellStyleLocal(bgColor, false, col.synthetic);
             }
           }
+          wsData[r][c] = cellObj;
         }
       }
 
-      (worksheet as any)['!cols'] = [
+      const cols = [
         { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 25 },
         ...accounts.map(() => ({ wch: 15 }))
       ];
 
-      return worksheet;
+      return { wsData, merges, cols };
     }
   }
 
@@ -444,8 +461,8 @@ export class ExcelService {
         Object.assign(purchaseProgressRecord, purchaseProgress);
       }
 
-      // Use helper method to create worksheet
-      const worksheet = await this.createGameMatrixWorksheet(
+      // Use helper method to generate data
+      const { wsData, merges, cols } = await this.generateGameMatrixData(
         levels,
         purchaseEvents,
         accounts,
@@ -456,6 +473,11 @@ export class ExcelService {
         levelsProgressRecord,
         purchaseProgressRecord
       );
+
+      // Create worksheet from generated data
+      const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+      (worksheet as any)['!merges'] = merges;
+      (worksheet as any)['!cols'] = cols;
 
       // Add worksheet to workbook
       XLSX.utils.book_append_sheet(workbook, worksheet, gameName.substring(0, 31));
@@ -473,29 +495,104 @@ export class ExcelService {
    */
   static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any, purchaseProgress?: any, branchId?: number): Promise<boolean> {
     try {
-      // If branchId is not provided, we need to find the default branch or error out
-      // For now, if no branchId, we'll try to find branches and use the first one
-      let effectiveBranchId = branchId;
-      if (!effectiveBranchId) {
-        const branches = await TauriService.getGameBranches(gameId);
-        effectiveBranchId = branches.find(b => b.is_default)?.id || branches[0]?.id;
-      }
-
-      if (!effectiveBranchId) return false;
-
-      const [levels, purchaseEvents, accounts] = await Promise.all([
-        TauriService.getGameLevels(effectiveBranchId),
-        TauriService.getGamePurchaseEvents(effectiveBranchId),
-        TauriService.getAccounts(gameId)
-      ]);
-
       const game = await TauriService.getGameById(gameId);
       const gameName = game?.name || 'Game';
 
-      // Sort accounts by date (oldest to newest)
-      const sortedAccounts = this.sortAccountsByDate(accounts);
+      // If branchId is provided, export ONLY that branch (legacy/specific behavior)
+      if (branchId) {
+        const [levels, purchaseEvents, accounts] = await Promise.all([
+          TauriService.getGameLevels(branchId),
+          TauriService.getGamePurchaseEvents(branchId),
+          TauriService.getAccounts(gameId).then(accs => accs.filter(a => a.branch_id === branchId))
+        ]);
 
-      return await this.exportToExcelMatrix(levels, purchaseEvents, sortedAccounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress);
+        const sortedAccounts = this.sortAccountsByDate(accounts);
+        return await this.exportToExcelMatrix(levels, purchaseEvents, sortedAccounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress);
+      }
+
+      // If no branchId, export ALL branches stacked vertically
+      const branches = await TauriService.getGameBranches(gameId);
+      if (branches.length === 0) return false;
+
+      const workbook = XLSX.utils.book_new();
+      let masterWsData: any[][] = [];
+      let masterMerges: any[] = [];
+      let masterCols: any[] = [];
+
+      for (const branch of branches) {
+        const [levels, purchaseEvents, accounts] = await Promise.all([
+          TauriService.getGameLevels(branch.id),
+          TauriService.getGamePurchaseEvents(branch.id),
+          TauriService.getAccounts(gameId).then(accs => accs.filter(a => a.branch_id === branch.id))
+        ]);
+
+        if (accounts.length === 0) continue;
+
+        const sortedAccounts = this.sortAccountsByDate(accounts);
+        const branchColumns = buildColumns(levels, purchaseEvents);
+
+        // Fetch progress for these accounts if not provided
+        let effectiveLevelsProgress = levelsProgress;
+        let effectivePurchaseProgress = purchaseProgress;
+
+        if (!levelsProgress || !purchaseProgress) {
+            const lp: Record<string, any> = {};
+            const pp: Record<string, any> = {};
+            for (const acc of sortedAccounts) {
+                const [accLp, accPp] = await Promise.all([
+                    TauriService.getAccountLevelProgress(acc.id),
+                    TauriService.getAccountPurchaseEventProgress(acc.id)
+                ]);
+                accLp.forEach(p => lp[`${acc.id}_${p.level_id}`] = p);
+                accPp.forEach(p => pp[`${acc.id}_${p.purchase_event_id}`] = p);
+            }
+            effectiveLevelsProgress = lp;
+            effectivePurchaseProgress = pp;
+        }
+
+        const currentOffset = masterWsData.length;
+        if (currentOffset > 0) {
+            masterWsData.push([]); // Add separator row
+        }
+        
+        const { wsData, merges, cols } = await this.generateGameMatrixData(
+          levels,
+          purchaseEvents,
+          sortedAccounts,
+          branchColumns,
+          layout,
+          colorSettings,
+          theme,
+          effectiveLevelsProgress,
+          effectivePurchaseProgress,
+          branch.name
+        );
+
+        // Adjust merge indices
+        const adjustedMerges = merges.map(m => ({
+            s: { r: m.s.r + currentOffset + (currentOffset > 0 ? 1 : 0), c: m.s.c },
+            e: { r: m.e.r + currentOffset + (currentOffset > 0 ? 1 : 0), c: m.e.c }
+        }));
+
+        masterWsData.push(...wsData);
+        masterMerges.push(...adjustedMerges);
+        
+        // Keep the widest column configuration
+        if (cols.length > masterCols.length) {
+            masterCols = cols;
+        }
+      }
+
+      if (masterWsData.length === 0) return false;
+
+      const worksheet = XLSX.utils.aoa_to_sheet(masterWsData);
+      (worksheet as any)['!merges'] = masterMerges;
+      (worksheet as any)['!cols'] = masterCols;
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, gameName.substring(0, 31));
+
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      return await this.saveFile(`${gameName}.xlsx`, buffer);
     } catch (error) {
       console.error('Export game data error:', error);
       return false;
@@ -513,108 +610,137 @@ export class ExcelService {
 
       // Process each game and create sheets
       for (const game of games) {
-        // For export all games, we use the default branch for each game
         const branches = await TauriService.getGameBranches(game.id);
-        const defaultBranch = branches.find(b => b.is_default) || branches[0];
-        
-        if (!defaultBranch) continue;
+        if (branches.length === 0) continue;
 
-        const [levels, purchaseEvents, accounts] = await Promise.all([
-          TauriService.getGameLevels(defaultBranch.id),
-          TauriService.getGamePurchaseEvents(defaultBranch.id),
-          TauriService.getAccounts(game.id)
-        ]);
+        let masterWsData: any[][] = [];
+        let masterMerges: any[] = [];
+        let masterCols: any[] = [];
+        const allGameLevels: Level[] = [];
+        const allGamePurchaseEvents: PurchaseEvent[] = [];
 
-        if (accounts.length === 0) {
-          // Skip games with no accounts
-          continue;
-        }
+        // Truncate base name to allow for _Lvl and _Evt suffixes (max 31 total)
+        const sheetBaseName = game.name.substring(0, 27);
 
-        // Sort accounts by date (oldest to newest)
-        const sortedAccounts = this.sortAccountsByDate(accounts);
+        for (const branch of branches) {
+          const [levels, purchaseEvents, accounts] = await Promise.all([
+            TauriService.getGameLevels(branch.id),
+            TauriService.getGamePurchaseEvents(branch.id),
+            TauriService.getAccounts(game.id).then(accs => accs.filter(a => a.branch_id === branch.id))
+          ]);
 
-        // Fetch progress data for all accounts in this game
-        const levelsProgress: Record<string, any> = {};
-        const purchaseProgress: Record<string, any> = {};
+          if (accounts.length === 0) continue;
 
-        for (const account of sortedAccounts) {
-          try {
-            const [accountLevelsProgress, accountPurchaseProgress] = await Promise.all([
-              TauriService.getAccountLevelProgress(account.id),
-              TauriService.getAccountPurchaseEventProgress(account.id)
-            ]);
+          // Collect unique levels/events for definition sheets
+          levels.forEach(l => { if (!allGameLevels.find(xl => xl.id === l.id)) allGameLevels.push(l); });
+          purchaseEvents.forEach(pe => { if (!allGamePurchaseEvents.find(xpe => xpe.id === pe.id)) allGamePurchaseEvents.push(pe); });
 
-            // Store progress data with keys matching exportToExcelMatrix format
-            accountLevelsProgress.forEach(p => {
-              const key = `${account.id}_${p.level_id}`;
-              levelsProgress[key] = p;
-            });
+          // Sort accounts by date (oldest to newest)
+          const sortedAccounts = this.sortAccountsByDate(accounts);
 
-            accountPurchaseProgress.forEach(p => {
-              const key = `${account.id}_${p.purchase_event_id}`;
-              purchaseProgress[key] = p;
-            });
-          } catch (error) {
-            console.error(`Failed to fetch progress for account ${account.id}:`, error);
+          // Fetch progress data for these accounts
+          const levelsProgress: Record<string, any> = {};
+          const purchaseProgress: Record<string, any> = {};
+
+          for (const account of sortedAccounts) {
+            try {
+              const [accountLevelsProgress, accountPurchaseProgress] = await Promise.all([
+                TauriService.getAccountLevelProgress(account.id),
+                TauriService.getAccountPurchaseEventProgress(account.id)
+              ]);
+
+              accountLevelsProgress.forEach(p => {
+                const key = `${account.id}_${p.level_id}`;
+                levelsProgress[key] = p;
+              });
+
+              accountPurchaseProgress.forEach(p => {
+                const key = `${account.id}_${p.purchase_event_id}`;
+                purchaseProgress[key] = p;
+              });
+            } catch (error) {
+              console.error(`Failed to fetch progress for account ${account.id}:`, error);
+            }
+          }
+
+          // Build columns for this branch
+          let filteredLevels = levels;
+          if (mode === 'event-only') {
+            filteredLevels = levels.filter(l => l.level_name !== '-');
+          }
+
+          const levelCols = filteredLevels.map((l) => ({
+            kind: 'level' as const,
+            id: l.id,
+            token: l.event_token.split('_day')[0],
+            fullToken: l.event_token,
+            name: l.level_name,
+            daysOffset: l.days_offset,
+            timeSpent: l.time_spent,
+            isBonus: l.is_bonus,
+            synthetic: l.level_name === '-',
+          }));
+
+          const peCols = purchaseEvents.map((p: PurchaseEvent) => ({
+            kind: 'purchase' as const,
+            id: p.id,
+            token: p.event_token,
+            fullToken: p.event_token,
+            name: '$$$',
+            isRestricted: (p as any).is_restricted ?? false,
+            daysOffset: (p as any).days_offset !== undefined && (p as any).days_offset !== null
+              ? (p as any).days_offset.toString()
+              : (p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-'),
+            synthetic: false,
+          }));
+
+          const columns = [...levelCols, ...peCols];
+
+          const currentOffset = masterWsData.length;
+          const separatorRowsCount = currentOffset > 0 ? 1 : 0;
+          if (separatorRowsCount > 0) {
+              masterWsData.push([]); // Add separator row
+          }
+
+          const { wsData, merges, cols } = await this.generateGameMatrixData(
+            levels,
+            purchaseEvents,
+            sortedAccounts,
+            columns,
+            layout,
+            colorSettings,
+            theme,
+            levelsProgress,
+            purchaseProgress,
+            branch.name
+          );
+
+          // Adjust merge indices
+          const adjustedMerges = merges.map(m => ({
+              s: { r: m.s.r + currentOffset + separatorRowsCount, c: m.s.c },
+              e: { r: m.e.r + currentOffset + separatorRowsCount, c: m.e.c }
+          }));
+
+          masterWsData.push(...wsData);
+          masterMerges.push(...adjustedMerges);
+          
+          if (cols.length > masterCols.length) {
+              masterCols = cols;
           }
         }
 
-        // Build columns based on the selected mode
-        let filteredLevels = levels;
-        if (mode === 'event-only') {
-          filteredLevels = levels.filter(l => l.level_name !== '-');
-        }
+        if (masterWsData.length === 0) continue;
 
-        const levelCols = filteredLevels.map((l) => ({
-          kind: 'level' as const,
-          id: l.id,
-          token: l.event_token.split('_day')[0],
-          fullToken: l.event_token,
-          name: l.level_name,
-          daysOffset: l.days_offset,
-          timeSpent: l.time_spent,
-          isBonus: l.is_bonus,
-          synthetic: l.level_name === '-',
-        }));
+        const accountsWorksheet = XLSX.utils.aoa_to_sheet(masterWsData);
+        (accountsWorksheet as any)['!merges'] = masterMerges;
+        (accountsWorksheet as any)['!cols'] = masterCols;
 
-        const peCols = purchaseEvents.map((p: PurchaseEvent) => ({
-          kind: 'purchase' as const,
-          id: p.id,
-          token: p.event_token,
-          fullToken: p.event_token,
-          name: '$$$',
-          isRestricted: (p as any).is_restricted ?? false,
-          // Export the reference days_offset if available (preferred), otherwise show max limit or dash
-          daysOffset: (p as any).days_offset !== undefined && (p as any).days_offset !== null
-            ? (p as any).days_offset.toString()
-            : (p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-'),
-          synthetic: false,
-        }));
-
-        const columns = [...levelCols, ...peCols];
-
-        // 1. Create accounts progress worksheet
-        const accountsWorksheet = await this.createGameMatrixWorksheet(
-          levels,
-          purchaseEvents,
-          sortedAccounts,
-          columns,
-          layout,
-          colorSettings,
-          theme,
-          levelsProgress,
-          purchaseProgress
-        );
-
-        // Add accounts worksheet (sheet names limited to 31 characters)
-        // Truncate base name to allow for _Lvl and _Evt suffixes (max 31 total)
-        const sheetBaseName = game.name.substring(0, 27);
         XLSX.utils.book_append_sheet(workbook, accountsWorksheet, sheetBaseName);
 
         // 2. Create Levels sheet
-        if (levels.length > 0) {
+        if (allGameLevels.length > 0) {
           const levelHeaders = ['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)', 'Bonus'];
-          const levelRows = levels.map(level => [
+          const levelRows = allGameLevels.map(level => [
             level.event_token,
             level.level_name,
             level.days_offset,
@@ -626,9 +752,9 @@ export class ExcelService {
         }
 
         // 3. Create Purchase Events sheet
-        if (purchaseEvents.length > 0) {
+        if (allGamePurchaseEvents.length > 0) {
           const purchaseHeaders = ['Event Token', 'Restricted', 'Max Days Offset'];
-          const purchaseRows = purchaseEvents.map(event => [
+          const purchaseRows = allGamePurchaseEvents.map(event => [
             event.event_token,
             event.is_restricted ? 'Yes' : 'No',
             event.max_days_offset
