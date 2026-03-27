@@ -10,15 +10,12 @@ import { GameDataTable } from '@grq/ui/organisms/tables/GameDataTable';
 import { ImportDialog } from '@grq/ui/molecules/ImportDialog';
 import { ExportDialog } from '@grq/ui/molecules/ExportDialog';
 import type { ColumnData } from '@grq/ui/organisms/tables/AccountDataTable';
+import { ExcelTabBar } from '@grq/ui/organisms/ExcelTabBar';
 import { Button } from '@grq/ui/atoms/button';
-import { Download, Upload, Plus, Edit3, Save, X, Trash2 } from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@grq/ui/atoms/popover';
-import { Input } from '@grq/ui/atoms/input';
+import { Download, Upload, Edit3, Save, X, Plus } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 import { Label } from '@grq/ui/atoms/label';
+
 
 import { useGames } from '@grq/core/hooks/useGames';
 import { useLevels } from '@grq/core/hooks/useLevels';
@@ -64,23 +61,16 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  // Game Creation State
-  const [isCreatingGame, setIsCreatingGame] = useState(false);
-  const [newGameName, setNewGameName] = useState('');
   
   // Edit State
   const [editedLevels, setEditedLevels] = useState<Level[]>([]);
   const [editedPurchaseEvents, setEditedPurchaseEvents] = useState<PurchaseEvent[]>([]);
 
-  const handleCreateGame = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!newGameName.trim()) return;
-
+  // Game Creation State
+  const handleCreateGameAsync = async (name: string) => {
     try {
-        const newId = await TauriService.addGame({ name: newGameName });
+        const newId = await TauriService.addGame({ name });
         if (newId) {
-            setNewGameName('');
-            setIsCreatingGame(false);
             window.dispatchEvent(new CustomEvent('games-updated', { detail: { id: newId } }));
             navigate(`/games/${newId}`);
         }
@@ -685,74 +675,14 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
       </div>
 
       {/* Excel-like Game Tabs Navigation */}
-      <div className="sticky bottom-0 w-[calc(100%+3rem)] -ml-6 -mb-6 bg-gray-200 border-t border-gray-300 h-10 flex items-end px-2 z-40 overflow-x-auto mt-auto">
-        {games.map((g) => {
-          const isActive = g.id === gameId;
-          return (
-            <div
-              key={g.id}
-              onClick={() => navigate(`/games/${g.id}`)}
-              className={`
-                flex items-center gap-2 px-4 py-1.5 min-w-[120px] max-w-[200px] text-sm cursor-pointer select-none border-r border-gray-300 transition-colors group
-                ${isActive 
-                  ? 'bg-white font-bold text-green-700 border-t-2 border-t-green-600 rounded-t-sm shadow-[0_-2px_4px_rgba(0,0,0,0.05)] h-[34px] relative top-[1px]' 
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-50 h-[30px] mb-[1px]'
-                }
-              `}
-              title={g.name}
-            >
-              <span className="truncate flex-1">{g.name}</span>
-              {isActive && !isEditMode && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteGame();
-                  }}
-                  className="p-1 hover:bg-red-50 hover:text-red-600 rounded-full transition-colors"
-                  title={t('common.delete', 'Delete Game')}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          );
-        })}
-        
-        {/* Add New Game Popover */}
-        <Popover open={isCreatingGame} onOpenChange={setIsCreatingGame}>
-          <PopoverTrigger asChild>
-            <div 
-                className="flex items-center justify-center w-8 h-[30px] mb-[1px] bg-gray-300 hover:bg-gray-400 text-gray-600 cursor-pointer rounded-tr-sm ml-1"
-                title={t('games.addGame', 'Add New Game')}
-            >
-                <Plus className="h-4 w-4" />
-            </div>
-          </PopoverTrigger>
-          <PopoverContent className="w-80 p-4 mb-2" side="top" align="start">
-            <form onSubmit={handleCreateGame} className="space-y-4">
-              <div className="space-y-2">
-                <h4 className="font-medium leading-none">{t('games.newGame', 'New Game')}</h4>
-                <p className="text-sm text-muted-foreground">
-                  {t('games.enterName', 'Enter the name for the new game sheet.')}
-                </p>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="name" className="sr-only">Name</Label>
-                <Input
-                  id="name"
-                  placeholder="Game Name"
-                  value={newGameName}
-                  onChange={(e) => setNewGameName(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <Button type="submit" size="sm" className="w-full">
-                {t('common.create', 'Create')}
-              </Button>
-            </form>
-          </PopoverContent>
-        </Popover>
-      </div>
+      <ExcelTabBar
+        games={games}
+        activeGameId={gameId}
+        onSelectGame={(id) => navigate(`/games/${id}`)}
+        onCreateGame={handleCreateGameAsync}
+        onDeleteGame={handleDeleteGame}
+        isEditMode={isEditMode}
+      />
     </div>
   );
 }

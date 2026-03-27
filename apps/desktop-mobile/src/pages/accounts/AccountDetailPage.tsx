@@ -581,10 +581,13 @@ export default function AccountDetailPage() {
         />
       </div>
       {(prevAccount || nextAccount) && (
-        <div className="sticky bottom-0 w-[calc(100%+3rem)] -ml-6 -mb-6 bg-gray-100 border-t border-gray-200 p-4 flex justify-between items-center z-40 mt-auto">
+        <div 
+          className="fixed inset-x-0 bottom-[var(--mobile-offset)] md:sticky md:bottom-0 md:inset-x-auto z-40 flex justify-between items-center px-4 py-3 bg-background/95 backdrop-blur-xl border-t border-border/40 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] md:rounded-t-lg transition-all duration-300"
+          style={{ '--mobile-offset': 'calc(3.5rem + env(safe-area-inset-bottom))' } as React.CSSProperties}
+        >
           <div>
             {prevAccount && (
-              <Button variant="outline" onClick={() => navigate(`/accounts/${prevAccount.id}`)} className="flex items-center gap-2" title={`${t('common.previous', 'Previous')}: ${prevAccount.name}`}>
+              <Button variant="outline" onClick={() => navigate(`/accounts/${prevAccount.id}`)} className="flex items-center gap-2 bg-background" title={`${t('common.previous', 'Previous')}: ${prevAccount.name}`}>
                 <ArrowLeft className="h-4 w-4" />
                 <span className="hidden sm:inline">{prevAccount.name}</span>
               </Button>
@@ -592,7 +595,7 @@ export default function AccountDetailPage() {
           </div>
           <div>
             {nextAccount && (
-              <Button variant="outline" onClick={() => navigate(`/accounts/${nextAccount.id}`)} className="flex items-center gap-2" title={`${t('common.next', 'Next')}: ${nextAccount.name}`}>
+              <Button variant="outline" onClick={() => navigate(`/accounts/${nextAccount.id}`)} className="flex items-center gap-2 bg-background" title={`${t('common.next', 'Next')}: ${nextAccount.name}`}>
                 <span className="hidden sm:inline">{nextAccount.name}</span>
                 <ArrowRight className="h-4 w-4" />
               </Button>

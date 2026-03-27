@@ -21,10 +21,9 @@ import { useSettings } from '@grq/ui/contexts/SettingsContext';
 import { useTheme } from '@grq/ui/contexts/ThemeContext';
 import { useGames } from '@grq/core/hooks/useGames';
 import { TauriService } from '@grq/core/services/tauri.service';
+import { ExcelTabBar } from '@grq/ui/organisms/ExcelTabBar';
 import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
-import { Input } from '@grq/ui/atoms/input';
 import { Label } from '@grq/ui/atoms/label';
-import { Plus } from 'lucide-react';
 
 import type { PurchaseEvent } from '@grq/api-bindings';
 import type { ColumnData } from '@grq/ui/organisms/tables/AccountsDataTable';
@@ -67,19 +66,11 @@ export default function AccountsDetailPage() {
   const { levels = [] } = useLevels(selectedGameId);
   const { events: purchaseEvents = [] } = usePurchaseEvents(selectedGameId);
   const { games } = useGames();
-  
-  const [isCreatingGame, setIsCreatingGame] = useState(false);
-  const [newGameName, setNewGameName] = useState('');
 
-  const handleCreateGame = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!newGameName.trim()) return;
-
+  const handleCreateGameAsync = async (name: string) => {
     try {
-        const newId = await TauriService.addGame({ name: newGameName });
+        const newId = await TauriService.addGame({ name });
         if (newId) {
-            setNewGameName('');
-            setIsCreatingGame(false);
             window.dispatchEvent(new CustomEvent('games-updated', { detail: { id: newId } }));
             setSelectedGameId(newId);
         }
@@ -87,7 +78,6 @@ export default function AccountsDetailPage() {
         console.error('Failed to create game:', error);
     }
   };
-
 
   const columns = useMemo(() => {
     const levelCols = levels.map((l) => ({
@@ -306,11 +296,7 @@ export default function AccountsDetailPage() {
                setShowExportDialog={setShowExportDialog}
                exportType={exportType}
                setExportType={setExportType}
-               isCreatingGame={isCreatingGame}
-               setIsCreatingGame={setIsCreatingGame}
-               newGameName={newGameName}
-               setNewGameName={setNewGameName}
-               handleCreateGame={handleCreateGame}
+               handleCreateGameAsync={handleCreateGameAsync}
             />
          )}
        </ProgressProvider>
@@ -341,11 +327,7 @@ interface AccountsDetailContentProps {
   setShowExportDialog: (show: boolean) => void;
   exportType: 'game' | 'account' | 'all';
   setExportType: (type: 'game' | 'account' | 'all') => void;
-  isCreatingGame: boolean;
-  setIsCreatingGame: (is: boolean) => void;
-  newGameName: string;
-  setNewGameName: (name: string) => void;
-  handleCreateGame: (e?: React.FormEvent) => Promise<void>;
+  handleCreateGameAsync: (name: string) => Promise<void>;
 }
 
 // Separate component to handle the logic that depends on Progress
@@ -353,7 +335,7 @@ function AccountsDetailContent({
     accounts, purchaseEvents, games, selectedGameId, setSelectedGameId,
     mode, setMode, layout, setLayout, colors, theme, t, columns, levelsProgress, purchaseProgress,
     showImportDialog, setShowImportDialog, showExportDialog, setShowExportDialog, exportType, setExportType,
-    isCreatingGame, setIsCreatingGame, newGameName, setNewGameName, handleCreateGame
+    handleCreateGameAsync
 }: AccountsDetailContentProps) {
   
   const [isEditMode, setIsEditMode] = useState(false);
@@ -813,64 +795,13 @@ function AccountsDetailContent({
       />
       
       {/* Footer / Tabs */}
-      <div className="sticky bottom-0 w-[calc(100%+3rem)] -ml-6 -mb-6 bg-gray-200 border-t border-gray-300 h-10 flex items-end px-2 z-40 overflow-x-auto mt-auto">
-        {games.map((g) => {
-          const isActive = g.id === selectedGameId;
-          return (
-            <div
-              key={g.id}
-              onClick={() => setSelectedGameId(g.id)}
-              className={`
-                flex items-center gap-2 px-4 py-1.5 min-w-[120px] max-w-[200px] text-sm cursor-pointer select-none border-r border-gray-300 transition-colors
-                ${isActive 
-                  ? 'bg-white font-bold text-green-700 border-t-2 border-t-green-600 rounded-t-sm shadow-[0_-2px_4px_rgba(0,0,0,0.05)] h-[34px] relative top-[1px]' 
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-50 h-[30px] mb-[1px]'
-                }
-              `}
-              title={g.name}
-            >
-              <span className="truncate">{g.name}</span>
-            </div>
-          );
-        })}
-        
-        {/* Add New Game Popover */}
-        <Popover open={isCreatingGame} onOpenChange={setIsCreatingGame}>
-          <PopoverTrigger asChild>
-            <div 
-                className="flex items-center justify-center w-8 h-[30px] mb-[1px] bg-gray-300 hover:bg-gray-400 text-gray-600 cursor-pointer rounded-tr-sm ml-1"
-                title={t('games.addGame', 'Add New Game')}
-            >
-                <Plus className="h-4 w-4" />
-            </div>
-          </PopoverTrigger>
-          <PopoverContent className="w-80 p-4 mb-2" side="top" align="start">
-            <form onSubmit={handleCreateGame} className="space-y-4">
-              <div className="space-y-2">
-                <h4 className="font-medium leading-none">{t('games.newGame', 'New Game')}</h4>
-                <p className="text-sm text-muted-foreground">
-                  {t('games.enterName', 'Enter the name for the new game sheet.')}
-                </p>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="name" className="sr-only">Name</Label>
-                <Input
-                  id="name"
-                  placeholder="Game Name"
-                  value={newGameName}
-                  onChange={(e) => setNewGameName(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <Button type="submit" size="sm" className="w-full">
-                {t('common.create', 'Create')}
-              </Button>
-            </form>
-          </PopoverContent>
-        </Popover>
-      </div>
-    
-      </div>
-    );
+      <ExcelTabBar
+        games={games}
+        activeGameId={selectedGameId}
+        onSelectGame={setSelectedGameId}
+        onCreateGame={handleCreateGameAsync}
+      />
+    </div>
+  );
 }
 
