@@ -465,7 +465,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
   }, [baseColumns, mode]);
 
   return (
-    <div className="container mx-auto p-6 space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
+    <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
       <div className="flex-1">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex-1">
@@ -477,9 +477,9 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
           </p>
         </div>
 
-        <div className="flex items-center gap-2 md:gap-3 self-end md:self-auto">
+        <div className="flex items-center gap-2 md:gap-3 self-end lg:self-auto">
           {/* Desktop Actions */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-3">
             <Button
                 variant="outline"
                 size="sm"
@@ -527,7 +527,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
           </div>
 
           {/* Mobile More Actions Popover */}
-          <div className="md:hidden">
+          <div className="lg:hidden">
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-9 w-9 p-0">
@@ -633,7 +633,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
       </div>
 
       <Card>
-        <CardContent className="overflow-auto">
+        <CardContent className="p-0 overflow-auto">
           <GameDataTable
             columns={columns}
             layout={layout}

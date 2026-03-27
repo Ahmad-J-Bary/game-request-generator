@@ -270,7 +270,7 @@ export default function AccountsDetailPage() {
   // Better approach: Separate component `AccountsDetailContent` that takes `levelsProgress` as prop.
   
   return (
-    <div className="p-6 space-y-4 min-h-[calc(100vh-4rem)] relative flex flex-col">
+    <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
        <ProgressProvider accounts={accounts}>
          {({ levelsProgress, purchaseProgress }) => (
             <AccountsDetailContent 
@@ -757,7 +757,7 @@ function AccountsDetailContent({
       </div>
 
       <Card className="flex-1">
-        <CardContent className="overflow-auto h-full">
+        <CardContent className="p-0 overflow-auto h-full">
              <AccountsDataTable
                accounts={sortedAccounts}
                columns={columns}

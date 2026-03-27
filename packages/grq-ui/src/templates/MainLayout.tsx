@@ -48,7 +48,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           MOBILE TOP HEADER  (hidden on md+)
       ══════════════════════════════════════════════════*/}
       <header
-        className="md:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between border-b border-border/40 bg-background/70 backdrop-blur-xl shadow-sm"
+        className="lg:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between border-b border-border/40 bg-background/70 backdrop-blur-xl shadow-sm"
         style={{
           paddingTop:    'env(safe-area-inset-top)',
           paddingLeft:   'calc(1rem + env(safe-area-inset-left))',
@@ -83,7 +83,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       {/* Backdrop */}
       <div
         className={cn(
-          'fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity duration-300 md:hidden',
+          'fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity duration-300 lg:hidden',
           drawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         )}
         onClick={() => setDrawerOpen(false)}
@@ -92,7 +92,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       {/* Drawer panel */}
       <div
         className={cn(
-          'fixed top-0 right-0 bottom-0 z-50 w-72 flex flex-col md:hidden',
+          'fixed top-0 right-0 bottom-0 z-50 w-72 flex flex-col lg:hidden',
           'bg-card/95 backdrop-blur-2xl border-l border-border/40 shadow-2xl',
           'transition-transform duration-300 ease-out',
           drawerOpen ? 'translate-x-0' : 'translate-x-full'
@@ -183,7 +183,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       ══════════════════════════════════════════════════*/}
       <aside
         className={cn(
-          'hidden md:flex fixed inset-y-0 left-0 z-50 flex-col border-r bg-card transition-all duration-300',
+          'hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col border-r bg-card transition-all duration-300',
           sidebarCollapsed ? 'w-16' : 'w-64'
         )}
       >
@@ -285,7 +285,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       <main
         className={cn(
           'transition-all duration-300 min-h-screen flex flex-col',
-          sidebarCollapsed ? 'md:pl-16' : 'md:pl-64',
+          sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64',
           completedSidebarOpen ? 'lg:pr-96' : 'pr-0',
         )}
         style={{
@@ -294,10 +294,10 @@ export function MainLayout({ children }: MainLayoutProps) {
         }}
       >
         <div
-          className="container mx-auto py-4 md:py-6 flex-1"
+          className="w-full xl:max-w-[1920px] mx-auto py-2 lg:py-4 flex-1"
           style={{
-            paddingLeft:  'calc(1rem + env(safe-area-inset-left))',
-            paddingRight: 'calc(1rem + env(safe-area-inset-right))',
+            paddingLeft:  'env(safe-area-inset-left)',
+            paddingRight: 'env(safe-area-inset-right)',
           }}
         >
           {children}
@@ -308,7 +308,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           MOBILE BOTTOM NAVIGATION BAR  (hidden on md+)
       ══════════════════════════════════════════════════*/}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-background/80 backdrop-blur-xl border-t border-border/40 shadow-[0_-4px_24px_rgba(0,0,0,0.08)]"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-background/80 backdrop-blur-xl border-t border-border/40 shadow-[0_-4px_24px_rgba(0,0,0,0.08)]"
         style={{
           paddingBottom: 'env(safe-area-inset-bottom)',
           paddingLeft:   'env(safe-area-inset-left)',

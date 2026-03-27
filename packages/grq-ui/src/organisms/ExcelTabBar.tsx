@@ -49,9 +49,9 @@ export function ExcelTabBar({
   return (
     <div 
       className={cn(
-        "fixed inset-x-0 bottom-[var(--mobile-offset)] md:sticky md:bottom-0 md:inset-x-auto z-30 flex items-end px-2 overflow-x-auto overflow-y-hidden",
+        "fixed inset-x-0 bottom-[var(--mobile-offset)] lg:sticky lg:bottom-0 lg:inset-x-auto z-30 flex items-end px-2 overflow-x-auto overflow-y-hidden",
         "bg-background/95 backdrop-blur-xl border-t border-border/40 shadow-[0_-4px_24px_rgba(0,0,0,0.04)]",
-        "md:h-11 h-12 transition-all duration-300"
+        "lg:h-11 h-12 transition-all duration-300"
       )}
       style={{
         // Define a CSS variable for the dynamic mobile height

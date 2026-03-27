@@ -52,16 +52,16 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy 
 
     return (
         <div className={cn(
-            "border rounded-lg p-6 transition-all duration-300",
+            "border rounded-lg p-3 sm:p-4 transition-all duration-300",
             !isReady ? "bg-gray-100/50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800 opacity-60 grayscale-[0.5]" : "bg-card border-border shadow-sm"
         )}>
-            <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
+                <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={getRequestTypeBadgeVariant(request.request_type)}>
                         {getRequestTypeLabel(request.request_type)}
                     </Badge>
                     {request.event_token && (
-                        <span className="text-xs text-muted-foreground font-mono">
+                        <span className="text-xs text-muted-foreground font-mono break-all">
                             {request.event_token}
                         </span>
                     )}
@@ -69,13 +69,16 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy 
                         {request.time_spent}s
                     </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                     <Button
                         variant="outline"
                         size="sm"
                         disabled={!isReady}
                         onClick={() => isReady && onCopy(request.content, request.event_token, request.time_spent)}
-                        className={!isReady ? "opacity-30 cursor-not-allowed grayscale" : "hover:bg-primary hover:text-primary-foreground transition-colors"}
+                        className={cn(
+                            "flex-1 sm:flex-none",
+                            !isReady ? "opacity-30 cursor-not-allowed grayscale" : "hover:bg-primary hover:text-primary-foreground transition-colors"
+                        )}
                     >
                         <Copy className="h-4 w-4 mr-1" />
                         {t('dailyTasks.copyRequest')}
@@ -86,7 +89,10 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy 
                             size="sm"
                             disabled={!isReady}
                             onClick={() => isReady && onComplete()}
-                            className={!isReady ? "opacity-30 cursor-not-allowed grayscale" : "transition-all active:scale-95"}
+                            className={cn(
+                                "flex-1 sm:flex-none",
+                                !isReady ? "opacity-30 cursor-not-allowed grayscale" : "transition-all active:scale-95"
+                            )}
                         >
                             <CheckCircle className="h-4 w-4 mr-1" />
                             {t('dailyTasks.completeTask')}

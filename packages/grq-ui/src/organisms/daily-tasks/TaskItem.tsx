@@ -104,10 +104,10 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
           />
         </div>
 
-        <CardHeader className="pb-3">
+        <CardHeader className="p-3 sm:p-4 pb-2 sm:pb-3">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <CardTitle className="flex items-center gap-2 text-lg font-bold tracking-tight">
+              <CardTitle className="flex flex-wrap items-center gap-2 text-lg font-bold tracking-tight">
                 {task.account.name}
                 <Badge variant="outline" className="font-normal opacity-70">
                   {t('dailyTasks.taskCount', {
@@ -156,7 +156,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-3 pb-3 sm:px-4 sm:pb-4">
           <div className="space-y-3">
             {task.requests.map((request, index) => (
               <RequestItem

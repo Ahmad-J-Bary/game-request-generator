@@ -416,7 +416,7 @@ export default function AccountDetailPage() {
 
   if (!account) {
     return (
-      <div className="p-6">
+      <div className="w-full px-1 sm:px-2 py-4">
         <div className="mb-4"><BackButton /></div>
         <Card><CardContent className="p-6 text-center">Account not found</CardContent></Card>
       </div>
@@ -424,7 +424,7 @@ export default function AccountDetailPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
+    <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
       <div className="flex-1">
         <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex-1 min-w-0">
@@ -432,9 +432,9 @@ export default function AccountDetailPage() {
                 <div className="text-xs md:text-sm text-muted-foreground">{account.start_date} • {account.start_time}</div>
             </div>
             
-            <div className="flex items-center gap-2 self-end md:self-auto">
+            <div className="flex items-center gap-2 self-end lg:self-auto">
                 {/* Desktop Secondary Actions */}
-                <div className="hidden md:flex items-center gap-2">
+                <div className="hidden lg:flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setShowImportDialog(true)} className="flex items-center gap-2">
                         <Upload className="h-4 w-4" />
                         {t('common.import', 'Import')}
@@ -457,7 +457,7 @@ export default function AccountDetailPage() {
                 </div>
 
                 {/* Mobile More Actions Popover */}
-                <div className="md:hidden">
+                <div className="lg:hidden">
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-9 w-9 p-0">
@@ -519,7 +519,7 @@ export default function AccountDetailPage() {
                     {isEditMode ? (
                         <>
                             {/* Desktop Edit Helpers */}
-                            <div className="hidden md:flex items-center gap-2 px-3 py-2 border rounded-lg bg-muted/50 h-9">
+                            <div className="hidden lg:flex items-center gap-2 px-3 py-2 border rounded-lg bg-muted/50 h-9">
                                 <input type="checkbox" id="complete-all" checked={completeAllChecked} onChange={(e) => handleCompleteAllChange(e.target.checked)} className="h-4 w-4" />
                                 <label htmlFor="complete-all" className="text-xs font-medium flex items-center gap-1 cursor-pointer">
                                     {t('accounts.completeAll')}
@@ -547,7 +547,7 @@ export default function AccountDetailPage() {
             </div>
         </div>
         <Card>
-            <CardContent className="overflow-auto">
+            <CardContent className="p-0 overflow-auto">
             <AccountDataTable
                 columns={columns}
                 computedLevelDates={computedLevelDates}
@@ -582,7 +582,7 @@ export default function AccountDetailPage() {
       </div>
       {(prevAccount || nextAccount) && (
         <div 
-          className="fixed inset-x-0 bottom-[var(--mobile-offset)] md:sticky md:bottom-0 md:inset-x-auto z-40 flex justify-between items-center px-4 py-3 bg-background/95 backdrop-blur-xl border-t border-border/40 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] md:rounded-t-lg transition-all duration-300"
+          className="fixed inset-x-0 bottom-[var(--mobile-offset)] lg:sticky lg:bottom-0 lg:inset-x-auto z-40 flex justify-between items-center px-4 py-3 bg-background/95 backdrop-blur-xl border-t border-border/40 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] lg:rounded-t-lg transition-all duration-300"
           style={{ '--mobile-offset': 'calc(3.5rem + env(safe-area-inset-bottom))' } as React.CSSProperties}
         >
           <div>

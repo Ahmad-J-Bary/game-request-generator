@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Clock } from 'lucide-react';
-import { Card, CardContent } from '@grq/ui/atoms/card';
+
 import { EmptyState } from '@grq/ui/organisms/daily-tasks/EmptyState';
 import { BatchDisplay } from '@grq/ui/organisms/daily-tasks/BatchDisplay';
 import { TaskItem } from '@grq/ui/organisms/daily-tasks/TaskItem';
@@ -37,7 +37,7 @@ export default function DailyTasksPage() {
   }, [games]); // Re-run when games are loaded
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('dailyTasks.title')}</h1>
@@ -57,8 +57,7 @@ export default function DailyTasksPage() {
         <EmptyState />
       )}
 
-      <Card>
-        <CardContent className="overflow-auto">
+      <div className="w-full">
           {(() => {
             const readyBatches: GameBatch[] = [];
             const deferredTasks: { task: DailyTask; batchIndex: number }[] = [];
@@ -123,8 +122,7 @@ export default function DailyTasksPage() {
               </div>
             );
           })()}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }
