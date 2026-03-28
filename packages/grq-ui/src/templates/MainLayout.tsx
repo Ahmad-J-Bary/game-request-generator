@@ -1,6 +1,6 @@
 // src/components/templates/MainLayout.tsx
 import { ReactNode, useState } from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard,
@@ -15,10 +15,13 @@ import {
   Table,
   Settings,
   SlidersHorizontal,
+  Database,
+  Network,
+  MessageSquare,
+  Palette,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@grq/ui/lib/utils';
-import { ThemeToggle } from '@grq/ui/molecules/ThemeToggle';
-import { LanguageSelector } from '@grq/ui/molecules/LanguageSelector';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
 import { Button } from '@grq/ui/atoms/button';
 import { CompletedTasksSidebar } from '@grq/ui/organisms/CompletedTasksSidebar';
@@ -36,10 +39,28 @@ const navigation = [
   { name: 'dailyTasks',     href: '/daily-tasks',     icon: Calendar },
 ];
 
+const settingsNavigation = [
+  { name: 'appearance', href: '/settings/appearance', icon: Palette,      labelKey: 'settings.appearance' },
+  { name: 'database',   href: '/settings/database',   icon: Database,     labelKey: 'settings.database'   },
+  { name: 'proxy',      href: '/settings/proxy',      icon: Network,      labelKey: 'settings.proxy'      },
+  { name: 'telegram',   href: '/settings/telegram',   icon: MessageSquare,labelKey: 'settings.telegram'   },
+];
+
 export function MainLayout({ children }: MainLayoutProps) {
   const { t } = useTranslation();
+  const location = useLocation();
   const { sidebarCollapsed, toggleSidebar, completedSidebarOpen, toggleCompletedSidebar } = useSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const isSettingsActive = location.pathname.startsWith('/settings');
+  // When sidebar is expanded, auto-expand settings group if on any settings page
+  const [settingsOpen, setSettingsOpen] = useState(isSettingsActive);
+
+  const toggleSettings = () => {
+    if (!sidebarCollapsed) {
+      setSettingsOpen(o => !o);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -123,38 +144,35 @@ export function MainLayout({ children }: MainLayoutProps) {
 
         {/* Drawer body */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
-          {/* Appearance section */}
+          {/* Settings group label */}
           <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-1 mb-1">
-            {t('settings.appearance', 'Appearance')}
+            {t('settings.title', 'Settings')}
           </p>
 
-          {/* Theme */}
-          <div className="flex items-center justify-between rounded-xl bg-accent/40 px-4 py-3">
-            <span className="text-sm font-medium">{t('settings.theme', 'Theme')}</span>
-            <ThemeToggle />
-          </div>
-
-          {/* Language */}
-          <div className="flex items-center justify-between rounded-xl bg-accent/40 px-4 py-3">
-            <span className="text-sm font-medium">{t('settings.language', 'Language')}</span>
-            <LanguageSelector />
-          </div>
+          {/* Settings sub-links */}
+          {settingsNavigation.map(item => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.name}
+                to={item.href}
+                onClick={() => setDrawerOpen(false)}
+                className={({ isActive }) => cn(
+                  'flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors',
+                  isActive ? 'bg-primary text-primary-foreground' : 'bg-accent/40 hover:bg-accent text-foreground'
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {t(item.labelKey, item.name)}
+              </NavLink>
+            );
+          })}
 
           <div className="pt-3">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-1 mb-1">
-              {t('settings.general', 'General')}
+              {t('settings.tools', 'Tools')}
             </p>
           </div>
-
-          {/* Settings page link */}
-          <Link
-            to="/settings"
-            onClick={() => setDrawerOpen(false)}
-            className="flex items-center gap-3 rounded-xl bg-accent/40 px-4 py-3 hover:bg-accent transition-colors"
-          >
-            <Settings className="h-5 w-5 text-primary" />
-            <span className="text-sm font-medium">{t('settings.title', 'Settings')}</span>
-          </Link>
 
           {/* Completed Tasks */}
           <button
@@ -205,7 +223,8 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
+          <nav className="flex-1 space-y-0.5 p-3 overflow-y-auto">
+            {/* Main nav items */}
             {navigation.map((item) => {
               const Icon = item.icon;
               return (
@@ -229,6 +248,79 @@ export function MainLayout({ children }: MainLayoutProps) {
                 </NavLink>
               );
             })}
+
+            {/* Divider before Settings */}
+            <div className="my-2 border-t border-border/40" />
+
+            {/* Settings Group Header */}
+            {sidebarCollapsed ? (
+              // When collapsed: just show Settings icon linking to /settings/appearance
+              <NavLink
+                to="/settings/appearance"
+                className={() =>
+                  cn(
+                    'flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    isSettingsActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  )
+                }
+                title={t('settings.title', 'Settings')}
+              >
+                <Settings className="h-5 w-5 flex-shrink-0" />
+              </NavLink>
+            ) : (
+              <>
+                {/* Expandable Settings group header */}
+                <button
+                  onClick={toggleSettings}
+                  className={cn(
+                    'w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    isSettingsActive
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  )}
+                >
+                  <Settings className={cn('h-5 w-5 flex-shrink-0 transition-colors', isSettingsActive && 'text-primary')} />
+                  <span className="flex-1 text-left">{t('settings.title', 'Settings')}</span>
+                  <ChevronDown
+                    className={cn(
+                      'h-4 w-4 transition-transform duration-200',
+                      settingsOpen ? 'rotate-180' : ''
+                    )}
+                  />
+                </button>
+
+                {/* Settings sub-navigation */}
+                <div
+                  className={cn(
+                    'ml-2 pl-4 border-l-2 border-border/50 space-y-0.5 overflow-hidden transition-all duration-300',
+                    settingsOpen ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
+                  )}
+                >
+                  {settingsNavigation.map(item => {
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={item.name}
+                        to={item.href}
+                        className={({ isActive }) =>
+                          cn(
+                            'flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all',
+                            isActive
+                              ? 'bg-primary text-primary-foreground shadow-sm'
+                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                          )
+                        }
+                      >
+                        <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span>{t(item.labelKey, item.name)}</span>
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </nav>
 
           {/* Bottom Actions */}
@@ -245,18 +337,6 @@ export function MainLayout({ children }: MainLayoutProps) {
               <CheckCircle className={cn('h-5 w-5 flex-shrink-0', !sidebarCollapsed ? 'mr-3 text-primary' : (completedSidebarOpen ? 'text-primary' : 'text-muted-foreground'))} />
               {!sidebarCollapsed && <span className="font-medium tracking-wide">{t('dailyTasks.completed', 'Completed')}</span>}
             </Button>
-
-            <div className={cn('flex items-center', sidebarCollapsed ? 'flex-col gap-2' : 'flex-row justify-between pt-1 px-1')}>
-              <ThemeToggle />
-              <LanguageSelector />
-              <Link
-                to="/settings"
-                title={sidebarCollapsed ? t('settings.title') : undefined}
-                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-9 w-9 text-muted-foreground hover:scale-105 active:scale-95 duration-200"
-              >
-                <Settings className="h-5 w-5" />
-              </Link>
-            </div>
 
             {/* Collapse toggle */}
             <div className="pt-1 mt-1 border-t border-border/40">

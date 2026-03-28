@@ -61,6 +61,10 @@ const App = () => (
                   <Route path="/accounts/detail" element={<AccountsDetailPage />} />
                   <Route path="/daily-tasks" element={<DailyTasksPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/settings/appearance" element={<SettingsPage section="appearance" />} />
+                  <Route path="/settings/database"   element={<SettingsPage section="database" />} />
+                  <Route path="/settings/proxy"      element={<SettingsPage section="proxy" />} />
+                  <Route path="/settings/telegram"   element={<SettingsPage section="telegram" />} />
                 </Routes>
               </MainLayout>
             </BrowserRouter>
