@@ -330,8 +330,9 @@ async fn test_proxy_connection(
 }
 
 #[tauri::command]
-async fn send_raw_request(raw_request: String) -> Result<RepeaterResponse, String> {
-    RepeaterService::send_raw_request(&raw_request).await
+async fn send_raw_request(app: tauri::AppHandle, raw_request: String) -> Result<RepeaterResponse, String> {
+    let config = ConfigService::load(&app);
+    RepeaterService::send_raw_request(&raw_request, &config).await
 }
 
 #[tauri::command]
