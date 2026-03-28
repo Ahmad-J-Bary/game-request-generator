@@ -274,7 +274,7 @@ export function ProxySettingsPanel() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 pt-4 border-t border-primary/10">
+        <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-primary/10">
           <Button 
             className="flex-1 rounded-xl h-11 font-bold shadow-lg shadow-primary/20"
             onClick={handleSave}
@@ -286,7 +286,7 @@ export function ProxySettingsPanel() {
 
           <Button 
             variant="outline"
-            className="rounded-xl h-11 font-bold border-primary/20 hover:bg-primary/5"
+            className="flex-1 rounded-xl h-11 font-bold border-primary/20 hover:bg-primary/5"
             onClick={handleTestProxy}
             disabled={saving || testing || !host || !port}
           >

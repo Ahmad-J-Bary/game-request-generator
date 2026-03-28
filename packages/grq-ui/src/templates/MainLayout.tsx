@@ -25,6 +25,8 @@ import { cn } from '@grq/ui/lib/utils';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
 import { Button } from '@grq/ui/atoms/button';
 import { CompletedTasksSidebar } from '@grq/ui/organisms/CompletedTasksSidebar';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@grq/ui/atoms/sheet';
+import { ProxySettingsPanel } from '@grq/ui/molecules/ProxySettingsPanel';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -51,6 +53,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar, completedSidebarOpen, toggleCompletedSidebar } = useSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [proxySheetOpen, setProxySheetOpen] = useState(false);
 
   const isSettingsActive = location.pathname.startsWith('/settings');
   // When sidebar is expanded, auto-expand settings group if on any settings page
@@ -87,15 +90,44 @@ export function MainLayout({ children }: MainLayoutProps) {
           </span>
         </div>
 
-        {/* Utility drawer trigger */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setDrawerOpen(true)}
-          className="h-9 w-9 rounded-xl hover:bg-accent relative"
-        >
-          <SlidersHorizontal className="h-5 w-5" />
-        </Button>
+        {/* Header right actions: Proxy shortcut + Completed shortcut + Drawer trigger */}
+        <div className="flex items-center gap-1.5">
+          {/* Quick Proxy button */}
+          <button
+            onClick={() => setProxySheetOpen(true)}
+            className="relative h-9 w-9 flex items-center justify-center rounded-xl hover:bg-emerald-500/10 transition-colors group"
+            title="Proxy Settings"
+          >
+            <Network className="h-4.5 w-4.5 text-emerald-500 group-hover:scale-110 transition-transform" />
+          </button>
+
+          {/* Quick Completed Tasks button */}
+          <button
+            onClick={toggleCompletedSidebar}
+            className={cn(
+              "relative h-9 w-9 flex items-center justify-center rounded-xl transition-colors group",
+              completedSidebarOpen
+                ? "bg-primary/10 hover:bg-primary/20"
+                : "hover:bg-primary/10"
+            )}
+            title="Completed Tasks"
+          >
+            <CheckCircle className={cn(
+              "h-4.5 w-4.5 group-hover:scale-110 transition-transform",
+              completedSidebarOpen ? "text-primary" : "text-primary/70"
+            )} />
+          </button>
+
+          {/* Utility drawer trigger */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setDrawerOpen(true)}
+            className="h-9 w-9 rounded-xl hover:bg-accent relative"
+          >
+            <SlidersHorizontal className="h-5 w-5" />
+          </Button>
+        </div>
       </header>
 
       {/* ═══════════════════════════════════════════════
@@ -149,7 +181,7 @@ export function MainLayout({ children }: MainLayoutProps) {
             {t('settings.title', 'Settings')}
           </p>
 
-          {/* Settings sub-links */}
+          {/* Settings sub-links in mobile drawer */}
           {settingsNavigation.map(item => {
             const Icon = item.icon;
             return (
@@ -167,31 +199,33 @@ export function MainLayout({ children }: MainLayoutProps) {
               </NavLink>
             );
           })}
-
+          {/* Tools group label */}
           <div className="pt-3">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-1 mb-1">
               {t('settings.tools', 'Tools')}
             </p>
           </div>
 
-          {/* Completed Tasks */}
+          {/* Completed Tasks — styled like Settings sub-links */}
           <button
             onClick={() => {
               toggleCompletedSidebar();
               setDrawerOpen(false);
             }}
             className={cn(
-              'w-full flex items-center gap-3 rounded-xl px-4 py-3 transition-colors text-left',
+              'w-full flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors text-left',
               completedSidebarOpen
-                ? 'bg-primary/20 text-primary ring-1 ring-primary/30'
-                : 'bg-accent/40 hover:bg-accent'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-accent/40 hover:bg-accent text-foreground'
             )}
           >
-            <CheckCircle className={cn('h-5 w-5', completedSidebarOpen ? 'text-primary' : 'text-emerald-500')} />
-            <div className="flex-1">
-              <p className="text-sm font-medium">{t('dailyTasks.completed', 'Completed')}</p>
-              <p className="text-[10px] text-muted-foreground">{t('dailyTasks.completedToday', 'Completed Today')}</p>
-            </div>
+            <CheckCircle className={cn('h-4 w-4 shrink-0', completedSidebarOpen ? 'text-primary-foreground' : 'text-emerald-500')} />
+            <span className="flex-1">{t('dailyTasks.completed', 'Completed')}</span>
+            {completedSidebarOpen && (
+              <span className="text-[10px] font-bold bg-primary-foreground/20 text-primary-foreground px-1.5 py-0.5 rounded-full">
+                Open
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -300,6 +334,20 @@ export function MainLayout({ children }: MainLayoutProps) {
                 >
                   {settingsNavigation.map(item => {
                     const Icon = item.icon;
+                    const isProxy = item.name === 'proxy';
+                    if (isProxy) {
+                      return (
+                        <button
+                          key={item.name}
+                          onClick={() => setProxySheetOpen(true)}
+                          className="w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        >
+                          <Icon className="h-3.5 w-3.5 flex-shrink-0 text-emerald-500" />
+                          <span className="flex-1 text-left">{t(item.labelKey, item.name)}</span>
+                          <span className="text-[9px] font-bold text-emerald-500 bg-emerald-500/10 px-1 py-0.5 rounded-full">Quick</span>
+                        </button>
+                      );
+                    }
                     return (
                       <NavLink
                         key={item.name}
@@ -429,6 +477,34 @@ export function MainLayout({ children }: MainLayoutProps) {
           );
         })}
       </nav>
+
+      {/* ═══════════════════════════════════════════════
+          PROXY QUICK-ACCESS SHEET
+      ══════════════════════════════════════════════════*/}
+      <Sheet open={proxySheetOpen} onOpenChange={setProxySheetOpen}>
+        <SheetContent side="right" className="flex flex-col w-full sm:max-w-lg p-0">
+          <SheetHeader>
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                <Network className="h-4.5 w-4.5 text-emerald-500" />
+              </div>
+              <div>
+                <SheetTitle className="text-base font-bold">
+                  {t('settings.proxy', 'Proxy Network')}
+                </SheetTitle>
+                <SheetDescription>
+                  Configure and test your proxy connection
+                </SheetDescription>
+              </div>
+            </div>
+          </SheetHeader>
+
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 pb-8">
+            <ProxySettingsPanel />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
