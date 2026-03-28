@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Card, CardContent } from '@grq/ui/atoms/card';
 import { LayoutToggle, Layout } from '@grq/ui/molecules/LayoutToggle';
 import { BackButton } from '@grq/ui/molecules/BackButton';
@@ -43,14 +44,10 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
   const { games, deleteGame, fetchBranches, addBranch, deleteBranch } = useGames();
   
   const [branches, setBranches] = useState<GameBranch[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
   const [showManageBranches, setShowManageBranches] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [isCreatingBranch, setIsCreatingBranch] = useState(false);
   const [copyFromBranchId, setCopyFromBranchId] = useState<number | null>(null);
-
-  const { levels = [] } = useLevels(selectedBranchId || undefined);
-  const { events: purchaseEvents = [] } = usePurchaseEvents(selectedBranchId || undefined);
 
   // Fetch branches when game changed
   useEffect(() => {
@@ -58,11 +55,6 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
       const loadBranches = async () => {
         const data = await fetchBranches(gameId);
         setBranches(data);
-        // Select default branch or first one
-        const defaultBranch = data.find(b => b.is_default) || data[0];
-        if (defaultBranch) {
-          setSelectedBranchId(defaultBranch.id);
-        }
       };
       loadBranches();
     }
@@ -106,6 +98,10 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
   const [editedLevels, setEditedLevels] = useState<Level[]>([]);
   const [editedPurchaseEvents, setEditedPurchaseEvents] = useState<PurchaseEvent[]>([]);
 
+  // Original data for comparison during save
+  const [originalLevels, setOriginalLevels] = useState<Level[]>([]);
+  const [originalPurchaseEvents, setOriginalPurchaseEvents] = useState<PurchaseEvent[]>([]);
+
   const [prevGameId, setPrevGameId] = useState(gameId);
   if (gameId !== prevGameId) {
     setPrevGameId(gameId);
@@ -129,10 +125,23 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
 
   // Init logic moved to handleEditToggle to avoid cascading renders
 
-  const handleEditToggle = () => {
+  const handleEditToggle = async () => {
     if (!isEditMode) {
-      setEditedLevels([...levels]);
-      setEditedPurchaseEvents([...purchaseEvents]);
+      // Fetch all levels and events for all branches to initialize edit state
+      const allLevels: Level[] = [];
+      const allEvents: PurchaseEvent[] = [];
+      
+      for (const branch of branches) {
+          const lvls = await TauriService.getGameLevels(branch.id);
+          const evts = await TauriService.getGamePurchaseEvents(branch.id);
+          allLevels.push(...lvls);
+          allEvents.push(...evts);
+      }
+      
+      setOriginalLevels(allLevels);
+      setOriginalPurchaseEvents(allEvents);
+      setEditedLevels([...allLevels]);
+      setEditedPurchaseEvents([...allEvents]);
     }
     setIsEditMode(!isEditMode);
   };
@@ -141,7 +150,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
     try {
       // Save level changes
       for (const editedLevel of editedLevels) {
-        const originalLevel = levels.find(l => l.id === editedLevel.id);
+        const originalLevel = originalLevels.find(l => l.id === editedLevel.id);
         if (originalLevel) {
           // Check if level was modified
           if (originalLevel.level_name !== editedLevel.level_name ||
@@ -163,7 +172,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
 
       // Save purchase event changes
       for (const editedEvent of editedPurchaseEvents) {
-        const originalEvent = purchaseEvents.find(e => e.id === editedEvent.id);
+        const originalEvent = originalPurchaseEvents.find(e => e.id === editedEvent.id);
         if (originalEvent) {
           // Check if purchase event was modified
           if (originalEvent.event_token !== editedEvent.event_token ||
@@ -200,7 +209,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
 
           // Update level-related completion records
           for (const editedLevel of editedLevels) {
-            const originalLevel = levels.find(l => l.id === editedLevel.id);
+            const originalLevel = originalLevels.find(l => l.id === editedLevel.id);
             if (!originalLevel) continue;
             const timeSpentChanged = originalLevel.time_spent !== editedLevel.time_spent;
             const tokenChanged = originalLevel.event_token !== editedLevel.event_token;
@@ -218,7 +227,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
 
           // Update purchase-event-related completion records
           for (const editedEvent of editedPurchaseEvents) {
-            const originalEvent = purchaseEvents.find(e => e.id === editedEvent.id);
+            const originalEvent = originalPurchaseEvents.find(e => e.id === editedEvent.id);
             if (!originalEvent) continue;
             const tokenChanged = originalEvent.event_token !== editedEvent.event_token;
             if (!tokenChanged) continue;
@@ -283,6 +292,8 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
     ));
   };
 
+  const game = games.find(g => String(g.id) === String(gameId));
+
   const handleDeleteGame = async () => {
     if (!gameId || !game) return;
     if (window.confirm(t('games.deleteConfirm'))) {
@@ -290,34 +301,6 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
       if (success) {
         navigate('/games-table');
       }
-    }
-  };
-
-  const handleAddLevel = async (data: { level_name: string; event_token: string; days_offset: number; time_spent: number; is_bonus: boolean }) => {
-    if (!gameId || !selectedBranchId) return;
-    try {
-      await TauriService.addLevel({
-        game_id: gameId,
-        branch_id: selectedBranchId,
-        ...data
-      });
-      window.dispatchEvent(new CustomEvent('levels-updated', { detail: { branchId: selectedBranchId } }));
-    } catch (error) {
-      console.error('Error adding level:', error);
-    }
-  };
-
-  const handleAddPurchaseEvent = async (data: { event_token: string; days_offset: number; max_days_offset: number | null; is_restricted: boolean }) => {
-    if (!gameId || !selectedBranchId) return;
-    try {
-      await TauriService.addPurchaseEvent({
-        game_id: gameId,
-        branch_id: selectedBranchId,
-        ...data
-      });
-      window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { branchId: selectedBranchId } }));
-    } catch (error) {
-      console.error('Error adding purchase event:', error);
     }
   };
 
@@ -333,209 +316,12 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
         if (id) {
             setNewBranchName('');
             setCopyFromBranchId(null);
-            // new branch will be fetched by effect
         }
     } finally {
         setIsCreatingBranch(false);
     }
   };
 
-  const game = games.find(g => String(g.id) === String(gameId));
-
-  const currentLevels = isEditMode ? editedLevels : levels;
-  const currentPurchaseEvents = isEditMode ? editedPurchaseEvents : purchaseEvents;
-
-  const baseColumns = useMemo(() => {
-    const levelCols = currentLevels.map(l => ({
-      kind: 'level' as const,
-      id: l.id,
-      token: l.event_token.split('_day')[0],
-      name: l.level_name,
-      daysOffsetRaw: l.days_offset,
-      daysOffset: typeof l.days_offset === 'number' ? l.days_offset : null,
-      timeSpentRaw: l.time_spent,
-      timeSpent: typeof l.time_spent === 'number' ? l.time_spent : null,
-      isBonus: !!l.is_bonus,
-      synthetic: l.level_name === '-',
-    }));
-
-    const purchaseCols = currentPurchaseEvents.map(p => {
-      const day = p.days_offset;
-      let midpointTime: number | null = null;
-
-      if (day != null) {
-        const numericLevels = levelCols
-          .filter(l => typeof l.daysOffset === 'number' && l.daysOffset !== null)
-          .sort((a, b) => (a.daysOffset as number) - (b.daysOffset as number));
-
-        if (numericLevels.length > 0) {
-          // Find all levels on the same day as the purchase event
-          const sameDayLevels = numericLevels.filter(l => (l.daysOffset as number) === day);
-          // Find the next level after the purchase event day
-          const nextLevel = numericLevels.find(l => (l.daysOffset as number) > day);
-
-          const levelsToAverage = [...sameDayLevels];
-          if (nextLevel) {
-            levelsToAverage.push(nextLevel);
-          }
-
-          if (levelsToAverage.length > 0) {
-            const totalTimeSpent = levelsToAverage.reduce((sum, level) => sum + (level.timeSpent || 0), 0);
-            midpointTime = Math.round(totalTimeSpent / levelsToAverage.length);
-          }
-        }
-      }
-
-      return {
-        kind: 'purchase' as const,
-        id: p.id,
-        token: p.event_token,
-        name: '$$$',
-        daysOffset: day != null ? day : null,
-        maxDaysOffset: p.max_days_offset != null ? String(p.max_days_offset) : null,
-        isRestricted: !!p.is_restricted,
-        timeSpent: midpointTime,
-        synthetic: false,
-      };
-    }) as ColumnData[];
-
-    return [...levelCols, ...purchaseCols] as const;
-  }, [currentLevels, currentPurchaseEvents]);
-
-
-  const columns = useMemo(() => {
-    const allCols = [...baseColumns];
-    const numeric = allCols.filter((c) => typeof c.daysOffset === 'number' && c.daysOffset !== null) as ((typeof allCols)[number] & { daysOffset: number })[];
-    numeric.sort((a, b) => {
-      const aTime = (a.timeSpent as number) ?? 0;
-      const bTime = (b.timeSpent as number) ?? 0;
-      if (aTime !== bTime) return aTime - bTime;
-
-      const aOff = (a.daysOffset as number) ?? 0;
-      const bOff = (b.daysOffset as number) ?? 0;
-      if (aOff !== bOff) return aOff - bOff;
-
-      if (a.kind !== b.kind) return a.kind === 'level' ? -1 : 1;
-      return String(a.id).localeCompare(String(b.id));
-    });
-
-    if (mode === 'event-only') {
-      const levels = allCols.filter((c) => c.kind === 'level' && c.name !== '-');
-      const purchases = allCols.filter((c) => c.kind === 'purchase');
-
-      levels.sort((a, b) => {
-        const aT = (a.timeSpent ?? 0) as number;
-        const bT = (b.timeSpent ?? 0) as number;
-        if (aT !== bT) return aT - bT;
-        return (a.daysOffset ?? 0) - (b.daysOffset ?? 0);
-      });
-
-      purchases.sort((a, b) => {
-        const aT = (a.timeSpent ?? 0) as number;
-        const bT = (b.timeSpent ?? 0) as number;
-        if (aT !== bT) return aT - bT;
-        if (a.daysOffset === b.daysOffset) return 0;
-        if (a.daysOffset == null) return 1;
-        if (b.daysOffset == null) return -1;
-        return a.daysOffset - b.daysOffset;
-      });
-
-      return [...levels, ...purchases];
-    }
-
-    // Group entries by daysOffset to handle multiple entries per day
-    const entriesByDay: { [day: number]: (typeof numeric)[number][] } = {};
-    numeric.forEach(entry => {
-      const day = entry.daysOffset;
-      if (!entriesByDay[day]) {
-        entriesByDay[day] = [];
-      }
-      entriesByDay[day].push(entry);
-    });
-
-    let minDay: number = numeric.length > 0 ? numeric[0].daysOffset : 0;
-    const maxDay: number = numeric.length > 0 ? numeric[numeric.length - 1].daysOffset : 0;
-
-    if (numeric.length > 0 && minDay > 0) {
-      minDay = 0;
-    }
-
-    type SynthEntry = { kind: 'level'; id: string | number; token: string; name: string; daysOffset: number; timeSpent: number | null; isBonus: boolean; synthetic: boolean };
-    const result: (typeof numeric[number] | SynthEntry)[] = [];
-
-    for (let day = minDay; day <= maxDay; day++) {
-      if (entriesByDay[day]) {
-        result.push(...entriesByDay[day]);
-      } else {
-        // Find the next real level after this day
-        let nextRealLevel = null;
-        for (let d = day + 1; d <= maxDay; d++) {
-          if (entriesByDay[d]) {
-            const nonSyntheticLevels = entriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
-            if (nonSyntheticLevels.length > 0) {
-              nextRealLevel = nonSyntheticLevels[0];
-              break;
-            }
-          }
-        }
-
-        let synthesizedTime: number | null = null;
-        let token = '';
-
-        if (nextRealLevel) {
-          const realLevelDays = numeric
-            .filter(entry => entry.kind === 'level' && !entry.synthetic)
-            .map(entry => entry.daysOffset as number);
-
-          const firstRealDay = Math.min(...realLevelDays);
-          const isBeforeFirstReal = day < firstRealDay;
-
-          if (isBeforeFirstReal) {
-            const increment = (nextRealLevel.timeSpent || 0) / (firstRealDay + 1);
-            synthesizedTime = Math.round((day + 1) * increment);
-            token = nextRealLevel.token;
-          } else {
-            let prevRealLevel: typeof numeric[number] | null = null;
-            for (let d = day - 1; d >= minDay; d--) {
-              if (entriesByDay[d]) {
-                const nonSyntheticLevels = entriesByDay[d].filter(entry => entry.kind === 'level' && !entry.synthetic);
-                if (nonSyntheticLevels.length > 0) {
-                  prevRealLevel = nonSyntheticLevels[nonSyntheticLevels.length - 1];
-                  break;
-                }
-              }
-            }
-
-            if (prevRealLevel) {
-              const ratio = (day - prevRealLevel.daysOffset) / (nextRealLevel.daysOffset - prevRealLevel.daysOffset);
-              synthesizedTime = Math.round((prevRealLevel.timeSpent || 0) + ratio * ((nextRealLevel.timeSpent || 0) - (prevRealLevel.timeSpent || 0)));
-              token = nextRealLevel.token;
-            } else {
-              synthesizedTime = Math.round((nextRealLevel.timeSpent || 0) / 2);
-              token = nextRealLevel.token;
-            }
-          }
-        }
-
-        if (token) {
-          result.push({
-            kind: 'level' as const,
-            id: `synth-${token}-${day}`,
-            token: token,
-            name: '-',
-            daysOffset: day,
-            timeSpent: synthesizedTime,
-            isBonus: false,
-            synthetic: true,
-          });
-        }
-      }
-    }
-
-    const numericIds = new Set(numeric.map((c) => c.id));
-    const nonNumeric = (allCols as Array<typeof allCols[number]>).filter((c) => !numericIds.has(c.id));
-    return [...result, ...nonNumeric];
-  }, [baseColumns, mode]);
 
   return (
     <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
@@ -549,21 +335,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
             
             {branches.length > 0 && (
                 <div className="flex items-center gap-2 bg-accent/30 p-1 rounded-md border border-border/50">
-                    <Select 
-                        value={selectedBranchId?.toString()} 
-                        onValueChange={(val) => setSelectedBranchId(parseInt(val, 10))}
-                    >
-                        <SelectTrigger className="h-8 min-w-[120px] bg-transparent border-none shadow-none focus:ring-0">
-                            <SelectValue placeholder={t('branches.selectBranch', 'Select Branch')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {branches.map(b => (
-                                <SelectItem key={b.id} value={b.id.toString()}>
-                                    {b.name} {b.is_default && `(${t('common.default', 'Default')})`}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <span className="text-sm font-medium px-2 text-muted-foreground">{branches.length} Branches</span>
                     
                     <Button 
                         variant="ghost" 
@@ -736,21 +508,25 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0 overflow-auto">
-          <GameDataTable
-            columns={columns}
-            layout={layout}
-            isEditMode={isEditMode}
-            onDeleteLevel={handleDeleteLevel}
-            onDeletePurchaseEvent={handleDeletePurchaseEvent}
-            onUpdateLevel={handleUpdateLevel}
-            onUpdatePurchaseEvent={handleUpdatePurchaseEvent}
-            onAddLevel={handleAddLevel}
-            onAddPurchaseEvent={handleAddPurchaseEvent}
-          />
-        </CardContent>
-      </Card>
+      <div className="flex flex-col gap-12 mt-6 pb-24">
+        {branches.map(branch => (
+            <GameBranchSection 
+                key={branch.id}
+                gameId={gameId!}
+                branch={branch}
+                layout={layout}
+                mode={mode}
+                isEditMode={isEditMode}
+                editedLevels={editedLevels}
+                editedPurchaseEvents={editedPurchaseEvents}
+                onDeleteLevel={handleDeleteLevel}
+                onDeletePurchaseEvent={handleDeletePurchaseEvent}
+                onUpdateLevel={handleUpdateLevel}
+                onUpdatePurchaseEvent={handleUpdatePurchaseEvent}
+                t={t}
+            />
+        ))}
+      </div>
 
       {!isEditMode && (
         <div className="flex flex-wrap gap-4 mt-6">
@@ -779,7 +555,6 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
         colorSettings={colors}
         theme={theme}
         source="game-detail"
-        data={columns}
       />
       </div>
 
@@ -878,6 +653,195 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
       />
     </div>
   );
+}
+
+interface GameBranchSectionProps {
+    gameId: number;
+    branch: GameBranch;
+    layout: Layout;
+    mode: Mode;
+    isEditMode: boolean;
+    editedLevels: Level[];
+    editedPurchaseEvents: PurchaseEvent[];
+    onDeleteLevel: (id: number) => void;
+    onDeletePurchaseEvent: (id: number) => void;
+    onUpdateLevel: (id: number, field: keyof Level, value: string | number | boolean) => void;
+    onUpdatePurchaseEvent: (id: number, field: keyof PurchaseEvent, value: string | number | boolean | null) => void;
+    t: TFunction;
+}
+
+function GameBranchSection({
+    gameId, branch, layout, mode, isEditMode,
+    editedLevels, editedPurchaseEvents,
+    onDeleteLevel, onDeletePurchaseEvent, onUpdateLevel, onUpdatePurchaseEvent,
+    t
+}: GameBranchSectionProps) {
+    const { levels = [] } = useLevels(branch.id);
+    const { events: purchaseEvents = [] } = usePurchaseEvents(branch.id);
+
+    const currentLevels = isEditMode ? editedLevels.filter(l => l.branch_id === branch.id) : levels;
+    const currentPurchaseEvents = isEditMode ? editedPurchaseEvents.filter(e => e.branch_id === branch.id) : purchaseEvents;
+
+    const baseColumns = useMemo(() => {
+        const levelCols = currentLevels.map(l => ({
+            kind: 'level' as const,
+            id: l.id,
+            token: l.event_token.split('_day')[0],
+            name: l.level_name,
+            daysOffset: typeof l.days_offset === 'number' ? l.days_offset : null,
+            timeSpent: typeof l.time_spent === 'number' ? l.time_spent : null,
+            isBonus: !!l.is_bonus,
+            synthetic: l.level_name === '-',
+        }));
+
+        const purchaseCols = currentPurchaseEvents.map(p => {
+            const day = p.days_offset;
+            let midpointTime: number | null = null;
+            if (day != null) {
+                const numericLevels = levelCols.filter(l => l.daysOffset !== null).sort((a, b) => (a.daysOffset as number) - (b.daysOffset as number));
+                if (numericLevels.length > 0) {
+                    const sameDayLevels = numericLevels.filter(l => (l.daysOffset as number) === day);
+                    const nextLevel = numericLevels.find(l => (l.daysOffset as number) > day);
+                    const levelsToAverage = [...sameDayLevels];
+                    if (nextLevel) levelsToAverage.push(nextLevel);
+                    if (levelsToAverage.length > 0) {
+                        const totalTimeSpent = levelsToAverage.reduce((sum, level) => sum + (level.timeSpent || 0), 0);
+                        midpointTime = Math.round(totalTimeSpent / levelsToAverage.length);
+                    }
+                }
+            }
+            return {
+                kind: 'purchase' as const,
+                id: p.id,
+                token: p.event_token,
+                name: '$$$',
+                daysOffset: day != null ? day : null,
+                maxDaysOffset: p.max_days_offset != null ? String(p.max_days_offset) : null,
+                isRestricted: !!p.is_restricted,
+                timeSpent: midpointTime,
+                synthetic: false,
+            };
+        });
+
+        return [...levelCols, ...purchaseCols] as ColumnData[];
+    }, [currentLevels, currentPurchaseEvents]);
+
+    const columns = useMemo(() => {
+        const allCols = [...baseColumns];
+        const numeric = allCols.filter(c => c.daysOffset !== null) as (ColumnData & { daysOffset: number })[];
+        
+        numeric.sort((a, b) => {
+            const aTime = (a.timeSpent as number) ?? 0;
+            const bTime = (b.timeSpent as number) ?? 0;
+            if (aTime !== bTime) return aTime - bTime;
+            if (a.daysOffset !== b.daysOffset) return a.daysOffset - b.daysOffset;
+            if (a.kind !== b.kind) return a.kind === 'level' ? -1 : 1;
+            return String(a.id).localeCompare(String(b.id));
+        });
+
+        if (mode === 'event-only') {
+            const lvls = allCols.filter(c => c.kind === 'level' && c.name !== '-');
+            const purchases = allCols.filter(c => c.kind === 'purchase');
+            
+            lvls.sort((a, b) => {
+                const aT = (a.timeSpent ?? 0);
+                const bT = (b.timeSpent ?? 0);
+                if (aT !== bT) return aT - bT;
+                return (a.daysOffset ?? 0) - (b.daysOffset ?? 0);
+            });
+            
+            purchases.sort((a, b) => {
+                const aT = (a.timeSpent ?? 0);
+                const bT = (b.timeSpent ?? 0);
+                if (aT !== bT) return aT - bT;
+                if (a.daysOffset === b.daysOffset) return 0;
+                if (a.daysOffset == null) return 1;
+                if (b.daysOffset == null) return -1;
+                return a.daysOffset - b.daysOffset;
+            });
+            
+            return [...lvls, ...purchases];
+        }
+
+        const entriesByDay: Record<number, ColumnData[]> = {};
+        numeric.forEach(e => {
+            if (!entriesByDay[e.daysOffset]) entriesByDay[e.daysOffset] = [];
+            entriesByDay[e.daysOffset].push(e);
+        });
+
+        const minDay = numeric.length > 0 ? Math.min(0, numeric[0].daysOffset) : 0;
+        const maxDay = numeric.length > 0 ? numeric[numeric.length - 1].daysOffset : 0;
+        const result: ColumnData[] = [];
+
+        for (let day = minDay; day <= maxDay; day++) {
+            if (entriesByDay[day]) {
+                result.push(...entriesByDay[day]);
+            } else {
+                let nextReal: ColumnData | null = null;
+                for (let d = day + 1; d <= maxDay; d++) {
+                    if (entriesByDay[d]) {
+                        const nonSynth = entriesByDay[d].filter(en => en.kind === 'level' && !en.synthetic);
+                        if (nonSynth.length > 0) { nextReal = nonSynth[0]; break; }
+                    }
+                }
+                if (nextReal) {
+                    const realDays = numeric.filter(en => en.kind === 'level' && !en.synthetic).map(en => en.daysOffset);
+                    const firstRealDay = Math.min(...realDays);
+                    let synthTime = 0;
+                    if (day < firstRealDay) {
+                        synthTime = Math.round((day + 1) * ((nextReal.timeSpent || 0) / (firstRealDay + 1)));
+                    } else {
+                        let prevReal: ColumnData | null = null;
+                        for (let d = day - 1; d >= minDay; d--) {
+                            if (entriesByDay[d]) {
+                                const nonSynth = entriesByDay[d].filter(en => en.kind === 'level' && !en.synthetic);
+                                if (nonSynth.length > 0) { prevReal = nonSynth[nonSynth.length - 1]; break; }
+                            }
+                        }
+                        if (prevReal) {
+                            const ratio = (day - prevReal.daysOffset) / (nextReal.daysOffset - prevReal.daysOffset);
+                            synthTime = Math.round((prevReal.timeSpent || 0) + ratio * ((nextReal.timeSpent || 0) - (prevReal.timeSpent || 0)));
+                        } else {
+                            synthTime = Math.round((nextReal.timeSpent || 0) / 2);
+                        }
+                    }
+                    result.push({ kind: 'level', id: `synth-${nextReal.token}-${day}`, token: nextReal.token, name: '-', daysOffset: day, timeSpent: synthTime, isBonus: false, synthetic: true });
+                }
+            }
+        }
+        const numericIds = new Set(numeric.map(c => c.id));
+        const nonNumeric = allCols.filter(c => !numericIds.has(c.id));
+        return [...result, ...nonNumeric] as ColumnData[];
+    }, [baseColumns, mode]);
+
+    const handleAddLevel = async (data: { level_name: string; event_token: string; days_offset: number; time_spent: number; is_bonus: boolean }) => {
+        await TauriService.addLevel({ game_id: gameId, branch_id: branch.id, ...data });
+        window.dispatchEvent(new CustomEvent('levels-updated', { detail: { branchId: branch.id } }));
+    };
+
+    const handleAddPurchaseEvent = async (data: { event_token: string; days_offset: number; max_days_offset: number | null; is_restricted: boolean }) => {
+        await TauriService.addPurchaseEvent({ game_id: gameId, branch_id: branch.id, ...data });
+        window.dispatchEvent(new CustomEvent('purchase-events-updated', { detail: { branchId: branch.id } }));
+    };
+
+    return (
+        <section className="space-y-4">
+            <div className="flex items-center gap-2 px-4 py-2 bg-accent/20 rounded-t-lg border-x border-t">
+                <div className="h-4 w-1 rounded-full bg-primary" />
+                <h3 className="text-lg font-bold">{branch.name} {branch.is_default && <span className="ml-2 text-[10px] opacity-70 uppercase tracking-widest bg-primary/20 px-2 py-0.5 rounded">{t('common.default', { defaultValue: 'Default' })}</span>}</h3>
+            </div>
+            <Card className="rounded-t-none">
+                <CardContent className="p-0 overflow-auto">
+                    <GameDataTable
+                        columns={columns} layout={layout} isEditMode={isEditMode}
+                        onDeleteLevel={onDeleteLevel} onDeletePurchaseEvent={onDeletePurchaseEvent}
+                        onUpdateLevel={onUpdateLevel} onUpdatePurchaseEvent={onUpdatePurchaseEvent}
+                        onAddLevel={handleAddLevel} onAddPurchaseEvent={handleAddPurchaseEvent}
+                    />
+                </CardContent>
+            </Card>
+        </section>
+    );
 }
 
 
