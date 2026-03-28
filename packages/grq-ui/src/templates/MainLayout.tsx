@@ -20,6 +20,8 @@ import {
   MessageSquare,
   Palette,
   ChevronDown,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 import { cn } from '@grq/ui/lib/utils';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
@@ -54,6 +56,12 @@ export function MainLayout({ children }: MainLayoutProps) {
   const { sidebarCollapsed, toggleSidebar, completedSidebarOpen, toggleCompletedSidebar } = useSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [proxySheetOpen, setProxySheetOpen] = useState(false);
+  const [proxyPinned, setProxyPinned] = useState(false);
+
+  const handlePinProxy = () => {
+    setProxyPinned(true);
+    setProxySheetOpen(false);
+  };
 
   const isSettingsActive = location.pathname.startsWith('/settings');
   // When sidebar is expanded, auto-expand settings group if on any settings page
@@ -412,13 +420,66 @@ export function MainLayout({ children }: MainLayoutProps) {
       <CompletedTasksSidebar isOpen={completedSidebarOpen} onClose={toggleCompletedSidebar} />
 
       {/* ═══════════════════════════════════════════════
+          PROXY PINNED PANEL  (desktop only, split-view)
+      ══════════════════════════════════════════════════*/}
+      <div
+        className={cn(
+          'hidden lg:flex fixed inset-y-0 right-0 z-40 flex-col bg-card/95 backdrop-blur-xl border-l border-border/40 shadow-2xl transition-all duration-300',
+          'w-[26rem] xl:w-[30rem] 2xl:w-[34rem]',
+          proxyPinned ? 'translate-x-0' : 'translate-x-full'
+        )}
+      >
+        {/* Pinned panel header */}
+        <div className="flex flex-col border-b border-border/40 bg-card/80 backdrop-blur-md">
+          {/* Title row */}
+          <div className="flex items-center gap-3 px-5 pt-4 pb-3">
+            <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+              <Network className="h-4.5 w-4.5 text-emerald-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold leading-tight truncate">{t('settings.proxy', 'Proxy Network')}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Configure and test your proxy connection</p>
+            </div>
+          </div>
+
+          {/* Action buttons row — clearly separated */}
+          <div className="flex items-center gap-2 px-5 pb-3">
+            <button
+              onClick={() => setProxyPinned(false)}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors"
+            >
+              <PinOff className="h-3.5 w-3.5" />
+              Unpin
+            </button>
+            <div className="h-4 w-px bg-border/60" />
+            <button
+              onClick={() => { setProxyPinned(false); setProxySheetOpen(true); }}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+              Close
+            </button>
+          </div>
+        </div>
+
+        {/* Pinned panel content — scrollable */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 pb-8">
+          <ProxySettingsPanel />
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════
           MAIN CONTENT
       ══════════════════════════════════════════════════*/}
       <main
         className={cn(
           'transition-all duration-300 min-h-screen flex flex-col',
           sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64',
-          completedSidebarOpen ? 'lg:pr-96' : 'pr-0',
+          completedSidebarOpen
+            ? 'lg:pr-96'
+            : proxyPinned
+              ? 'lg:pr-[26rem] xl:pr-[30rem] 2xl:pr-[34rem]'
+              : 'pr-0',
         )}
         style={{
           paddingTop:    'calc(3.5rem + env(safe-area-inset-top))',   // below mobile header
@@ -484,11 +545,11 @@ export function MainLayout({ children }: MainLayoutProps) {
       <Sheet open={proxySheetOpen} onOpenChange={setProxySheetOpen}>
         <SheetContent side="right" className="flex flex-col w-full sm:max-w-lg p-0">
           <SheetHeader>
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+            <div className="flex items-center gap-3 pr-8">
+              <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
                 <Network className="h-4.5 w-4.5 text-emerald-500" />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <SheetTitle className="text-base font-bold">
                   {t('settings.proxy', 'Proxy Network')}
                 </SheetTitle>
@@ -496,6 +557,18 @@ export function MainLayout({ children }: MainLayoutProps) {
                   Configure and test your proxy connection
                 </SheetDescription>
               </div>
+            </div>
+
+            {/* Pin action — desktop only, placed below title clearly */}
+            <div className="hidden lg:flex items-center mt-3 pt-3 border-t border-border/40">
+              <button
+                onClick={handlePinProxy}
+                className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors group"
+              >
+                <Pin className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" />
+                Pin to screen
+              </button>
+              <p className="ml-3 text-[10px] text-muted-foreground">Split screen with app</p>
             </div>
           </SheetHeader>
 
