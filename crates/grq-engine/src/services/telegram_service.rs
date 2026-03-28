@@ -78,4 +78,36 @@ impl TelegramService {
 
         Ok(())
     }
+
+    pub async fn test_proxy(proxy_type: Option<String>, host: Option<String>, port: Option<u16>, username: Option<String>, password: Option<String>) -> Result<String, String> {
+        let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10));
+        
+        if let (Some(ptype), Some(h), Some(p)) = (&proxy_type, &host, port) {
+            let scheme = if ptype == "socks5" { "socks5h" } else { "http" };
+            let url = format!("{}://{}:{}", scheme, h, p);
+            if let Ok(mut proxy) = reqwest::Proxy::all(&url) {
+                if let (Some(u), Some(pw)) = (&username, &password) {
+                    if !u.is_empty() && !pw.is_empty() {
+                        proxy = proxy.basic_auth(u, pw);
+                    }
+                }
+                builder = builder.proxy(proxy);
+            } else {
+                return Err("Failed to build proxy URL".to_string());
+            }
+        } else {
+            return Err("Missing proxy host or port".to_string());
+        }
+
+        let client = builder.build().map_err(|e| format!("Client builder error: {}", e))?;
+        
+        match client.get("https://api.telegram.org").send().await {
+            Ok(res) => {
+                Ok(format!("Proxy linked successfully! (Status: {})", res.status()))
+            }
+            Err(e) => {
+                Err(format!("Proxy connection failed: {}", e))
+            }
+        }
+    }
 }

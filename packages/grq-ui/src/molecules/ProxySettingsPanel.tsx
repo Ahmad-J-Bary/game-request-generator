@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Network, ShieldCheck, Loader2, Save, Link2 } from 'lucide-react';
+import { Network, ShieldCheck, Loader2, Save, Link2, ActivitySquare } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@grq/ui/atoms/button';
 import { Input } from '@grq/ui/atoms/input';
@@ -33,6 +33,7 @@ export function ProxySettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -93,9 +94,32 @@ export function ProxySettingsPanel() {
       toast.success('Proxy link parsed successfully! Click save to apply.');
     } catch (error: any) {
       console.error('Failed to parse proxy link:', error);
-      toast.error(`Invalid proxy link: ${error}`);
+      toast.error(`Invalid proxy text/link: ${error}`);
     } finally {
       setParsing(false);
+    }
+  };
+
+  const handleTestProxy = async () => {
+    if (!host || !port) {
+      toast.error('Please enter Host and Port first.');
+      return;
+    }
+    try {
+      setTesting(true);
+      const res = await invoke<string>('test_proxy_connection', {
+        proxyType: proxyType || null,
+        host: host || null,
+        port: port ? parseInt(port, 10) : null,
+        username: username || null,
+        password: password || null,
+      });
+      toast.success(res);
+    } catch (error: any) {
+      console.error('Proxy test failed:', error);
+      toast.error(error);
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -254,10 +278,20 @@ export function ProxySettingsPanel() {
           <Button 
             className="flex-1 rounded-xl h-11 font-bold shadow-lg shadow-primary/20"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || testing}
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
             Save Configuration
+          </Button>
+
+          <Button 
+            variant="outline"
+            className="rounded-xl h-11 font-bold border-primary/20 hover:bg-primary/5"
+            onClick={handleTestProxy}
+            disabled={saving || testing || !host || !port}
+          >
+            {testing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ActivitySquare className="h-4 w-4 mr-2" />}
+            Test Proxy
           </Button>
         </div>
       </CardContent>

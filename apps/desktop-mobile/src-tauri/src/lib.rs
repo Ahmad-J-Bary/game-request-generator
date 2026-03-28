@@ -312,6 +312,17 @@ fn parse_proxy_link(link: String) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+async fn test_proxy_connection(
+    proxy_type: Option<String>,
+    host: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<String, String> {
+    TelegramService::test_proxy(proxy_type, host, port, username, password).await
+}
+
+#[tauri::command]
 fn add_game(state: tauri::State<AppState>, request: CreateGameRequest) -> Result<i64, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
@@ -1175,6 +1186,7 @@ pub fn run() {
             get_proxy_config,
             set_proxy_config,
             parse_proxy_link,
+            test_proxy_connection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
