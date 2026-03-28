@@ -560,13 +560,28 @@ function BranchSection({
 
         const allCols = [...levelCols, ...peCols];
         if (mode === 'event-only') {
-            const lvls = allCols.filter((c) => c.kind === 'level' && c.name !== '-').sort((a,b) => (Number(a.daysOffset)||0) - (Number(b.daysOffset)||0));
-            const pur = allCols.filter((c) => c.kind === 'purchase').sort((a,b) => (Number(a.daysOffset)||0) - (Number(b.daysOffset)||0));
+            const lvls = allCols.filter((c) => c.kind === 'level' && c.name !== '-').sort((a,b) => {
+                const aT = (a.timeSpent ?? 0) as number;
+                const bT = (b.timeSpent ?? 0) as number;
+                if (aT !== bT) return aT - bT;
+                return (Number(a.daysOffset)||0) - (Number(b.daysOffset)||0);
+            });
+            const pur = allCols.filter((c) => c.kind === 'purchase').sort((a,b) => {
+                const aT = (a.timeSpent ?? 0) as number;
+                const bT = (b.timeSpent ?? 0) as number;
+                if (aT !== bT) return aT - bT;
+                return (Number(a.daysOffset)||0) - (Number(b.daysOffset)||0);
+            });
             return [...lvls, ...pur] as ColumnData[];
         }
 
         const numeric = allCols.filter((c) => typeof c.daysOffset === 'number' && c.daysOffset !== null) as { kind: 'level'|'purchase'; daysOffset: number; id: number; name: string; timeSpent: number|null; isBonus: boolean; token: string; synthetic: boolean }[];
-        numeric.sort((a, b) => (a.daysOffset - b.daysOffset) || (a.kind === 'level' ? -1 : 1));
+        numeric.sort((a, b) => {
+            const aT = (a.timeSpent ?? 0) as number;
+            const bT = (b.timeSpent ?? 0) as number;
+            if (aT !== bT) return aT - bT;
+            return (a.daysOffset - b.daysOffset) || (a.kind === 'level' ? -1 : 1);
+        });
         
         // Synthetic logic re-integrated
         const levelEntries = numeric.filter(entry => entry.kind === 'level');

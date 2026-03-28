@@ -360,9 +360,14 @@ export default function AccountDetailPage() {
     const numericOnly = allColsWithMax.filter((c) => typeof c.daysOffset === 'number' && c.daysOffset !== null);
     
     numericOnly.sort((a, b) => {
-      const aOff = a.daysOffset as number;
-      const bOff = b.daysOffset as number;
+      const aTime = (a.timeSpent as number) ?? 0;
+      const bTime = (b.timeSpent as number) ?? 0;
+      if (aTime !== bTime) return aTime - bTime;
+
+      const aOff = (a.daysOffset as number) ?? 0;
+      const bOff = (b.daysOffset as number) ?? 0;
       if (aOff !== bOff) return aOff - bOff;
+
       if (a.kind !== b.kind) return a.kind === 'level' ? -1 : 1;
       return String(a.id).localeCompare(String(b.id));
     });

@@ -407,12 +407,15 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
     const allCols = [...baseColumns];
     const numeric = allCols.filter((c) => typeof c.daysOffset === 'number' && c.daysOffset !== null) as ((typeof allCols)[number] & { daysOffset: number })[];
     numeric.sort((a, b) => {
-      if (a.daysOffset !== b.daysOffset) {
-        return a.daysOffset - b.daysOffset;
-      }
-      if (a.kind !== b.kind) {
-        return a.kind === 'level' ? -1 : 1;
-      }
+      const aTime = (a.timeSpent as number) ?? 0;
+      const bTime = (b.timeSpent as number) ?? 0;
+      if (aTime !== bTime) return aTime - bTime;
+
+      const aOff = (a.daysOffset as number) ?? 0;
+      const bOff = (b.daysOffset as number) ?? 0;
+      if (aOff !== bOff) return aOff - bOff;
+
+      if (a.kind !== b.kind) return a.kind === 'level' ? -1 : 1;
       return String(a.id).localeCompare(String(b.id));
     });
 
@@ -420,8 +423,17 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
       const levels = allCols.filter((c) => c.kind === 'level' && c.name !== '-');
       const purchases = allCols.filter((c) => c.kind === 'purchase');
 
-      levels.sort((a, b) => (a.daysOffset ?? 0) - (b.daysOffset ?? 0));
+      levels.sort((a, b) => {
+        const aT = (a.timeSpent ?? 0) as number;
+        const bT = (b.timeSpent ?? 0) as number;
+        if (aT !== bT) return aT - bT;
+        return (a.daysOffset ?? 0) - (b.daysOffset ?? 0);
+      });
+
       purchases.sort((a, b) => {
+        const aT = (a.timeSpent ?? 0) as number;
+        const bT = (b.timeSpent ?? 0) as number;
+        if (aT !== bT) return aT - bT;
         if (a.daysOffset === b.daysOffset) return 0;
         if (a.daysOffset == null) return 1;
         if (b.daysOffset == null) return -1;
