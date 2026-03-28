@@ -7,12 +7,22 @@ use tauri::AppHandle;
 use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(default)]
 pub struct AppConfig {
     pub db_path: Option<String>,
     pub telegram_bot_token: Option<String>,
     pub telegram_chat_id: Option<String>,
     pub telegram_enabled: bool,
     pub telegram_auto_send: bool,
+    
+    // Proxy Settings
+    pub proxy_enabled: bool,
+    pub proxy_type: Option<String>, // "http", "socks5", "mtproxy"
+    pub proxy_host: Option<String>,
+    pub proxy_port: Option<u16>,
+    pub proxy_username: Option<String>,
+    pub proxy_password: Option<String>,
+    pub proxy_secret: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -23,6 +33,13 @@ impl Default for AppConfig {
             telegram_chat_id: None,
             telegram_enabled: false,
             telegram_auto_send: false,
+            proxy_enabled: false,
+            proxy_type: None,
+            proxy_host: None,
+            proxy_port: None,
+            proxy_username: None,
+            proxy_password: None,
+            proxy_secret: None,
         }
     }
 }

@@ -8,7 +8,10 @@ use chrono::Datelike;
 use grq_engine::db::Database;
 
 use grq_engine::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
-use grq_engine::models::game::{CreateBranchRequest, CreateGameRequest, Game, GameBranch, UpdateBranchRequest, UpdateGameRequest};
+use grq_engine::models::game::{
+    CreateBranchRequest, CreateGameRequest, Game, GameBranch, UpdateBranchRequest,
+    UpdateGameRequest,
+};
 use grq_engine::models::level::{CreateLevelRequest, Level, UpdateLevelRequest};
 use grq_engine::models::progress::{
     AccountLevelProgress, AccountPurchaseEventProgress, CreateAccountLevelProgressRequest,
@@ -180,13 +183,132 @@ async fn set_telegram_config(
 }
 
 #[tauri::command]
-async fn test_telegram_connection(bot_token: String, chat_id: String) -> Result<(), String> {
-    TelegramService::test_connection(&bot_token, &chat_id).await
+async fn test_telegram_connection(
+    app: tauri::AppHandle,
+    bot_token: String,
+    chat_id: String,
+) -> Result<(), String> {
+    TelegramService::test_connection(&app, &bot_token, &chat_id).await
 }
 
 #[tauri::command]
 async fn send_to_telegram(app: tauri::AppHandle, message: String) -> Result<(), String> {
     TelegramService::send_message(&app, &message).await
+}
+
+// ==================== أوامر الإعدادات للبروكسي ====================
+#[tauri::command]
+async fn get_proxy_config(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let config = ConfigService::load(&app);
+    Ok(serde_json::json!({
+        "enabled": config.proxy_enabled,
+        "type": config.proxy_type,
+        "host": config.proxy_host,
+        "port": config.proxy_port,
+        "username": config.proxy_username,
+        "password": config.proxy_password,
+        "secret": config.proxy_secret,
+    }))
+}
+
+#[tauri::command]
+async fn set_proxy_config(
+    app: tauri::AppHandle,
+    enabled: bool,
+    proxy_type: Option<String>,
+    host: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    password: Option<String>,
+    secret: Option<String>,
+) -> Result<(), String> {
+    let mut config = ConfigService::load(&app);
+    config.proxy_enabled = enabled;
+    config.proxy_type = proxy_type;
+    config.proxy_host = host;
+    config.proxy_port = port;
+    config.proxy_username = username;
+    config.proxy_password = password;
+    config.proxy_secret = secret;
+    ConfigService::save(&app, &config)
+}
+
+#[tauri::command]
+fn parse_proxy_link(link: String) -> Result<serde_json::Value, String> {
+    let mut proxy_type = "http".to_string(); // default fallback
+    let mut host = None;
+    let mut port = None;
+    let mut username = None;
+    let mut password = None;
+    let mut secret = None;
+
+    if let Ok(parsed_url) = tauri::Url::parse(&link) {
+        if parsed_url.scheme() == "tg" || parsed_url.host_str() == Some("t.me") {
+            let path = parsed_url.path();
+            if path.ends_with("proxy") || path.contains("proxy") {
+                proxy_type = "mtproxy".to_string();
+            } else if path.ends_with("socks") || path.contains("socks") {
+                proxy_type = "socks5".to_string();
+            }
+        }
+        for (k, v) in parsed_url.query_pairs() {
+            match k.as_ref() {
+                "server" => host = Some(v.to_string()),
+                "port" => port = v.parse::<u16>().ok(),
+                "user" => username = Some(v.to_string()),
+                "pass" => password = Some(v.to_string()),
+                "secret" => secret = Some(v.to_string()),
+                _ => {}
+            }
+        }
+    } 
+
+    if host.is_none() || port.is_none() {
+        // Fallback: Parse message from proxy bots (handles newlines stripped by <input>)
+        let link_cleaned = link.replace('\n', " ").replace('\r', " ");
+        let find_value = |prefix: &str, text: &str| -> Option<String> {
+            if let Some(idx) = text.find(prefix) {
+                let rest = &text[idx + prefix.len()..].trim_start();
+                let value = rest.split_whitespace().next().unwrap_or("");
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+            None
+        };
+
+        if let Some(ip_port) = find_value("IP/Port:", &link_cleaned) {
+            let parts: Vec<&str> = ip_port.split(':').collect();
+            if parts.len() >= 2 {
+                host = Some(parts[0].to_string());
+                port = parts[1].parse::<u16>().ok();
+            }
+        }
+        if let Some(u) = find_value("User:", &link_cleaned) { username = Some(u); }
+        if let Some(p) = find_value("Pass:", &link_cleaned) { password = Some(p); }
+        if let Some(s) = find_value("Secret:", &link_cleaned) { secret = Some(s); }
+        if let Some(t) = find_value("Type:", &link_cleaned) { 
+            let ptype = t.to_lowercase();
+            if ptype.contains("socks") {
+                proxy_type = "socks5".to_string();
+            } else if ptype.contains("http") {
+                proxy_type = "http".to_string();
+            }
+        }
+    }
+
+    if host.is_none() || port.is_none() {
+        return Err("Could not extract host or port from the provided text".to_string());
+    }
+
+    Ok(serde_json::json!({
+        "type": proxy_type,
+        "host": host,
+        "port": port,
+        "username": username,
+        "password": password,
+        "secret": secret
+    }))
 }
 
 #[tauri::command]
@@ -231,7 +353,10 @@ fn delete_game(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
 
 // ==================== أوامر الأفرع ====================
 #[tauri::command]
-fn get_game_branches(state: tauri::State<AppState>, game_id: i64) -> Result<Vec<GameBranch>, String> {
+fn get_game_branches(
+    state: tauri::State<AppState>,
+    game_id: i64,
+) -> Result<Vec<GameBranch>, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = GameService::new();
@@ -247,7 +372,10 @@ fn add_branch(state: tauri::State<AppState>, request: CreateBranchRequest) -> Re
 }
 
 #[tauri::command]
-fn update_branch(state: tauri::State<AppState>, request: UpdateBranchRequest) -> Result<bool, String> {
+fn update_branch(
+    state: tauri::State<AppState>,
+    request: UpdateBranchRequest,
+) -> Result<bool, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = GameService::new();
@@ -1044,6 +1172,9 @@ pub fn run() {
             add_branch,
             update_branch,
             delete_branch,
+            get_proxy_config,
+            set_proxy_config,
+            parse_proxy_link,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

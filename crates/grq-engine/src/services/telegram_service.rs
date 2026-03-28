@@ -1,10 +1,30 @@
 use serde_json::json;
-use crate::db::config::ConfigService;
+use crate::db::config::{ConfigService, AppConfig};
 use tauri::AppHandle;
 
 pub struct TelegramService;
 
 impl TelegramService {
+    fn build_client(config: &AppConfig) -> reqwest::Client {
+        let mut builder = reqwest::Client::builder();
+
+        if config.proxy_enabled {
+            if let (Some(proxy_type), Some(host), Some(port)) = (&config.proxy_type, &config.proxy_host, config.proxy_port) {
+                let proxy_scheme = if proxy_type == "socks5" { "socks5h" } else { "http" };
+                let url = format!("{}://{}:{}", proxy_scheme, host, port);
+                
+                if let Ok(mut proxy) = reqwest::Proxy::all(&url) {
+                    if let (Some(user), Some(pass)) = (&config.proxy_username, &config.proxy_password) {
+                        proxy = proxy.basic_auth(user.as_str(), pass.as_str());
+                    }
+                    builder = builder.proxy(proxy);
+                }
+            }
+        }
+
+        builder.build().unwrap_or_else(|_| reqwest::Client::new())
+    }
+
     pub async fn send_message(app: &AppHandle, message: &str) -> Result<(), String> {
         let config = ConfigService::load(app);
         
@@ -12,11 +32,11 @@ impl TelegramService {
             return Err("Telegram integration is disabled".to_string());
         }
 
-        let token = config.telegram_bot_token.ok_or("Telegram Bot Token not configured")?;
-        let chat_id = config.telegram_chat_id.ok_or("Telegram Chat ID not configured")?;
+        let token = config.telegram_bot_token.clone().ok_or("Telegram Bot Token not configured")?;
+        let chat_id = config.telegram_chat_id.clone().ok_or("Telegram Chat ID not configured")?;
 
         let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
-        let client = reqwest::Client::new();
+        let client = Self::build_client(&config);
         
         let response = client.post(url)
             .json(&json!({
@@ -36,9 +56,10 @@ impl TelegramService {
         Ok(())
     }
 
-    pub async fn test_connection(bot_token: &str, chat_id: &str) -> Result<(), String> {
+    pub async fn test_connection(app: &AppHandle, bot_token: &str, chat_id: &str) -> Result<(), String> {
+        let config = ConfigService::load(app);
         let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
-        let client = reqwest::Client::new();
+        let client = Self::build_client(&config);
         
         let response = client.post(url)
             .json(&json!({

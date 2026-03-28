@@ -5,6 +5,7 @@ import { Settings } from 'lucide-react';
 import { ColorSettingsPanel } from '@grq/ui/molecules/ColorSettingsPanel';
 import { DatabaseSettingsPanel } from '@grq/ui/molecules/DatabaseSettingsPanel';
 import { TelegramSettingsPanel } from '@grq/ui/molecules/TelegramSettingsPanel';
+import { ProxySettingsPanel } from '@grq/ui/molecules/ProxySettingsPanel';
 
 export default function SettingsPage() {
   const { t } = useTranslation();
@@ -17,6 +18,7 @@ export default function SettingsPage() {
       </div>
 
       <TelegramSettingsPanel />
+      <ProxySettingsPanel />
       <DatabaseSettingsPanel />
       <ColorSettingsPanel />
     </div>
