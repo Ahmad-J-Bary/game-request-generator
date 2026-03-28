@@ -60,7 +60,6 @@ jobs:
           projectPath: ./apps/desktop-mobile
 
   android:
-    needs: release
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -96,6 +95,10 @@ jobs:
       - name: Decode Android Key
         run: |
           echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > apps/desktop-mobile/src-tauri/gen/android/release.keystore
+
+      - name: Inject Mobile Crate Types
+        run: |
+          sed -i 's/crate-type = \["lib"\]/crate-type = \["staticlib", "cdylib", "lib"\]/' apps/desktop-mobile/src-tauri/Cargo.toml
 
       - name: Build Android APK
         run: pnpm tauri android build --apk --target aarch64 --target armv7 --target i686 --target x86_64
