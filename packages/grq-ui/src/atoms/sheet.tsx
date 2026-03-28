@@ -45,10 +45,18 @@ const SheetContent = React.forwardRef<
           : 'inset-y-0 left-0 w-full sm:max-w-md border-r data-[state=closed]:slide-out-to-left  data-[state=open]:slide-in-from-left',
         className,
       )}
+      style={{
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingLeft:   side === 'right'  ? 'env(safe-area-inset-left)'  : 'env(safe-area-inset-left)',
+        paddingRight:  side === 'right'  ? 'env(safe-area-inset-right)' : 'env(safe-area-inset-right)',
+      }}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-full h-8 w-8 flex items-center justify-center opacity-70 hover:opacity-100 hover:bg-accent transition-all focus:outline-none focus:ring-2 focus:ring-ring">
+      <DialogPrimitive.Close
+        className="absolute right-4 rounded-full h-8 w-8 flex items-center justify-center opacity-70 hover:opacity-100 hover:bg-accent transition-all focus:outline-none focus:ring-2 focus:ring-ring"
+        style={{ top: 'calc(1rem + env(safe-area-inset-top))' }}
+      >
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
@@ -57,8 +65,15 @@ const SheetContent = React.forwardRef<
 ));
 SheetContent.displayName = 'SheetContent';
 
-const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('flex flex-col gap-1 px-6 pt-6 pb-4 border-b border-border/40', className)} {...props} />
+const SheetHeader = ({ className, style, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn('flex flex-col gap-1 px-6 pb-4 border-b border-border/40', className)}
+    style={{
+      paddingTop: 'calc(1.5rem + env(safe-area-inset-top))',
+      ...style,
+    }}
+    {...props}
+  />
 );
 
 const SheetTitle = React.forwardRef<
