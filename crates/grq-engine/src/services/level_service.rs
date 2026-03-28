@@ -142,8 +142,8 @@ impl LevelService {
             let like_pattern = format!("{}\\_%", old_base);
 
             conn.execute(
-                "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\'",
-                params![like_pattern],
+                "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\' AND branch_id = ?2",
+                params![like_pattern, old_branch_id],
             )
             .map_err(|e| format!("Failed to delete synthetic child sessions: {}", e))?;
 
@@ -158,8 +158,8 @@ impl LevelService {
                 if new_base != old_base {
                     let new_like = format!("{}\\_%", new_base);
                     conn.execute(
-                        "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\'",
-                        params![new_like],
+                        "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\' AND branch_id = ?2",
+                        params![new_like, old_branch_id],
                     )
                     .map_err(|e| format!("Failed to delete synthetic child sessions (new token): {}", e))?;
                 }
@@ -231,18 +231,17 @@ impl LevelService {
     }
 
     pub fn delete_level(&self, conn: &Connection, id: i64) -> Result<bool, String> {
-        // Fetch the event_token to find and delete derived synthetic sessions
-        let event_token: Option<String> = conn
+        // Fetch the event_token and branch_id to find and delete derived synthetic sessions
+        let level_info: Option<(String, Option<i64>)> = conn
             .query_row(
-                "SELECT event_token FROM levels WHERE id = ?1",
+                "SELECT event_token, branch_id FROM levels WHERE id = ?1",
                 params![id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
-            .map_err(|e| format!("Failed to fetch level token for cascade: {}", e))?
-            .flatten();
+            .map_err(|e| format!("Failed to fetch level info for cascade: {}", e))?;
 
-        if let Some(token) = event_token {
+        if let Some((token, branch_id)) = level_info {
             // Delete all synthetic sessions derived from this level's base token.
             // Synthetic sessions have level_name = '-' and event_token like 'base_dayN'.
             let base = token
@@ -252,8 +251,8 @@ impl LevelService {
                 .to_string();
             let like_pattern = format!("{}\\_%", base);
             conn.execute(
-                "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\'",
-                params![like_pattern],
+                "DELETE FROM levels WHERE level_name = '-' AND event_token LIKE ?1 ESCAPE '\\' AND branch_id = ?2",
+                params![like_pattern, branch_id],
             )
             .map_err(|e| format!("Failed to delete synthetic child sessions: {}", e))?;
         }
