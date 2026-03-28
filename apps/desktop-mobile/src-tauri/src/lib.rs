@@ -29,6 +29,7 @@ use grq_engine::services::progress_service::ProgressService;
 use grq_engine::services::purchase_event_service::PurchaseEventService;
 
 use grq_engine::db::config::ConfigService;
+use grq_engine::services::repeater_service::{RepeaterResponse, RepeaterService};
 use grq_engine::services::telegram_service::TelegramService;
 
 // === حالة التطبيق ===
@@ -261,7 +262,7 @@ fn parse_proxy_link(link: String) -> Result<serde_json::Value, String> {
                 _ => {}
             }
         }
-    } 
+    }
 
     if host.is_none() || port.is_none() {
         // Fallback: Parse message from proxy bots (handles newlines stripped by <input>)
@@ -284,10 +285,16 @@ fn parse_proxy_link(link: String) -> Result<serde_json::Value, String> {
                 port = parts[1].parse::<u16>().ok();
             }
         }
-        if let Some(u) = find_value("User:", &link_cleaned) { username = Some(u); }
-        if let Some(p) = find_value("Pass:", &link_cleaned) { password = Some(p); }
-        if let Some(s) = find_value("Secret:", &link_cleaned) { secret = Some(s); }
-        if let Some(t) = find_value("Type:", &link_cleaned) { 
+        if let Some(u) = find_value("User:", &link_cleaned) {
+            username = Some(u);
+        }
+        if let Some(p) = find_value("Pass:", &link_cleaned) {
+            password = Some(p);
+        }
+        if let Some(s) = find_value("Secret:", &link_cleaned) {
+            secret = Some(s);
+        }
+        if let Some(t) = find_value("Type:", &link_cleaned) {
             let ptype = t.to_lowercase();
             if ptype.contains("socks") {
                 proxy_type = "socks5".to_string();
@@ -320,6 +327,11 @@ async fn test_proxy_connection(
     password: Option<String>,
 ) -> Result<String, String> {
     TelegramService::test_proxy(proxy_type, host, port, username, password).await
+}
+
+#[tauri::command]
+async fn send_raw_request(raw_request: String) -> Result<RepeaterResponse, String> {
+    RepeaterService::send_raw_request(&raw_request).await
 }
 
 #[tauri::command]
@@ -1187,6 +1199,7 @@ pub fn run() {
             set_proxy_config,
             parse_proxy_link,
             test_proxy_connection,
+            send_raw_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
