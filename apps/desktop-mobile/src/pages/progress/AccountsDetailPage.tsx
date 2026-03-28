@@ -265,7 +265,8 @@ function AccountsDetailContent({
                 purchase_event_id: peId,
                 is_completed: isCompleted,
                 days_offset: daysOffset,
-                time_spent: calculatedTimeSpent
+                time_spent: calculatedTimeSpent,
+                bypass_cooldown: true
              }));
         } else if (isCompleted || selectedDate) {
              updatePromises.push((async () => {
@@ -279,7 +280,8 @@ function AccountsDetailContent({
                     await TauriService.updatePurchaseEventProgress({
                          account_id: accId,
                          purchase_event_id: peId,
-                         is_completed: true
+                         is_completed: true,
+                         bypass_cooldown: true
                     });
                  }
              })());
@@ -298,13 +300,19 @@ function AccountsDetailContent({
                 updatePromises.push(TauriService.updateLevelProgress({
                     account_id: accId,
                     level_id: lvlId,
-                    is_completed: isCompleted
+                    is_completed: isCompleted,
+                    bypass_cooldown: true
                 }));
             }
          } else if (isCompleted) {
             updatePromises.push((async () => {
                 await TauriService.createLevelProgress({ account_id: accId, level_id: lvlId });
-                await TauriService.updateLevelProgress({ account_id: accId, level_id: lvlId, is_completed: true });
+                await TauriService.updateLevelProgress({ 
+                    account_id: accId, 
+                    level_id: lvlId, 
+                    is_completed: true,
+                    bypass_cooldown: true
+                });
             })());
          }
       }

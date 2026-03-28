@@ -16,6 +16,7 @@ export interface UpdateAccountLevelProgressRequest {
   account_id: number;
   level_id: number;
   is_completed: boolean;
+  bypass_cooldown?: boolean;
 }
 
 export interface AccountPurchaseEventProgress {
@@ -40,4 +41,5 @@ export interface UpdateAccountPurchaseEventProgressRequest {
   is_completed?: boolean;
   days_offset?: number;
   time_spent?: number;
+  bypass_cooldown?: boolean;
 }

@@ -33,7 +33,7 @@ impl ProgressService {
         conn: &Connection,
         request: UpdateAccountLevelProgressRequest,
     ) -> Result<bool, String> {
-        if request.is_completed {
+        if request.is_completed && !request.bypass_cooldown.unwrap_or(false) {
             // Cooldown check: Has anyone else completed this SAME level in the last 1 hour?
             let cooldown_exists: bool = conn.query_row(
                 "SELECT EXISTS(
@@ -140,27 +140,31 @@ impl ProgressService {
         if let Some(is_completed) = request.is_completed {
             updates.push("is_completed = ?");
             values.push(Box::new(if is_completed { 1 } else { 0 }));
-            
-            if is_completed {
-                // Cooldown check: Has anyone else completed this SAME event in the last 1 hour?
-                let cooldown_exists: bool = conn.query_row(
-                    "SELECT EXISTS(
-                        SELECT 1 FROM account_purchase_event_progress 
-                        WHERE purchase_event_id = ?1 AND is_completed = 1 
-                        AND account_id != ?2
-                        AND completed_at > datetime('now', '-1 hour')
-                     )",
-                    params![request.purchase_event_id, request.account_id],
-                    |row| row.get(0),
-                ).map_err(|e| format!("Failed to check purchase event cooldown: {}", e))?;
+        }
 
-                if cooldown_exists {
-                    return Err("Cooldown: Same purchase event completed by another account within 1 hour. Please wait.".to_string());
-                }
+        if request.is_completed.unwrap_or(false) && !request.bypass_cooldown.unwrap_or(false) {
+            // Cooldown check: Has anyone else completed this SAME event in the last 1 hour?
+            let cooldown_exists: bool = conn.query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM account_purchase_event_progress 
+                    WHERE purchase_event_id = ?1 AND is_completed = 1 
+                    AND account_id != ?2
+                    AND completed_at > datetime('now', '-1 hour')
+                 )",
+                params![request.purchase_event_id, request.account_id],
+                |row| row.get(0),
+            ).map_err(|e| format!("Failed to check purchase event cooldown: {}", e))?;
 
-                updates.push("completed_at = ?");
-                values.push(Box::new(chrono::Utc::now().to_rfc3339()));
+            if cooldown_exists {
+                return Err("Cooldown: Same purchase event completed by another account within 1 hour. Please wait.".to_string());
             }
+
+            updates.push("completed_at = ?");
+            values.push(Box::new(chrono::Utc::now().to_rfc3339()));
+        } else if request.is_completed.unwrap_or(false) {
+            // If completed but bypassing cooldown, we still need to set completed_at
+            updates.push("completed_at = ?");
+            values.push(Box::new(chrono::Utc::now().to_rfc3339()));
         }
 
         if let Some(days_offset) = request.days_offset {

@@ -22,6 +22,7 @@ pub struct UpdateAccountLevelProgressRequest {
     pub account_id: i64,
     pub level_id: i64,
     pub is_completed: bool,
+    pub bypass_cooldown: Option<bool>,
 }
 
 // ===== تقدم أحداث الشراء =====
@@ -50,4 +51,5 @@ pub struct UpdateAccountPurchaseEventProgressRequest {
     pub is_completed: Option<bool>,
     pub days_offset: Option<i32>,
     pub time_spent: Option<i32>,
+    pub bypass_cooldown: Option<bool>,
 }

@@ -232,10 +232,20 @@ export default function AccountDetailPage() {
         const levelIdNum = parseInt(actualLevelId);
         const existingProgress = levelsProgress.find(p => p.level_id === levelIdNum);
         if (existingProgress) {
-          await TauriService.updateLevelProgress({ account_id: accountId, level_id: levelIdNum, is_completed: isCompleted });
+          await TauriService.updateLevelProgress({ 
+            account_id: accountId, 
+            level_id: levelIdNum, 
+            is_completed: isCompleted,
+            bypass_cooldown: true 
+          });
         } else {
           await TauriService.createLevelProgress({ account_id: accountId, level_id: levelIdNum });
-          if (isCompleted) await TauriService.updateLevelProgress({ account_id: accountId, level_id: levelIdNum, is_completed: true });
+          if (isCompleted) await TauriService.updateLevelProgress({ 
+            account_id: accountId, 
+            level_id: levelIdNum, 
+            is_completed: true,
+            bypass_cooldown: true 
+          });
         }
       }
 
@@ -274,10 +284,22 @@ export default function AccountDetailPage() {
 
         const existingProgress = purchaseProgress.find(p => p.purchase_event_id === purchaseIdNum);
         if (existingProgress) {
-          await TauriService.updatePurchaseEventProgress({ account_id: accountId, purchase_event_id: purchaseIdNum, is_completed: isCompleted, days_offset: daysOffset, time_spent: calculatedTimeSpent });
+          await TauriService.updatePurchaseEventProgress({ 
+            account_id: accountId, 
+            purchase_event_id: purchaseIdNum, 
+            is_completed: isCompleted, 
+            days_offset: daysOffset, 
+            time_spent: calculatedTimeSpent,
+            bypass_cooldown: true
+          });
         } else {
           await TauriService.createPurchaseEventProgress({ account_id: accountId, purchase_event_id: purchaseIdNum, days_offset: daysOffset, time_spent: calculatedTimeSpent });
-          if (isCompleted) await TauriService.updatePurchaseEventProgress({ account_id: accountId, purchase_event_id: purchaseIdNum, is_completed: true });
+          if (isCompleted) await TauriService.updatePurchaseEventProgress({ 
+            account_id: accountId, 
+            purchase_event_id: purchaseIdNum, 
+            is_completed: true,
+            bypass_cooldown: true
+          });
         }
       }
 
