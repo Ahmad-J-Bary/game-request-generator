@@ -81,7 +81,14 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         try {
           const gameBranches = await TauriService.getGameBranches(parseInt(selectedGameId));
           setBranches(gameBranches);
-          setSelectedBranchId('');
+          
+          // Auto-select the latest branch (highest ID)
+          if (gameBranches.length > 0) {
+            const sorted = [...gameBranches].sort((a, b) => b.id - a.id);
+            setSelectedBranchId(sorted[0].id.toString());
+          } else {
+            setSelectedBranchId('');
+          }
         } catch (error) {
           console.error('Failed to fetch branches:', error);
         }
@@ -89,6 +96,46 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
       loadBranches();
     }
   }, [selectedGameId]);
+
+  // Auto-select game based on filename keywords when an import is selected
+  useEffect(() => {
+    if (selectedImport && games.length > 0) {
+      const fileName = selectedImport.filename.replace(/\.[^/.]+$/, "").toLowerCase();
+      // Split filename into keywords (minimum 2 chars)
+      const fileKeywords = fileName.split(/[\s\-_]+/).filter(k => k.length >= 2);
+      
+      let bestGame = null;
+      let maxMatches = 0;
+
+      for (const game of games) {
+        // Split game name into keywords (minimum 2 chars)
+        const gameKeywords = game.name.toLowerCase().split(/[\s\-_]+/).filter(k => k.length >= 2);
+        let matches = 0;
+
+        for (const gk of gameKeywords) {
+          // Count keyword matches (partial or full)
+          if (fileKeywords.some(fk => fk.includes(gk) || gk.includes(fk))) {
+            matches++;
+          }
+        }
+
+        // Higher match count wins
+        if (matches > maxMatches) {
+          maxMatches = matches;
+          bestGame = game;
+        } else if (matches === maxMatches && matches > 0 && bestGame) {
+          // In case of tie, prefer the one where game name is longer (potentially more specific)
+          if (game.name.length > bestGame.name.length) {
+            bestGame = game;
+          }
+        }
+      }
+
+      if (bestGame && maxMatches > 0) {
+        setSelectedGameId(bestGame.id.toString());
+      }
+    }
+  }, [selectedImport, games]);
 
   const handleProcessImport = async () => {
     if (!selectedImport || !selectedGameId || !selectedBranchId) return;
