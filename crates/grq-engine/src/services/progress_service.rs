@@ -40,7 +40,7 @@ impl ProgressService {
                     SELECT 1 FROM account_level_progress 
                     WHERE level_id = ?1 AND is_completed = 1 
                     AND account_id != ?2
-                    AND completed_at > datetime('now', '-1 hour')
+                    AND datetime(completed_at) > datetime('now', '-1 hour')
                  )",
                 params![request.level_id, request.account_id],
                 |row| row.get(0),
@@ -149,7 +149,7 @@ impl ProgressService {
                     SELECT 1 FROM account_purchase_event_progress 
                     WHERE purchase_event_id = ?1 AND is_completed = 1 
                     AND account_id != ?2
-                    AND completed_at > datetime('now', '-1 hour')
+                    AND datetime(completed_at) > datetime('now', '-1 hour')
                  )",
                 params![request.purchase_event_id, request.account_id],
                 |row| row.get(0),
