@@ -205,6 +205,7 @@
     "completionNotAllowed": "الإكمال غير مسموح",
     "accountInitializing": "تهيئة الحساب - الطلب الأول متاح {{time}}",
     "completedToday": "المكتمل اليوم",
+    "completed": "المكتملة",
     "noCompletedTasks": "لا توجد مهام مكتملة",
     "noCompletedTasksDescription": "أكمل المهام لرؤيتها هنا",
     "clearCompleted": "مسح المكتمل",
@@ -368,7 +369,7 @@
       "restoreInProgress": "جاري جلب البيانات..."
     },
     "telegramImport": {
-      "title": "مركز استيراد التيليجرام",
+      "title": "استيراد الحسابات",
       "checkUpdates": "التحقق من المستجدات",
       "noNewFiles": "لا توجد ملفات جديدة في المجموعة",
       "foundFiles": "تم العثور على {{count}} ملفات جديدة",

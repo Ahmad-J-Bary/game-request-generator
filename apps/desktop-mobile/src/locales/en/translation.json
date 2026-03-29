@@ -206,6 +206,7 @@
     "accountInitializing": "Account initializing - first request available {{time}}",
     "requestAvailable": "Request available {{time}}",
     "completedToday": "Completed Today",
+    "completed": "Completed",
     "noCompletedTasks": "No Completed Tasks",
     "noCompletedTasksDescription": "Complete tasks to see them here",
     "clearCompleted": "Clear Completed",
@@ -340,7 +341,7 @@
     "generatingReport": "Generating report...",
     "resetColors": "Reset Colors",
     "telegramImport": {
-      "title": "Telegram Import Center",
+      "title": "Import Accounts",
       "checkUpdates": "Check for Updates",
       "noNewFiles": "No new files found in the group",
       "foundFiles": "{{count}} new files found",

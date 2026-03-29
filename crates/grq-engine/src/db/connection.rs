@@ -228,7 +228,7 @@ impl Database {
                     FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE CASCADE,
                     UNIQUE(game_id, branch_id, event_token, days_offset)
                 );
-                INSERT INTO levels_new (id, game_id, branch_id, event_token, level_name, days_offset, time_spent, is_bonus)
+                INSERT OR IGNORE INTO levels_new (id, game_id, branch_id, event_token, level_name, days_offset, time_spent, is_bonus)
                 SELECT id, game_id, branch_id, event_token, level_name, days_offset, time_spent, is_bonus FROM levels;
                 DROP TABLE levels;
                 ALTER TABLE levels_new RENAME TO levels;
@@ -257,7 +257,7 @@ impl Database {
                     FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE CASCADE,
                     UNIQUE(game_id, branch_id, event_token)
                 );
-                INSERT INTO purchase_events_new (id, game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset, created_at)
+                INSERT OR IGNORE INTO purchase_events_new (id, game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset, created_at)
                 SELECT id, game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset, created_at FROM purchase_events;
                 DROP TABLE purchase_events;
                 ALTER TABLE purchase_events_new RENAME TO purchase_events;

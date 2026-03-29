@@ -11,7 +11,8 @@ import {
   Gamepad2,
   ChevronRight,
   Loader2,
-  ArrowRight
+  ArrowRight,
+  ArrowLeft
 } from 'lucide-react';
 import { 
   Dialog, 
@@ -183,7 +184,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl bg-background/80 backdrop-blur-2xl">
+      <DialogContent className="sm:max-w-[720px] w-[calc(100vw-1.5rem)] max-h-[90dvh] flex flex-col p-0 overflow-hidden border-none shadow-2xl bg-background/80 backdrop-blur-2xl">
         <DialogHeader className="p-6 pb-2 border-b border-border/40">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -204,19 +205,20 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
               size="sm" 
               onClick={fetchUpdates} 
               disabled={loading}
-              className="rounded-xl border-primary/20 hover:bg-primary/5 gap-2"
+              className="rounded-xl border-primary/20 hover:bg-primary/5 gap-1.5 h-8 sm:h-9"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-              {t('settings.telegramImport.checkUpdates')}
+              <span className="hidden sm:inline">{t('settings.telegramImport.checkUpdates')}</span>
+              <span className="sm:hidden text-[10px]">Refresh</span>
             </Button>
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex">
+        <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
           {/* List Area */}
           <div className={cn(
-            "flex-1 flex flex-col transition-all duration-300",
-            selectedImport ? "w-1/2 border-r border-border/40" : "w-full"
+            "flex flex-col transition-all duration-300",
+            selectedImport ? "hidden lg:flex lg:w-1/2 border-r border-border/40" : "flex-1 w-full"
           )}>
             <ScrollArea className="flex-1">
               <div className="p-4 space-y-3">
@@ -277,9 +279,18 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
 
           {/* Process Form Area */}
           {selectedImport && (
-            <div className="w-1/2 flex flex-col bg-accent/20 animate-in slide-in-from-right duration-300">
-              <ScrollArea className="flex-1 p-6">
-                <div className="space-y-6">
+            <div className="w-full lg:w-1/2 flex flex-col bg-accent/20 animate-in slide-in-from-right lg:slide-in-from-right duration-300">
+              <ScrollArea className="flex-1 p-4 lg:p-6">
+                <div className="space-y-4 lg:space-y-6">
+                  {/* Mobile Back Button */}
+                  <button 
+                    onClick={() => setSelectedImport(null)}
+                    className="lg:hidden flex items-center gap-2 text-primary font-bold text-xs mb-2 transition-transform active:scale-95"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to List
+                  </button>
+
                   <div className="flex items-center gap-2 mb-2">
                     <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
                       Processing: {selectedImport.filename}

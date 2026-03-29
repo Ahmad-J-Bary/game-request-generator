@@ -1,6 +1,6 @@
 // src/components/templates/MainLayout.tsx
 import { ReactNode, useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard,
@@ -19,7 +19,6 @@ import {
   Network,
   MessageSquare,
   Palette,
-  ChevronDown,
   Pin,
   PinOff,
 } from 'lucide-react';
@@ -30,6 +29,7 @@ import { CompletedTasksSidebar } from '@grq/ui/organisms/CompletedTasksSidebar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@grq/ui/atoms/sheet';
 import { ProxySettingsPanel } from '@grq/ui/molecules/ProxySettingsPanel';
 import { TelegramImportDialog } from '@grq/ui/organisms/TelegramImportDialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@grq/ui/atoms/dropdown-menu';
 import { TauriService } from '@grq/core/services/tauri.service';
 
 interface MainLayoutProps {
@@ -330,149 +330,197 @@ export function MainLayout({ children }: MainLayoutProps) {
               );
             })}
 
-            {/* Divider before Settings */}
-            <div className="my-2 border-t border-border/40" />
-
-            {/* Settings Group Header */}
-            {sidebarCollapsed ? (
-              // When collapsed: just show Settings icon linking to /settings/appearance
-              <NavLink
-                to="/settings/appearance"
-                className={() =>
-                  cn(
-                    'flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                    isSettingsActive
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  )
-                }
-                title={t('settings.title', 'Settings')}
+            {/* Spacer to push items to the middle */}
+            <div className="py-8" />
+            
+            {/* Secondary Action Items (Middle) */}
+            <div className="pt-4 mt-2 border-t border-border/20 space-y-1">
+              {/* Telegram Import Button (Now in Middle) */}
+              <button
+                onClick={() => setTelegramImportOpen(true)}
+                className={cn(
+                  'w-full flex items-center transition-all px-3 py-2 rounded-xl text-sm font-medium group relative active:scale-[0.98]',
+                  telegramImportOpen ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground',
+                  sidebarCollapsed && 'justify-center px-0'
+                )}
+                title={sidebarCollapsed ? t('settings.telegramImport.title') : undefined}
               >
-                <Settings className="h-5 w-5 flex-shrink-0" />
-              </NavLink>
-            ) : (
-              <>
-                {/* Expandable Settings group header */}
-                <button
-                  onClick={toggleSettings}
-                  className={cn(
-                    'w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                    isSettingsActive
-                      ? 'text-primary'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  )}
-                >
-                  <Settings className={cn('h-5 w-5 flex-shrink-0 transition-colors', isSettingsActive && 'text-primary')} />
-                  <span className="flex-1 text-left">{t('settings.title', 'Settings')}</span>
-                  <ChevronDown
-                    className={cn(
-                      'h-4 w-4 transition-transform duration-200',
-                      settingsOpen ? 'rotate-180' : ''
-                    )}
-                  />
-                </button>
+                 <MessageSquare className={cn('h-5 w-5 flex-shrink-0 transition-colors', !sidebarCollapsed ? 'mr-3' : '', telegramImportOpen ? 'text-primary' : 'group-hover:text-primary')} />
+                 {!sidebarCollapsed && <span className="flex-1 text-left">{t('settings.telegramImport.title')}</span>}
+                 {pendingImportsCount > 0 && (
+                  <span className={cn(
+                    "flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-background",
+                    sidebarCollapsed ? "absolute top-1.5 right-1.5" : "ml-2"
+                  )}>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  </span>
+                 )}
+              </button>
 
-                {/* Settings sub-navigation */}
-                <div
-                  className={cn(
-                    'ml-2 pl-4 border-l-2 border-border/50 space-y-0.5 overflow-hidden transition-all duration-300',
-                    settingsOpen ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
-                  )}
-                >
-                  {settingsNavigation.map(item => {
-                    const Icon = item.icon;
-                    const isProxy = item.name === 'proxy';
-                    if (isProxy) {
-                      return (
-                        <button
-                          key={item.name}
-                          onClick={() => setProxySheetOpen(true)}
-                          className="w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        >
-                          <Icon className="h-3.5 w-3.5 flex-shrink-0 text-emerald-500" />
-                          <span className="flex-1 text-left">{t(item.labelKey, item.name)}</span>
-                          <span className="text-[9px] font-bold text-emerald-500 bg-emerald-500/10 px-1 py-0.5 rounded-full">Quick</span>
-                        </button>
-                      );
-                    }
-                    return (
-                      <NavLink
-                        key={item.name}
-                        to={item.href}
-                        className={({ isActive }) =>
-                          cn(
-                            'flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all',
-                            isActive
-                              ? 'bg-primary text-primary-foreground shadow-sm'
-                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                          )
-                        }
-                      >
-                        <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                        <span>{t(item.labelKey, item.name)}</span>
-                      </NavLink>
-                    );
-                  })}
-                </div>
-              </>
-            )}
+              {/* Completed Tasks Quick Access (Now in Middle) */}
+              <button
+                onClick={toggleCompletedSidebar}
+                className={cn(
+                  'w-full flex items-center transition-all px-3 py-2 rounded-xl text-sm font-medium active:scale-[0.98]',
+                  completedSidebarOpen ? 'bg-secondary/40 text-primary shadow-sm' : 'text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground',
+                  sidebarCollapsed && 'justify-center px-0'
+                )}
+                title={sidebarCollapsed ? t('dailyTasks.completed') : undefined}
+              >
+                <CheckCircle className={cn('h-5 w-5 flex-shrink-0 transition-colors', !sidebarCollapsed ? 'mr-3' : '', completedSidebarOpen ? 'text-primary' : '')} />
+                {!sidebarCollapsed && <span className="flex-1 text-left">{t('dailyTasks.completed')}</span>}
+              </button>
+            </div>
           </nav>
 
-          {/* Bottom Actions */}
-          <div className="mt-auto flex flex-col border-t bg-card/50 backdrop-blur-md p-3 gap-2">
-            {/* Telegram Import Button (Desktop) */}
-            <Button
-              variant={telegramImportOpen ? 'secondary' : 'ghost'}
-              onClick={() => setTelegramImportOpen(true)}
-              className={cn(
-                'w-full justify-start transition-all overflow-hidden relative border border-transparent',
-                sidebarCollapsed ? 'px-0 justify-center h-10' : 'px-3 bg-primary/5 hover:bg-primary/10 border-primary/10'
-              )}
-              title={t('settings.telegramImport.title')}
-            >
-               <MessageSquare className={cn('h-5 w-5 flex-shrink-0', !sidebarCollapsed ? 'mr-3 text-primary' : (telegramImportOpen ? 'text-primary' : 'text-muted-foreground'))} />
-               {!sidebarCollapsed && <span className="font-medium tracking-wide">Telegram</span>}
-               {pendingImportsCount > 0 && (
-                <span className={cn(
-                  "absolute flex h-2 w-2",
-                  sidebarCollapsed ? "top-2 right-2" : "top-3.5 right-4"
-                )}>
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                </span>
-               )}
-            </Button>
-
-            <Button
-              variant={completedSidebarOpen ? 'secondary' : 'ghost'}
-              onClick={toggleCompletedSidebar}
-              className={cn(
-                'w-full justify-start transition-all overflow-hidden',
-                sidebarCollapsed ? 'px-0 justify-center h-10' : 'px-3 bg-secondary/30 hover:bg-secondary/60'
-              )}
-              title={t('dailyTasks.completedToday', 'Completed Today')}
-            >
-              <CheckCircle className={cn('h-5 w-5 flex-shrink-0', !sidebarCollapsed ? 'mr-3 text-primary' : (completedSidebarOpen ? 'text-primary' : 'text-muted-foreground'))} />
-              {!sidebarCollapsed && <span className="font-medium tracking-wide">{t('dailyTasks.completed', 'Completed')}</span>}
-            </Button>
-
-            {/* Collapse toggle */}
-            <div className="pt-1 mt-1 border-t border-border/40">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleSidebar}
-                className={cn('w-full text-muted-foreground hover:text-foreground h-8', sidebarCollapsed && 'px-0')}
-              >
+          {/* Bottom Control Bar - Unified & Modernized */}
+          <div className="mt-auto p-3 border-t border-border/40 bg-card/60 backdrop-blur-xl relative">
+            <div className={cn(
+              "flex items-center gap-2",
+              sidebarCollapsed ? "flex-col" : "justify-between"
+            )}>
+              {/* Settings Group - Anchored in corner, expands UPWARDS */}
+              <div className="relative group">
                 {sidebarCollapsed ? (
-                  <ChevronRight className="h-4 w-4 mx-auto" />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className={cn(
+                          'flex h-10 w-10 items-center justify-center rounded-xl transition-all active:scale-90 outline-none hover:bg-accent/70',
+                          isSettingsActive ? 'bg-primary/10 text-primary shadow-lg ring-1 ring-primary/20' : 'text-muted-foreground'
+                        )}
+                      >
+                        <Settings className="h-5 w-5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent 
+                      side="right" 
+                      align="end" 
+                      sideOffset={14} 
+                      className="w-48 bg-card/85 backdrop-blur-xl border-border/40 shadow-2xl p-1.5 animate-in slide-in-from-left-2 duration-200"
+                    >
+                      <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 px-2 pb-1.5">
+                        {t('settings.title', 'Settings')}
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator className="bg-border/40 mb-1" />
+                      {settingsNavigation.map((item) => {
+                        const Icon = item.icon;
+                        const isProxy = item.name === 'proxy';
+                        const isActive = location.pathname === item.href;
+                        
+                        return (
+                          <DropdownMenuItem
+                            key={item.name}
+                            onClick={() => isProxy ? setProxySheetOpen(true) : undefined}
+                            asChild={!isProxy}
+                            className={cn(
+                              "flex items-center gap-2.5 px-2.5 py-2 rounded-md cursor-pointer text-xs font-semibold transition-all",
+                              isActive ? "bg-primary/10 text-primary" : "text-muted-foreground focus:bg-accent/50 focus:text-foreground"
+                            )}
+                          >
+                            {isProxy ? (
+                              <div className="w-full flex items-center gap-2.5">
+                                <Icon className="h-4 w-4 text-emerald-500" />
+                                <span className="flex-1">{t(item.labelKey, item.name)}</span>
+                                <span className="text-[8px] font-bold text-emerald-500 bg-emerald-500/10 px-1 py-0.5 rounded-full border border-emerald-500/20">LIVE</span>
+                              </div>
+                            ) : (
+                              <Link to={item.href} className="w-full h-full flex items-center gap-2.5">
+                                <Icon className="h-4 w-4" />
+                                <span>{t(item.labelKey, item.name)}</span>
+                              </Link>
+                            )}
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 ) : (
-                  <div className="flex items-center justify-center gap-2 w-full opacity-80 hover:opacity-100">
-                    <ChevronLeft className="h-4 w-4" />
-                    <span className="text-xs uppercase tracking-widest font-semibold text-muted-foreground">Collapse</span>
+                  <div className="relative">
+                    {/* The Upward Expanding Panel */}
+                    <div className={cn(
+                      'absolute bottom-full mb-3 left-0 w-52 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] origin-bottom',
+                      settingsOpen ? 'max-h-[30rem] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
+                    )}>
+                      <div className="bg-card/95 backdrop-blur-2xl border border-border/50 rounded-2xl p-2 shadow-2xl shadow-primary/10 ml-0.5 mb-1.5">
+                        <div className="px-2 pb-2 mb-2 border-b border-border/40">
+                             <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/50">System Management</span>
+                        </div>
+                        <div className="space-y-1">
+                          {settingsNavigation.map(item => {
+                            const Icon = item.icon;
+                            const isProxy = item.name === 'proxy';
+                            const isActive = location.pathname === item.href;
+                            
+                            const ItemContent = (
+                              <>
+                                <div className={cn(
+                                  "h-8 w-8 rounded-lg flex items-center justify-center shrink-0 transition-all border shadow-sm",
+                                  isActive 
+                                    ? "bg-primary text-primary-foreground border-primary/50 shadow-primary/20" 
+                                    : "bg-background/80 text-muted-foreground border-border/40 group-hover:bg-accent/50 group-hover:text-primary"
+                                )}>
+                                  <Icon className="h-4 w-4" />
+                                </div>
+                                <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                                  <span className={cn(
+                                    "text-xs font-bold tracking-tight truncate",
+                                    isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                                  )}>
+                                    {t(item.labelKey, item.name)}
+                                  </span>
+                                  {isProxy && <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+                                </div>
+                              </>
+                            );
+
+                            if (isProxy) {
+                              return (
+                                <button key={item.name} onClick={() => setProxySheetOpen(true)} className="w-full group flex items-center gap-3 rounded-xl p-1.5 transition-all hover:bg-white/5 outline-none active:scale-[0.98]">
+                                  {ItemContent}
+                                </button>
+                              );
+                            }
+                            return (
+                              <NavLink key={item.name} to={item.href} className={({ isActive }) => cn('group flex items-center gap-3 rounded-xl p-1.5 transition-all outline-none active:scale-[0.98]', isActive ? 'bg-primary/5' : 'hover:bg-white/5')}>
+                                {ItemContent}
+                              </NavLink>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer Settings Trigger */}
+                    <button
+                      onClick={toggleSettings}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-black uppercase tracking-widest transition-all active:scale-95 outline-none',
+                        isSettingsActive ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground/60 hover:text-primary'
+                      )}
+                    >
+                      <Settings className={cn('h-5 w-5 transition-colors', isSettingsActive && 'animate-spin-slow')} />
+                      <span>{t('settings.title', 'Settings')}</span>
+                    </button>
                   </div>
                 )}
-              </Button>
+              </div>
+
+              {/* Modern Collapse Toggle */}
+              <button
+                onClick={toggleSidebar}
+                className={cn(
+                  'h-10 w-10 flex items-center justify-center rounded-xl transition-all text-muted-foreground hover:bg-accent hover:text-primary group active:scale-90',
+                  !sidebarCollapsed && 'hover:shadow-md border border-transparent hover:border-primary/20'
+                )}
+                title={sidebarCollapsed ? "Expand" : "Collapse"}
+              >
+                {sidebarCollapsed ? (
+                  <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" />
+                ) : (
+                  <ChevronLeft className="h-5 w-5 transition-transform group-hover:-translate-x-0.5" />
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -641,7 +689,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         </SheetContent>
       </Sheet>
 
-      {/* Telegram Import Center Dialog */}
+      {/* Import Accounts Dialog */}
       <TelegramImportDialog 
         open={telegramImportOpen} 
         onOpenChange={setTelegramImportOpen} 
