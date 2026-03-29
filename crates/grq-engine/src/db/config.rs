@@ -16,6 +16,11 @@ pub struct AppConfig {
     pub telegram_auto_send: bool,
     pub telegram_last_offset: Option<i64>,
     
+    // Database Sync Telegram Bot
+    pub telegram_sync_bot_token: Option<String>,
+    pub telegram_sync_chat_id: Option<String>,
+    pub telegram_sync_enabled: bool,
+    
     // Proxy Settings
     pub proxy_enabled: bool,
     pub proxy_type: Option<String>, // "http", "socks5", "mtproxy"
@@ -46,6 +51,9 @@ impl Default for AppConfig {
             telegram_enabled: false,
             telegram_auto_send: false,
             telegram_last_offset: None,
+            telegram_sync_bot_token: None,
+            telegram_sync_chat_id: None,
+            telegram_sync_enabled: false,
             proxy_enabled: false,
             proxy_type: None,
             proxy_host: None,

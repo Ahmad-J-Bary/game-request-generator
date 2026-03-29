@@ -65,6 +65,7 @@ const App = () => (
                   <Route path="/settings/database"   element={<SettingsPage section="database" />} />
                   <Route path="/settings/proxy"      element={<SettingsPage section="proxy" />} />
                   <Route path="/settings/telegram"   element={<SettingsPage section="telegram" />} />
+                  <Route path="/settings/sync"       element={<SettingsPage section="sync" />} />
                 </Routes>
               </MainLayout>
             </BrowserRouter>

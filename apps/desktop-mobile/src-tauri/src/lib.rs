@@ -256,7 +256,9 @@ async fn send_excel_to_telegram(
 }
 
 #[tauri::command]
-async fn get_telegram_updates(app: tauri::AppHandle) -> Result<Vec<grq_engine::services::telegram_service::TelegramImportPreview>, String> {
+async fn get_telegram_updates(
+    app: tauri::AppHandle,
+) -> Result<Vec<grq_engine::services::telegram_service::TelegramImportPreview>, String> {
     let config = ConfigService::load(&app);
     TelegramService::get_updates(&app, config.telegram_last_offset).await
 }
@@ -271,6 +273,36 @@ async fn update_telegram_offset(app: tauri::AppHandle, offset: i64) -> Result<()
     let mut config = ConfigService::load(&app);
     config.telegram_last_offset = Some(offset);
     ConfigService::save(&app, &config)
+}
+
+// ==================== أوامر المزامنة (Sync) ====================
+#[tauri::command]
+async fn get_sync_config(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let config = ConfigService::load(&app);
+    Ok(serde_json::json!({
+        "bot_token": config.telegram_sync_bot_token,
+        "chat_id": config.telegram_sync_chat_id,
+        "enabled": config.telegram_sync_enabled,
+    }))
+}
+
+#[tauri::command]
+async fn set_sync_config(
+    app: tauri::AppHandle,
+    bot_token: Option<String>,
+    chat_id: Option<String>,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut config = ConfigService::load(&app);
+    config.telegram_sync_bot_token = bot_token;
+    config.telegram_sync_chat_id = chat_id;
+    config.telegram_sync_enabled = enabled;
+    ConfigService::save(&app, &config)
+}
+
+#[tauri::command]
+async fn backup_database_now(app: tauri::AppHandle) -> Result<(), String> {
+    TelegramService::backup_db(&app).await
 }
 
 // ==================== أوامر الإعدادات للبروكسي ====================
@@ -1413,6 +1445,9 @@ pub fn run() {
             get_telegram_updates,
             download_telegram_file,
             update_telegram_offset,
+            get_sync_config,
+            set_sync_config,
+            backup_database_now,
             send_raw_request,
         ])
         .run(tauri::generate_context!())

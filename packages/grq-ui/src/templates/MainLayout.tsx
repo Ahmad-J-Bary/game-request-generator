@@ -50,6 +50,7 @@ const settingsNavigation = [
   { name: 'database',   href: '/settings/database',   icon: Database,     labelKey: 'settings.database'   },
   { name: 'proxy',      href: '/settings/proxy',      icon: Network,      labelKey: 'settings.proxy.title' },
   { name: 'telegram',   href: '/settings/telegram',   icon: MessageSquare,labelKey: 'settings.telegram'   },
+  { name: 'sync',       href: '/settings/sync',       icon: Database,     labelKey: 'settings.sync.title' },
 ];
 
 export function MainLayout({ children }: MainLayoutProps) {
@@ -68,7 +69,10 @@ export function MainLayout({ children }: MainLayoutProps) {
       const updates = await TauriService.getTelegramUpdates();
       setPendingImportsCount(updates.length);
     } catch (error) {
-      console.error('Failed to check Telegram updates:', error);
+      // Silently fail or log sparingly for background checks to avoid console spam
+      if ((import.meta as any).env?.DEV) {
+        console.warn('Telegram background check failed (likely network or invalid token).');
+      }
     }
   };
 

@@ -9,7 +9,9 @@ import { TelegramSettingsPanel } from '@grq/ui/molecules/TelegramSettingsPanel';
 import { ProxySettingsPanel } from '@grq/ui/molecules/ProxySettingsPanel';
 import { AppearanceSettingsPanel } from '@grq/ui/molecules/AppearanceSettingsPanel';
 
-type SettingTab = 'appearance' | 'database' | 'proxy' | 'telegram';
+import { SyncSettingsPanel } from '@grq/ui/molecules/SyncSettingsPanel';
+
+type SettingTab = 'appearance' | 'database' | 'proxy' | 'telegram' | 'sync';
 
 interface SettingsPageProps {
   section?: SettingTab;
@@ -25,6 +27,7 @@ export default function SettingsPage({ section }: SettingsPageProps) {
     { id: 'database'   as const, label: t('settings.database',   'Database'),      icon: Database,      href: '/settings/database',   color: 'text-sky-500'    },
     { id: 'proxy'      as const, label: t('settings.proxy.title',      'Proxy'),         icon: Network,       href: '/settings/proxy',      color: 'text-emerald-500'},
     { id: 'telegram'   as const, label: t('settings.telegram',   'Telegram Bot'),  icon: MessageSquare, href: '/settings/telegram',   color: 'text-amber-500'  },
+    { id: 'sync'       as const, label: t('settings.sync.title', 'Sync Bot'),      icon: Database,      href: '/settings/sync',       color: 'text-sky-500'    },
   ];
 
   const renderActivePanel = () => {
@@ -33,6 +36,7 @@ export default function SettingsPage({ section }: SettingsPageProps) {
       case 'database':   return <DatabaseSettingsPanel />;
       case 'proxy':      return <ProxySettingsPanel />;
       case 'telegram':   return <TelegramSettingsPanel />;
+      case 'sync':       return <SyncSettingsPanel />;
     }
   };
 

@@ -365,6 +365,18 @@
       "title": "Proxy",
       "daysRemaining": "{{count}} days remaining for proxy",
       "alertGroup": "Send expiry alert to group"
+    },
+    "sync": {
+      "title": "Database Sync",
+      "subtitle": "Automatic and manual backup via Telegram",
+      "botToken": "Sync Bot Token",
+      "chatId": "Sync Group Chat ID",
+      "enabled": "Enable Automatic Sync",
+      "backupNow": "Backup Now",
+      "lastBackup": "Last Backup: {{time}}",
+      "backupSuccess": "Database uploaded successfully!",
+      "backupFailed": "Failed to upload database",
+      "backupInProgress": "Uploading..."
     }
   },
   "colorSettings": {
