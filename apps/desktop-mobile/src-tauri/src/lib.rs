@@ -42,7 +42,7 @@ fn spawn_proxy_reminder_worker(app: tauri::AppHandle) {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600)); // Every 1 hour
         loop {
             interval.tick().await;
-            
+
             let config = ConfigService::load(&app);
             if !config.proxy_enabled || !config.telegram_enabled || config.proxy_reminder_sent {
                 continue;
@@ -51,9 +51,12 @@ fn spawn_proxy_reminder_worker(app: tauri::AppHandle) {
             if let Some(expiry_str) = &config.proxy_expiry {
                 // Try to parse the expiry date
                 // Expected formats: "2026-04-05 11:23:49" or "2026-04-05"
-                let expiry_result = chrono::NaiveDateTime::parse_from_str(expiry_str, "%Y-%m-%d %H:%M:%S")
-                    .or_else(|_| chrono::NaiveDate::parse_from_str(expiry_str, "%Y-%m-%d")
-                        .map(|d| d.and_hms_opt(0, 0, 0).unwrap())
+                let expiry_result =
+                    chrono::NaiveDateTime::parse_from_str(expiry_str, "%Y-%m-%d %H:%M:%S").or_else(
+                        |_| {
+                            chrono::NaiveDate::parse_from_str(expiry_str, "%Y-%m-%d")
+                                .map(|d| d.and_hms_opt(0, 0, 0).unwrap())
+                        },
                     );
 
                 if let Ok(expiry_dt) = expiry_result {
@@ -63,7 +66,6 @@ fn spawn_proxy_reminder_worker(app: tauri::AppHandle) {
 
                     // If expiring within 24 hours (and not already expired long ago)
                     if hours_left > 0 && hours_left <= 24 {
-                        let days = duration.num_days();
                         let _hours = hours_left % 24;
 
                         let message = "⚠️ <b>باقي يوم واحد لانتهاء صلاحية البروكسي</b>".to_string();
@@ -241,6 +243,16 @@ async fn send_to_telegram(app: tauri::AppHandle, message: String) -> Result<(), 
     TelegramService::send_message(&app, &message).await
 }
 
+#[tauri::command]
+async fn send_excel_to_telegram(
+    app: tauri::AppHandle,
+    bytes: Vec<u8>,
+    filename: String,
+    caption: Option<String>,
+) -> Result<(), String> {
+    TelegramService::send_document(&app, bytes, filename, caption).await
+}
+
 // ==================== أوامر الإعدادات للبروكسي ====================
 #[tauri::command]
 async fn get_proxy_config(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
@@ -299,7 +311,7 @@ async fn set_proxy_config(
     config.proxy_provider = provider;
     config.proxy_rotation_time = rotation_time;
     config.proxy_remaining_time = remaining_time;
-    
+
     // Reset reminder flag when settings are changed
     config.proxy_reminder_sent = false;
 
@@ -309,7 +321,7 @@ async fn set_proxy_config(
 #[tauri::command]
 async fn send_proxy_details_to_telegram(app: tauri::AppHandle) -> Result<(), String> {
     let config = ConfigService::load(&app);
-    
+
     if !config.telegram_enabled {
         return Err("Telegram integration is disabled in settings".to_string());
     }
@@ -361,10 +373,10 @@ fn parse_proxy_link(link: String) -> Result<serde_json::Value, String> {
         // Build a robust parsing strategy:
         // 1. Line-by-line is most reliable for provider bot messages.
         // 2. Smart word-based extraction as fallback for single-line text.
-        
+
         let find_val = |target_prefix: &str, source_text: &str| -> Option<String> {
             let target_lower = target_prefix.to_lowercase();
-            
+
             // Try line-by-line first (maintains field boundaries best)
             for line in source_text.lines() {
                 let trimmed = line.trim();
@@ -375,7 +387,7 @@ fn parse_proxy_link(link: String) -> Result<serde_json::Value, String> {
                     }
                 }
             }
-            
+
             // Fallback for single line (e.g. when copied text lost formatting)
             let cleaned = source_text.replace(['\n', '\r'], " ");
             if let Some(start_idx) = cleaned.to_lowercase().find(&target_lower) {
@@ -386,17 +398,20 @@ fn parse_proxy_link(link: String) -> Result<serde_json::Value, String> {
                     // Exception: we only check for new keys AFTER capturing at least one word,
                     // unless the current target is an IP/Port and we already have it.
                     if word.ends_with(':') && !words.is_empty() {
-                         break;
+                        break;
                     }
-                    
+
                     words.push(word);
-                    
+
                     // IP/Port, User, Pass, Type are typically single-word values
-                    if matches!(target_prefix, "IP/Port:" | "User:" | "Pass:" | "Type:" | "Status:") {
+                    if matches!(
+                        target_prefix,
+                        "IP/Port:" | "User:" | "Pass:" | "Type:" | "Status:"
+                    ) {
                         break;
                     }
                 }
-                
+
                 if !words.is_empty() {
                     return Some(words.join(" "));
                 }
@@ -411,16 +426,34 @@ fn parse_proxy_link(link: String) -> Result<serde_json::Value, String> {
                 port = parts[1].parse::<u16>().ok();
             }
         }
-        
-        if let Some(u) = find_val("User:", &link) { username = Some(u); }
-        if let Some(p) = find_val("Pass:", &link) { password = Some(p); }
-        if let Some(s) = find_val("Secret:", &link) { secret = Some(s); }
-        if let Some(e) = find_val("Expiry:", &link) { expiry = Some(e); }
-        if let Some(c) = find_val("Created:", &link) { created = Some(c); }
-        if let Some(st) = find_val("Status:", &link) { status = Some(st); }
-        if let Some(co) = find_val("Country:", &link) { country = Some(co); }
-        if let Some(pr) = find_val("Provider:", &link) { provider = Some(pr); }
-        if let Some(rt) = find_val("Rotation Time:", &link) { rotation_time = Some(rt); }
+
+        if let Some(u) = find_val("User:", &link) {
+            username = Some(u);
+        }
+        if let Some(p) = find_val("Pass:", &link) {
+            password = Some(p);
+        }
+        if let Some(s) = find_val("Secret:", &link) {
+            secret = Some(s);
+        }
+        if let Some(e) = find_val("Expiry:", &link) {
+            expiry = Some(e);
+        }
+        if let Some(c) = find_val("Created:", &link) {
+            created = Some(c);
+        }
+        if let Some(st) = find_val("Status:", &link) {
+            status = Some(st);
+        }
+        if let Some(co) = find_val("Country:", &link) {
+            country = Some(co);
+        }
+        if let Some(pr) = find_val("Provider:", &link) {
+            provider = Some(pr);
+        }
+        if let Some(rt) = find_val("Rotation Time:", &link) {
+            rotation_time = Some(rt);
+        }
         remaining_time_str = find_val("Remaining Time:", &link);
 
         if let Some(t) = find_val("Type:", &link) {
@@ -431,7 +464,7 @@ fn parse_proxy_link(link: String) -> Result<serde_json::Value, String> {
                 proxy_type = "http".to_string();
             }
         }
-        
+
         // Handle common bot headers like "Golden Package" (first line if it doesn't have a label)
         if package_name.is_none() {
             if let Some(first_line) = link.lines().next() {
@@ -478,7 +511,10 @@ async fn test_proxy_connection(
 }
 
 #[tauri::command]
-async fn send_raw_request(app: tauri::AppHandle, raw_request: String) -> Result<RepeaterResponse, String> {
+async fn send_raw_request(
+    app: tauri::AppHandle,
+    raw_request: String,
+) -> Result<RepeaterResponse, String> {
     let config = ConfigService::load(&app);
     RepeaterService::send_raw_request(&raw_request, &config).await
 }
@@ -1297,7 +1333,7 @@ pub fn run() {
             let db = Database::new(&handle)?;
             db.init()?;
             app.manage(AppState { db: Mutex::new(db) });
-            
+
             // Start the proxy expiry reminder worker
             spawn_proxy_reminder_worker(app.handle().clone());
 
@@ -1353,6 +1389,7 @@ pub fn run() {
             parse_proxy_link,
             test_proxy_connection,
             send_proxy_details_to_telegram,
+            send_excel_to_telegram,
             send_raw_request,
         ])
         .run(tauri::generate_context!())

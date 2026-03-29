@@ -56,6 +56,43 @@ impl TelegramService {
         Ok(())
     }
 
+    pub async fn send_document(app: &AppHandle, bytes: Vec<u8>, filename: String, caption: Option<String>) -> Result<(), String> {
+        let config = ConfigService::load(app);
+        
+        if !config.telegram_enabled {
+            return Err("Telegram integration is disabled".to_string());
+        }
+
+        let token = config.telegram_bot_token.clone().ok_or("Telegram Bot Token not configured")?;
+        let chat_id = config.telegram_chat_id.clone().ok_or("Telegram Chat ID not configured")?;
+
+        let url = format!("https://api.telegram.org/bot{}/sendDocument", token);
+        let client = Self::build_client(&config);
+
+        use reqwest::multipart;
+        let mut form = multipart::Form::new()
+            .text("chat_id", chat_id)
+            .part("document", multipart::Part::bytes(bytes).file_name(filename));
+
+        if let Some(cap) = caption {
+            form = form.text("caption", cap);
+            form = form.text("parse_mode", "HTML");
+        }
+
+        let response = client.post(url)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(format!("Telegram API error: {}", error_text));
+        }
+
+        Ok(())
+    }
+
     pub async fn test_connection(app: &AppHandle, bot_token: &str, chat_id: &str) -> Result<(), String> {
         let config = ConfigService::load(app);
         let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);

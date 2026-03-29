@@ -605,6 +605,34 @@ export class ExcelService {
    */
   static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<boolean> {
     try {
+      const buffer = await this.generateAllGamesBuffer(layout, colorSettings, theme, mode);
+      if (!buffer) return false;
+      return await this.saveFile('All_Games.xlsx', buffer);
+    } catch (error) {
+      console.error('Export all games data error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Generates the Excel workbook buffer for all games
+   */
+  static async generateAllGamesBuffer(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<any> {
+    try {
+      const workbook = await this.generateAllGamesWorkbook(layout, colorSettings, theme, mode);
+      if (!workbook) return null;
+      return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    } catch (error) {
+      console.error('Generate all games buffer error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Internal logic to generate the workbook object for all games
+   */
+  private static async generateAllGamesWorkbook(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<any> {
+    try {
       const games = await TauriService.getGames();
       const workbook = XLSX.utils.book_new();
 
@@ -816,12 +844,10 @@ export class ExcelService {
       const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
       XLSX.utils.book_append_sheet(workbook, infoSheet, 'Completion_Info');
 
-      // Save file
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      return await this.saveFile('All_Games.xlsx', buffer);
+      return workbook;
     } catch (error) {
-      console.error('Export all games data error:', error);
-      return false;
+      console.error('Generate all games workbook error:', error);
+      return null;
     }
   }
 

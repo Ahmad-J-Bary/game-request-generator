@@ -335,6 +335,10 @@
   "settings": {
     "title": "Settings",
     "reset": "Reset to Default",
+    "sendReport": "Send Excel Report to Telegram",
+    "reportSent": "Excel report sent successfully!",
+    "generatingReport": "Generating report...",
+    "resetColors": "Reset Colors",
     "colors": {
       "title": "Color Settings",
       "description": "Customize colors for levels and purchase events",

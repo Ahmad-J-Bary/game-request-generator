@@ -17,6 +17,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { Badge } from '@grq/ui/atoms/badge';
 import { Progress } from '@grq/ui/atoms/progress';
+import { ExcelService } from '@grq/core/services/excel.service';
+import { useSettings } from '@grq/ui/contexts/SettingsContext';
+import { useTheme } from '@grq/ui/contexts/ThemeContext';
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -28,6 +31,10 @@ export default function Dashboard() {
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [completedAccounts, setCompletedAccounts] = useState<CompletedAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isReporting, setIsReporting] = useState(false);
+  
+  const { colors } = useSettings();
+  const { theme } = useTheme();
 
   const loadData = async () => {
     try {
@@ -65,6 +72,36 @@ export default function Dashboard() {
       console.error(e);
       const error = e as Error;
       NotificationService.error(error.message || 'Failed to send to Telegram. Check settings.');
+    }
+  };
+
+  const handleSendExcelReport = async () => {
+    try {
+      setIsReporting(true);
+      NotificationService.info(t('settings.generatingReport', 'Generating report...'));
+      
+      const buffer = await ExcelService.generateAllGamesBuffer('vertical', colors, theme);
+      
+      if (!buffer) {
+        throw new Error('Failed to generate Excel buffer');
+      }
+
+      const uint8Array = new Uint8Array(buffer);
+      const filename = `Full_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+      await invoke('send_excel_to_telegram', { 
+        bytes: Array.from(uint8Array), 
+        filename,
+        caption: `📊 <b>Complete Game Request Report</b>\nGenerated on: ${new Date().toLocaleString()}`
+      });
+
+      NotificationService.success(t('settings.reportSent', 'Excel report sent successfully!'));
+    } catch (e: unknown) {
+      console.error(e);
+      const error = e as Error;
+      NotificationService.error(error.message || 'Failed to send report. Check Telegram settings.');
+    } finally {
+      setIsReporting(false);
     }
   };
 
@@ -145,7 +182,16 @@ export default function Dashboard() {
               {t('dashboard.welcome')}
             </p>
           </div>
-          <div className="flex gap-4">
+             <Button 
+               size="lg" 
+               variant="outline"
+               className="rounded-full shadow-lg hover:scale-105 transition-transform font-bold border-primary/20 bg-background/50"
+               onClick={handleSendExcelReport}
+               disabled={isReporting}
+             >
+               <Send className={`mr-2 h-5 w-5 ${isReporting ? 'animate-pulse' : ''}`} />
+               {isReporting ? t('common.loading') : t('settings.sendReport', 'Send Excel Report')}
+             </Button>
              <Button 
                size="lg" 
                className="rounded-full shadow-lg hover:scale-105 transition-transform font-bold"
@@ -154,7 +200,6 @@ export default function Dashboard() {
                <Clock className="mr-2 h-5 w-5" />
                {t('dashboard.startWorking', 'Start Today\'s Session')}
              </Button>
-          </div>
         </div>
       </div>
 
