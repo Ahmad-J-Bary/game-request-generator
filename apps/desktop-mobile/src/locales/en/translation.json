@@ -376,7 +376,12 @@
       "lastBackup": "Last Backup: {{time}}",
       "backupSuccess": "Database uploaded successfully!",
       "backupFailed": "Failed to upload database",
-      "backupInProgress": "Uploading..."
+      "backupInProgress": "Uploading...",
+      "restoreNow": "Update Data",
+      "restoreConfirm": "Are you sure? Current local data will be replaced by the latest backup from Telegram. A local safety backup will be created automatically.",
+      "restoreSuccess": "Data updated successfully! Please restart the app to reflect changes.",
+      "restoreFailed": "Failed to fetch data from Telegram",
+      "restoreInProgress": "Fetching data..."
     }
   },
   "colorSettings": {

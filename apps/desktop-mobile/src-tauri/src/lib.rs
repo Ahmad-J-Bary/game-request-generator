@@ -305,6 +305,11 @@ async fn backup_database_now(app: tauri::AppHandle) -> Result<(), String> {
     TelegramService::backup_db(&app).await
 }
 
+#[tauri::command]
+async fn restore_database_from_telegram(app: tauri::AppHandle) -> Result<(), String> {
+    TelegramService::restore_db_from_telegram(&app).await
+}
+
 // ==================== أوامر الإعدادات للبروكسي ====================
 #[tauri::command]
 async fn get_proxy_config(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
@@ -1448,6 +1453,7 @@ pub fn run() {
             get_sync_config,
             set_sync_config,
             backup_database_now,
+            restore_database_from_telegram,
             send_raw_request,
         ])
         .run(tauri::generate_context!())

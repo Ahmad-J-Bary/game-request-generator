@@ -342,11 +342,8 @@ impl TelegramService {
 
     pub async fn backup_db(app: &AppHandle) -> Result<(), String> {
         let config = ConfigService::load(app);
-
-        if !config.telegram_sync_enabled {
-            return Err("Database sync is disabled".to_string());
-        }
-
+        
+        // Removed check for telegram_sync_enabled here to allow manual backup from the UI button.
         let token = config
             .telegram_sync_bot_token
             .clone()
@@ -383,20 +380,19 @@ impl TelegramService {
             bytes.len() as f64 / (1024.0 * 1024.0)
         ));
 
-        Self::send_document_with_token(&token, &chat_id, bytes, filename, caption).await
+        Self::send_document_with_token(app, &token, &chat_id, bytes, filename, caption).await
     }
 
     pub async fn send_document_with_token(
+        app: &AppHandle,
         token: &str,
         chat_id: &str,
         bytes: Vec<u8>,
         filename: String,
         caption: Option<String>,
     ) -> Result<(), String> {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(300)) // DBs can be large
-            .build()
-            .map_err(|e| e.to_string())?;
+        let config = ConfigService::load(app);
+        let client = Self::build_client(&config);
 
         let url = format!("https://api.telegram.org/bot{}/sendDocument", token);
         let part = reqwest::multipart::Part::bytes(bytes).file_name(filename);
@@ -423,6 +419,80 @@ impl TelegramService {
                 .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(format!("Telegram API error: {}", error_text));
         }
+
+        Ok(())
+    }
+
+    pub async fn fetch_latest_backup_file_id(app: &AppHandle) -> Result<String, String> {
+        let config = ConfigService::load(app);
+        let token = config.telegram_sync_bot_token.clone().ok_or("Sync Bot Token not configured")?;
+        let chat_id = config.telegram_sync_chat_id.clone().ok_or("Sync Chat ID not configured")?;
+
+        let url = format!("https://api.telegram.org/bot{}/getUpdates", token);
+        let client = Self::build_client(&config);
+
+        let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+        if !response.status().is_success() {
+            return Err(format!("Telegram API error: {}", response.status()));
+        }
+
+        let data: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+        let mut latest_file_id: Option<String> = None;
+
+        if let Some(updates) = data["result"].as_array() {
+            // We want the latest one, so we iterate from the end or just find the one with largest date/id
+            for update in updates.iter().rev() {
+                let message = &update["message"];
+                let msg_chat_id = message["chat"]["id"].as_i64().map(|id| id.to_string());
+                
+                if msg_chat_id == Some(chat_id.clone()) {
+                    if let Some(doc) = message["document"].as_object() {
+                        let filename = doc["file_name"].as_str().unwrap_or("");
+                        if filename.to_lowercase().ends_with(".sqlite") {
+                            latest_file_id = doc["file_id"].as_str().map(|s| s.to_string());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        latest_file_id.ok_or("No backup file found in the Telegram chat history. Please make sure you have uploaded at least one backup.".to_string())
+    }
+
+    pub async fn restore_db_from_telegram(app: &AppHandle) -> Result<(), String> {
+        let file_id = Self::fetch_latest_backup_file_id(app).await?;
+        let config = ConfigService::load(app);
+        let token = config.telegram_sync_bot_token.clone().ok_or("Sync Bot Token not configured")?;
+        
+        // 1. Get file path
+        let get_file_url = format!("https://api.telegram.org/bot{}/getFile?file_id={}", token, file_id);
+        let client = Self::build_client(&config);
+        let response = client.get(get_file_url).send().await.map_err(|e| e.to_string())?;
+        let data: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+        let file_path = data["result"]["file_path"].as_str().ok_or("File path not found")?;
+
+        // 2. Download bytes
+        let download_url = format!("https://api.telegram.org/file/bot{}/{}", token, file_path);
+        let content_res = client.get(download_url).send().await.map_err(|e| e.to_string())?;
+        let bytes = content_res.bytes().await.map_err(|e| e.to_string())?;
+
+        // 3. Determine DB path
+        let db_path = if let Some(custom_path) = config.db_path.clone() {
+            std::path::PathBuf::from(custom_path)
+        } else {
+            let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            data_dir.join("database.sqlite")
+        };
+
+        // 4. Create local backup before overwriting
+        if db_path.exists() {
+            let backup_path = db_path.with_extension("sqlite.bak");
+            std::fs::copy(&db_path, &backup_path).map_err(|e| format!("Failed to create local safety backup: {}", e))?;
+        }
+
+        // 5. Write new DB file
+        std::fs::write(&db_path, bytes).map_err(|e| format!("Failed to write restored database: {}", e))?;
 
         Ok(())
     }

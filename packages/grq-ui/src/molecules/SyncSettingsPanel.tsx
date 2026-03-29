@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Database, ShieldCheck, Loader2, Save, CloudUpload, History } from 'lucide-react';
+import { Database, ShieldCheck, Loader2, Save, CloudUpload, History, CloudDownload } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@grq/ui/atoms/button';
 import { Input } from '@grq/ui/atoms/input';
@@ -17,6 +17,7 @@ export function SyncSettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -67,6 +68,30 @@ export function SyncSettingsPanel() {
       toast.error(`${t('settings.sync.backupFailed')}: ${error}`);
     } finally {
       setBackingUp(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!botToken || !chatId) {
+      toast.error(t('settings.sync.restoreFailed'));
+      return;
+    }
+
+    // Safety confirmation as this is destructive
+    const confirmed = window.confirm(t('settings.sync.restoreConfirm'));
+    if (!confirmed) return;
+
+    try {
+      setRestoring(true);
+      await invoke('restore_database_from_telegram');
+      toast.success(t('settings.sync.restoreSuccess'), {
+        duration: 6000,
+      });
+    } catch (error: any) {
+      console.error('Restore failed:', error);
+      toast.error(`${t('settings.sync.restoreFailed')}: ${error}`);
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -159,7 +184,7 @@ export function SyncSettingsPanel() {
             variant="outline" 
             className="rounded-xl h-11 font-bold border-sky-500/30 hover:bg-sky-500/5 text-sky-600 transition-all active:scale-95"
             onClick={handleBackupNow}
-            disabled={backingUp || !botToken || !chatId}
+            disabled={backingUp || restoring || !botToken || !chatId}
           >
             {backingUp ? (
               <>
@@ -170,6 +195,24 @@ export function SyncSettingsPanel() {
               <>
                 <CloudUpload className="h-4 w-4 mr-2" />
                 {t('settings.sync.backupNow')}
+              </>
+            )}
+          </Button>
+          <Button 
+            variant="outline" 
+            className="rounded-xl h-11 font-bold border-amber-500/30 hover:bg-amber-500/5 text-amber-600 transition-all active:scale-95"
+            onClick={handleRestore}
+            disabled={restoring || backingUp || !botToken || !chatId}
+          >
+            {restoring ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                {t('settings.sync.restoreInProgress')}
+              </>
+            ) : (
+              <>
+                <CloudDownload className="h-4 w-4 mr-2" />
+                {t('settings.sync.restoreNow')}
               </>
             )}
           </Button>
