@@ -1084,9 +1084,20 @@ export class ExcelService {
 
           const dd = addDays(startDateObj, daysOffsetToUse);
           const dateStr = formatDateShort(dd);
+          
+          let formattedDaysOffset: string | number = (col as any).displayDaysOffset ?? col.daysOffset;
+          if (col.kind === 'purchase' && !(col as any).displayDaysOffset) {
+             const base = col.daysOffset !== undefined && col.daysOffset !== null ? String(col.daysOffset) : '-';
+             if (col.isRestricted && col.maxDaysOffset != null) {
+                 formattedDaysOffset = `${base} (Less Than ${col.maxDaysOffset})`;
+             } else {
+                 formattedDaysOffset = base;
+             }
+          }
 
           return {
             ...col,
+            daysOffset: formattedDaysOffset,
             dateStr,
             isCompleted
           };
@@ -1176,7 +1187,7 @@ export class ExcelService {
           if (!cell) continue;
 
           if (layout === 'vertical') {
-            if (R < 5) {
+            if (R < 4) {
               if (C === 0) {
                 cell.s = getCellStyle(colorSettings.headerColor, true);
               } else {

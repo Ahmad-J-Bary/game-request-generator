@@ -343,17 +343,23 @@ export default function AccountDetailPage() {
         }
       }
 
-      return {
-        kind: 'purchase' as const,
-        id: p.id,
-        token: p.event_token,
-        name: '$$$',
-        daysOffset: day,
-        maxDaysOffset: p.max_days_offset != null ? String(p.max_days_offset) : null,
-        isRestricted: !!p.is_restricted,
-        timeSpent: midpointTime,
-        synthetic: false,
-      };
+        let displayDaysOffset = day != null ? String(day) : '-';
+        if (p.is_restricted && p.max_days_offset != null) {
+          displayDaysOffset = `${displayDaysOffset} (${t('purchaseEvents.lessThan')} ${p.max_days_offset})`;
+        }
+
+        return {
+          kind: 'purchase' as const,
+          id: p.id,
+          token: p.event_token,
+          name: '$$$',
+          daysOffset: day,
+          displayDaysOffset,
+          maxDaysOffset: p.max_days_offset != null ? String(p.max_days_offset) : null,
+          isRestricted: !!p.is_restricted,
+          timeSpent: midpointTime,
+          synthetic: false,
+        };
     });
 
     const allColsWithMax = [...levelCols, ...purchaseCols] as ColumnData[];
@@ -428,9 +434,13 @@ export default function AccountDetailPage() {
     }
 
     const numericIds = new Set(numericOnly.map((c) => c.id));
-    const nonNumeric = allColsWithMax.filter((c) => !numericIds.has(c.id));
-    return [...result, ...nonNumeric];
-  }, [levels, purchaseEvents, purchaseProgress, mode]);
+    const nonNumericLevels = allColsWithMax.filter((c) => !numericIds.has(c.id) && c.kind === 'level');
+    const allPurchases = allColsWithMax.filter((c) => c.kind === 'purchase');
+    
+    // We only put levels inside the timeline "result", then append any non-numeric levels, and FINALLY append all purchases.
+    const timelineLevels = result.filter(c => c.kind === 'level');
+    return [...timelineLevels, ...nonNumericLevels, ...allPurchases];
+  }, [levels, purchaseEvents, purchaseProgress, mode, t]);
 
   const computedLevelDates = useMemo(() => {
     const startDateObj = parseDateFlexible(account?.start_date ?? '') || new Date();

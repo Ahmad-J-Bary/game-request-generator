@@ -19,7 +19,7 @@ import { SimpleCalendar } from '@grq/ui/atoms/simple-calendar';
 
 export type ColumnData =
   | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean }
-  | { kind: 'purchase'; id: number | string; token: string; name: string; isRestricted: boolean; daysOffset: number | null; timeSpent: number | null; maxDaysOffset: number | string | null; synthetic?: boolean };
+  | { kind: 'purchase'; id: number | string; token: string; name: string; isRestricted: boolean; daysOffset: number | null; displayDaysOffset?: string; timeSpent: number | null; maxDaysOffset: number | string | null; synthetic?: boolean };
 
 interface AccountDataTableProps {
   columns: ColumnData[];
@@ -69,7 +69,10 @@ export function AccountDataTable({
         if (col.kind === 'level') {
           return col.daysOffset;
         }
-        return col.daysOffset != null ? String(col.daysOffset) : '';
+        if (col.kind === 'purchase') {
+          return col.displayDaysOffset ?? (col.daysOffset != null ? String(col.daysOffset) : '-');
+        }
+        return '-';
       case 'timeSpent':
         if (col.kind === 'level') {
           return col.timeSpent;
