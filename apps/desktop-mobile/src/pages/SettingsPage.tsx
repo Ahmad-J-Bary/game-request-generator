@@ -23,7 +23,7 @@ export default function SettingsPage({ section }: SettingsPageProps) {
   const tabs = [
     { id: 'appearance' as const, label: t('settings.appearance', 'Appearance'),   icon: Palette,       href: '/settings/appearance', color: 'text-violet-500' },
     { id: 'database'   as const, label: t('settings.database',   'Database'),      icon: Database,      href: '/settings/database',   color: 'text-sky-500'    },
-    { id: 'proxy'      as const, label: t('settings.proxy',      'Proxy'),         icon: Network,       href: '/settings/proxy',      color: 'text-emerald-500'},
+    { id: 'proxy'      as const, label: t('settings.proxy.title',      'Proxy'),         icon: Network,       href: '/settings/proxy',      color: 'text-emerald-500'},
     { id: 'telegram'   as const, label: t('settings.telegram',   'Telegram Bot'),  icon: MessageSquare, href: '/settings/telegram',   color: 'text-amber-500'  },
   ];
 

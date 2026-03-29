@@ -22,4 +22,5 @@ rusqlite = { version = "0.37.0", features = ["bundled"] }
 chrono = { version = "0.4.42", features = ["serde"] }
 rand = "0.8"
 grq-engine = { path = "../../../crates/grq-engine" }
+tokio = { version = "1", features = ["time", "rt"] }
 

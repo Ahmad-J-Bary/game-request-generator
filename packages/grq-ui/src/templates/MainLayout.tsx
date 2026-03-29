@@ -46,7 +46,7 @@ const navigation = [
 const settingsNavigation = [
   { name: 'appearance', href: '/settings/appearance', icon: Palette,      labelKey: 'settings.appearance' },
   { name: 'database',   href: '/settings/database',   icon: Database,     labelKey: 'settings.database'   },
-  { name: 'proxy',      href: '/settings/proxy',      icon: Network,      labelKey: 'settings.proxy'      },
+  { name: 'proxy',      href: '/settings/proxy',      icon: Network,      labelKey: 'settings.proxy.title' },
   { name: 'telegram',   href: '/settings/telegram',   icon: MessageSquare,labelKey: 'settings.telegram'   },
 ];
 
@@ -437,7 +437,7 @@ export function MainLayout({ children }: MainLayoutProps) {
               <Network className="h-4.5 w-4.5 text-emerald-500" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold leading-tight truncate">{t('settings.proxy', 'Proxy Network')}</p>
+              <p className="text-sm font-bold leading-tight truncate">{t('settings.proxy.title', 'Proxy Network')}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">Configure and test your proxy connection</p>
             </div>
           </div>
@@ -551,7 +551,7 @@ export function MainLayout({ children }: MainLayoutProps) {
               </div>
               <div className="flex-1 min-w-0">
                 <SheetTitle className="text-base font-bold">
-                  {t('settings.proxy', 'Proxy Network')}
+                  {t('settings.proxy.title', 'Proxy Network')}
                 </SheetTitle>
                 <SheetDescription>
                   Configure and test your proxy connection

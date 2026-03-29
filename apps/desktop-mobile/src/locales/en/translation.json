@@ -342,6 +342,11 @@
       "levelNormal": "Level without Bonus",
       "purchaseRestricted": "Restricted Purchase Event",
       "purchaseUnrestricted": "Unrestricted Purchase Event"
+    },
+    "proxy": {
+      "title": "Proxy",
+      "daysRemaining": "{{count}} days remaining for proxy",
+      "alertGroup": "Send expiry alert to group"
     }
   },
   "colorSettings": {

@@ -341,6 +341,11 @@
       "levelNormal": "مستوى بدون مكافأة",
       "purchaseRestricted": "حدث شراء مُقيّد",
       "purchaseUnrestricted": "حدث شراء غير مُقيّد"
+    },
+    "proxy": {
+      "title": "البروكسي",
+      "daysRemaining": "باقي {{count}} يوم لانتهاء البروكسي",
+      "alertGroup": "إرسال تنبيه بالانتهاء للمجموعة"
     }
   },
   "colorSettings": {
