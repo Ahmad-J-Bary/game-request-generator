@@ -294,6 +294,79 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
 
   const game = games.find(g => String(g.id) === String(gameId));
 
+  // --- Multi-Branch Export Data Aggregation ---
+  // We need to fetch all levels/events for ALL branches to build the export data
+  const [allBranchData, setAllBranchData] = useState<Array<{ branchName: string; columns: ColumnData[] }>>([]);
+  const [isPreparingExport, setIsPreparingExport] = useState(false);
+
+  const prepareExportData = async () => {
+    if (!gameId || branches.length === 0) return;
+    setIsPreparingExport(true);
+    try {
+      const exportData: Array<{ branchName: string; columns: ColumnData[] }> = [];
+      
+      for (const branch of branches) {
+        const [lvls, evts] = await Promise.all([
+          TauriService.getGameLevels(branch.id),
+          TauriService.getGamePurchaseEvents(branch.id)
+        ]);
+        
+        // Use the same column building logic as GameBranchSection (simplified but consistent)
+        const levelCols = lvls.map(l => ({
+          kind: 'level' as const, id: l.id, token: l.event_token.split('_day')[0], name: l.level_name,
+          daysOffset: l.days_offset, timeSpent: l.time_spent, isBonus: !!l.is_bonus, synthetic: l.level_name === '-'
+        }));
+
+        const purchaseCols = evts.map(p => {
+          const base = p.days_offset !== null && p.days_offset !== undefined ? String(p.days_offset) : '-';
+          let daysOffsetValue = base;
+          if (p.is_restricted && p.max_days_offset != null) {
+              daysOffsetValue = `${base} (${t('purchaseEvents.lessThan')} ${p.max_days_offset})`;
+          }
+
+          return {
+            kind: 'purchase' as const, 
+            id: p.id, 
+            token: p.event_token, 
+            name: '$$$',
+            daysOffset: daysOffsetValue, 
+            maxDaysOffset: p.max_days_offset != null ? String(p.max_days_offset) : null,
+            isRestricted: !!p.is_restricted, 
+            timeSpent: null, 
+            synthetic: false
+          };
+        });
+
+        // Combine and filter based on mode
+        let columns = [...levelCols, ...purchaseCols] as ColumnData[];
+        
+        if (mode === 'event-only') {
+            // Filter out synthetic items (Session)
+            columns = columns.filter(c => !c.synthetic);
+        }
+
+        // Sort: Always put levels before purchase events, then by timeSpent/daysOffset
+        columns.sort((a, b) => {
+            if (a.kind !== b.kind) return a.kind === 'level' ? -1 : 1;
+            const aT = (a.timeSpent as number) ?? 0;
+            const bT = (b.timeSpent as number) ?? 0;
+            if (aT !== bT) return aT - bT;
+            return (a.daysOffset ?? 0) - (b.daysOffset ?? 0);
+        });
+
+        exportData.push({ branchName: branch.name, columns });
+      }
+      
+      setAllBranchData(exportData);
+      setShowExportDialog(true);
+    } catch (err) {
+      console.error('Failed to prepare export data:', err);
+    } finally {
+      setIsPreparingExport(false);
+    }
+  };
+  // --------------------------------------------
+
   const handleDeleteGame = async () => {
     if (!gameId || !game) return;
     if (window.confirm(t('games.deleteConfirm'))) {
@@ -369,10 +442,11 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
             <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowExportDialog(true)}
+                onClick={prepareExportData}
+                disabled={isPreparingExport}
                 className="flex items-center gap-2"
             >
-                <Download className="h-4 w-4" />
+                {isPreparingExport ? <span className="animate-spin mr-2">...</span> : <Download className="h-4 w-4" />}
                 {t('common.export', 'Export')}
             </Button>
 
@@ -457,10 +531,11 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setShowExportDialog(true)}
+                      onClick={prepareExportData}
+                      disabled={isPreparingExport}
                       className="justify-start gap-2 h-9 text-xs px-2"
                     >
-                      <Download className="h-3.5 w-3.5" />
+                      {isPreparingExport ? <span className="animate-spin mr-2">...</span> : <Download className="h-3.5 w-3.5" />}
                       {t('common.export')}
                     </Button>
                   </div>
@@ -555,6 +630,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
         colorSettings={colors}
         theme={theme}
         source="game-detail"
+        data={allBranchData}
       />
       </div>
 

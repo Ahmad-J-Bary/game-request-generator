@@ -34,17 +34,27 @@ export function buildColumns(levels: Level[], purchaseEvents: PurchaseEvent[]): 
     synthetic: false,
   }));
 
-  const peCols: ColumnData[] = purchaseEvents.map((p: PurchaseEvent) => ({
-    kind: 'purchase' as const,
-    id: p.id,
-    token: p.event_token,
-    fullToken: p.event_token,
-    name: '$$$',
-    uniqueKey: `${p.event_token}:Purchase Event`,
-    isRestricted: (p as any).is_restricted ?? false,
-    maxDaysOffset: p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-',
-    synthetic: false,
-  }));
+  const peCols: ColumnData[] = purchaseEvents.map((p: PurchaseEvent) => {
+    const isRestricted = (p as any).is_restricted ?? false;
+    const base = (p as any).days_offset !== null && (p as any).days_offset !== undefined ? String((p as any).days_offset) : '-';
+    let daysOffsetValue = base;
+    if (isRestricted && p.max_days_offset != null) {
+        daysOffsetValue = `${base} (Less Than ${p.max_days_offset})`;
+    }
+
+    return {
+      kind: 'purchase' as const,
+      id: p.id,
+      token: p.event_token,
+      fullToken: p.event_token,
+      name: '$$$',
+      uniqueKey: `${p.event_token}:Purchase Event`,
+      isRestricted,
+      daysOffset: daysOffsetValue,
+      maxDaysOffset: String(p.max_days_offset),
+      synthetic: false,
+    };
+  });
 
   return [...levelCols, ...peCols];
 }

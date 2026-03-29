@@ -29,7 +29,7 @@ interface ExportDialogProps {
   theme?: 'light' | 'dark';
   source?: 'game-detail' | 'account-detail' | 'accounts-detail';
   mode?: 'event-only' | 'all';
-  data?: ColumnData[];
+  data?: ColumnData[] | Array<{ branchName: string; columns: ColumnData[] }>;
   levelsProgress?: any;
   purchaseProgress?: any;
 }

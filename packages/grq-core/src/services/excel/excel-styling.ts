@@ -29,8 +29,36 @@ export function getTextColor(backgroundColor: string, theme: 'light' | 'dark'): 
  * Helper function to get cell style for Excel
  */
 export function getCellStyle(backgroundColor: string, theme: 'light' | 'dark', isHeader: boolean = false, isSynthetic: boolean = false) {
+  let finalBgColor = rgbToHex(backgroundColor);
+  
+  if (isSynthetic) {
+    // Parse RGB to blend it
+    const match = backgroundColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (match) {
+      let r = parseInt(match[1]);
+      let g = parseInt(match[2]);
+      let b = parseInt(match[3]);
+      
+      if (theme === 'light') {
+        // Blend with white (80% opacity equivalent)
+        r = Math.round(r * 0.2 + 255 * 0.8);
+        g = Math.round(g * 0.2 + 255 * 0.8);
+        b = Math.round(b * 0.2 + 255 * 0.8);
+      } else {
+        // Blend with dark background (50% opacity equivalent)
+        const darkR = 30, darkG = 30, darkB = 30;
+        r = Math.round(r * 0.5 + darkR * 0.5);
+        g = Math.round(g * 0.5 + darkG * 0.5);
+        b = Math.round(b * 0.5 + darkB * 0.5);
+      }
+      
+      const toHex = (c: number) => `0${c.toString(16)}`.slice(-2);
+      finalBgColor = `${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+  }
+
   return {
-    fill: { fgColor: { rgb: rgbToHex(backgroundColor) } },
+    fill: { fgColor: { rgb: finalBgColor } },
     font: {
       color: { rgb: getTextColor(backgroundColor, theme) },
       bold: isHeader,

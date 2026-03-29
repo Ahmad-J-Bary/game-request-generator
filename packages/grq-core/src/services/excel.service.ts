@@ -147,17 +147,22 @@ export class ExcelService {
   /**
    * Export game detail data (only levels and purchase events) from GameDetailPage
    */
-  static async exportGameDetailData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[]): Promise<boolean> {
+  static async exportGameDetailData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', data?: any): Promise<boolean> {
     try {
-      const [levels, purchaseEvents] = await Promise.all([
-        TauriService.getGameLevels(gameId),
-        TauriService.getGamePurchaseEvents(gameId)
-      ]);
-
       const game = await TauriService.getGameById(gameId);
       const gameName = game?.name || 'Game';
+      
+      let finalData = data;
+      let levels: Level[] = [];
+      let purchaseEvents: PurchaseEvent[] = [];
 
-      return await this.exportGameDetailToExcel(levels, purchaseEvents, gameName, layout, colorSettings, theme, columns);
+      if (!data) {
+        // Fallback: Fetch all levels and events for the game's default branch if not provided
+        levels = await TauriService.getGameLevels(gameId);
+        purchaseEvents = await TauriService.getGamePurchaseEvents(gameId);
+      }
+
+      return await this.exportGameDetailToExcel(levels, purchaseEvents, gameName, layout, colorSettings, theme, finalData);
     } catch (error) {
       console.error('Export game detail data error:', error);
       return false;
@@ -245,7 +250,7 @@ export class ExcelService {
       columns.forEach((col) => {
         headerRow1.push(col.token);
         headerRow2.push(col.name);
-        headerRow3.push(col.kind === 'level' ? (col.daysOffset !== null && col.daysOffset !== undefined ? col.daysOffset.toString() : '-') : col.maxDaysOffset || '-');
+        headerRow3.push(col.daysOffset !== null && col.daysOffset !== undefined && col.daysOffset !== '' ? col.daysOffset.toString() : '-');
         headerRow4.push(col.kind === 'level' ? (col.timeSpent !== null && col.timeSpent !== undefined ? col.timeSpent.toString() : '-') : '-');
         headerRow5.push('');
       });
@@ -356,7 +361,7 @@ export class ExcelService {
         const row = [
           col.token,
           col.name,
-          col.kind === 'level' ? (col.daysOffset !== null && col.daysOffset !== undefined ? col.daysOffset.toString() : '-') : col.maxDaysOffset || '-',
+          col.daysOffset !== null && col.daysOffset !== undefined && col.daysOffset !== '' ? col.daysOffset.toString() : '-',
           col.kind === 'level' ? (col.timeSpent !== null && col.timeSpent !== undefined ? col.timeSpent.toString() : '-') : '-',
         ];
 
@@ -709,18 +714,26 @@ export class ExcelService {
             synthetic: l.level_name === '-',
           }));
 
-          const peCols = purchaseEvents.map((p: PurchaseEvent) => ({
-            kind: 'purchase' as const,
-            id: p.id,
-            token: p.event_token,
-            fullToken: p.event_token,
-            name: '$$$',
-            isRestricted: (p as any).is_restricted ?? false,
-            daysOffset: (p as any).days_offset !== undefined && (p as any).days_offset !== null
-              ? (p as any).days_offset.toString()
-              : (p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-'),
-            synthetic: false,
-          }));
+          const peCols = purchaseEvents.map((p: PurchaseEvent) => {
+            const isRestricted = (p as any).is_restricted ?? false;
+            const base = (p as any).days_offset !== undefined && (p as any).days_offset !== null ? String((p as any).days_offset) : '-';
+            let formattedDaysOffset = base;
+            
+            if (isRestricted && p.max_days_offset != null) {
+                formattedDaysOffset = `${base} (Less Than ${p.max_days_offset})`;
+            }
+
+            return {
+              kind: 'purchase' as const,
+              id: p.id,
+              token: p.event_token,
+              fullToken: p.event_token,
+              name: '$$$',
+              isRestricted,
+              daysOffset: formattedDaysOffset,
+              synthetic: false,
+            };
+          });
 
           const columns = [...levelCols, ...peCols];
 
@@ -869,103 +882,122 @@ export class ExcelService {
       const getCellStyle = (backgroundColor: string, isHeader: boolean = false, isSynthetic: boolean = false) =>
         this.getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
 
-      // Prepare data
-      let allItems: any[] = [];
+      // Prepare data groups (branches)
+      let dataGroups: Array<{ branchName?: string; columns: any[] }> = [];
 
-      if (columns && columns.length > 0) {
-        allItems = columns;
+      if (Array.isArray(columns) && columns.length > 0) {
+        if ('branchName' in columns[0]) {
+          dataGroups = columns as Array<{ branchName: string; columns: any[] }>;
+        } else {
+          dataGroups = [{ columns }];
+        }
       } else {
         // Fallback to raw data
-        allItems = [
-          ...levels.map(l => ({ kind: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, isBonus: l.is_bonus })),
-          ...purchaseEvents.map(p => ({ kind: 'purchase', token: p.event_token, name: '$$$', daysOffset: p.max_days_offset ? `Less Than ${p.max_days_offset}` : '-', timeSpent: '-', isRestricted: p.is_restricted }))
+        const fallbackColumns = [
+          ...levels.map(l => ({ kind: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, isBonus: l.is_bonus, synthetic: l.level_name === '-' })),
+          ...purchaseEvents.map(p => {
+            const isRestricted = (p as any).is_restricted ?? false;
+            const base = (p as any).days_offset !== undefined && (p as any).days_offset !== null ? String((p as any).days_offset) : '-';
+            let formattedOffset = base;
+            if (isRestricted && p.max_days_offset != null) {
+                formattedOffset = `${base} (Less Than ${p.max_days_offset})`;
+            }
+            return { kind: 'purchase', token: p.event_token, name: '$$$', daysOffset: formattedOffset, timeSpent: '-', isRestricted: isRestricted, synthetic: false };
+          })
         ];
+        dataGroups = [{ columns: fallbackColumns }];
       }
 
-      // Create worksheet data
       const wsData: any[][] = [];
+      const merges: any[] = [];
 
-      if (layout === 'vertical') {
-        // Headers
-        const row1 = ['Event Token'];
-        const row2 = ['Level Name'];
-        const row3 = ['Days Offset'];
-        const row4 = ['Time Spent (1000 seconds)'];
+      for (const group of dataGroups) {
+          const currentOffset = wsData.length;
+          const { columns: groupCols, branchName } = group;
 
-        allItems.forEach(item => {
-          row1.push(item.token);
-          row2.push(item.name);
-          row3.push(item.daysOffset !== null && item.daysOffset !== undefined ? item.daysOffset.toString() : '-');
-          row4.push(item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-');
-        });
-        wsData.push(row1, row2, row3, row4);
-      } else {
-        // Horizontal layout
-        wsData.push(['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)']);
+          // Add Branch Title if provided
+          if (branchName) {
+            wsData.push([`Branch: ${branchName}`]);
+            merges.push({ s: { r: currentOffset, c: 0 }, e: { r: currentOffset, c: (layout === 'vertical' ? groupCols.length : 3) } });
+          }
 
-        allItems.forEach(item => {
-          wsData.push([
-            item.token,
-            item.name,
-            item.daysOffset !== null && item.daysOffset !== undefined ? item.daysOffset.toString() : '-',
-            item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-'
-          ]);
-        });
+          const rowOffset = wsData.length;
+
+          if (layout === 'vertical') {
+            const row1 = ['Event Token'];
+            const row2 = ['Level Name'];
+            const row3 = ['Days Offset'];
+            const row4 = ['Time Spent (1000 seconds)'];
+
+            groupCols.forEach(item => {
+              row1.push(item.token);
+              row2.push(item.name);
+              row3.push(item.daysOffset !== null && item.daysOffset !== undefined && item.daysOffset !== '' ? item.daysOffset.toString() : '-');
+              row4.push(item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-');
+            });
+            wsData.push(row1, row2, row3, row4);
+
+            // Apply styles to these rows
+            for (let r = rowOffset; r < wsData.length; r++) {
+               for (let c = 0; c < wsData[r].length; c++) {
+                   const cell = { v: wsData[r][c] } as any;
+                   if (c === 0) {
+                       cell.s = getCellStyle(colorSettings.headerColor, true);
+                   } else {
+                       const item = groupCols[c - 1];
+                       let backgroundColor: string;
+                       if (item.kind === 'level') {
+                           backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
+                       } else {
+                           backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
+                       }
+                       cell.s = getCellStyle(backgroundColor, true, item.synthetic);
+                   }
+                   wsData[r][c] = cell;
+               }
+            }
+          } else {
+            // Horizontal layout
+            wsData.push(['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)']);
+            
+            // Apply header style
+            const headerRowIdx = rowOffset;
+            for (let c = 0; c < 4; c++) {
+                wsData[headerRowIdx][c] = { v: wsData[headerRowIdx][c], s: getCellStyle(colorSettings.headerColor, true) };
+            }
+
+            groupCols.forEach((item) => {
+              const row = [
+                item.token,
+                item.name,
+                item.daysOffset !== null && item.daysOffset !== undefined && item.daysOffset !== '' ? item.daysOffset.toString() : '-',
+                item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-'
+              ];
+              
+              let backgroundColor: string;
+              if (item.kind === 'level') {
+                  backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
+              } else {
+                  backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
+              }
+              const rowStyle = getCellStyle(backgroundColor, false, item.synthetic);
+              
+              wsData.push(row.map(v => ({ v, s: rowStyle })));
+            });
+          }
+
+          // Add a spacer row between groups
+          wsData.push([]);
+      }
+      
+      // Cleanup last spacer row
+      if (wsData.length > 0 && wsData[wsData.length - 1].length === 0) {
+          wsData.pop();
       }
 
       // Create worksheet
       const worksheet = XLSX.utils.aoa_to_sheet(wsData);
-
-      // Apply styles
-      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-          const cell = worksheet[cellAddress];
-          if (!cell) continue;
-
-          if (layout === 'vertical') {
-            if (R < 4) {
-              if (C === 0) {
-                cell.s = getCellStyle(colorSettings.headerColor, true);
-              } else {
-                const itemIdx = C - 1;
-                if (itemIdx >= 0 && itemIdx < allItems.length) {
-                  const item = allItems[itemIdx];
-                  let backgroundColor: string;
-                  if (item.kind === 'level') {
-                    backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
-                  } else {
-                    backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
-                  }
-                  cell.s = getCellStyle(backgroundColor, true, item.synthetic);
-                } else {
-                  cell.s = getCellStyle(colorSettings.headerColor, true);
-                }
-              }
-            }
-          } else {
-            // Horizontal
-            if (R === 0) {
-              cell.s = getCellStyle(colorSettings.headerColor, true);
-            } else {
-              const itemIdx = R - 1;
-              if (itemIdx >= 0 && itemIdx < allItems.length) {
-                const item = allItems[itemIdx];
-                let backgroundColor: string;
-                if (item.kind === 'level') {
-                  backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
-                } else {
-                  backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
-                }
-                cell.s = getCellStyle(backgroundColor, false, item.synthetic);
-              } else {
-                cell.s = getCellStyle(colorSettings.dataRowColor);
-              }
-            }
-          }
-        }
-      }
+      (worksheet as any)['!merges'] = merges;
 
       // Set column widths
       worksheet['!cols'] = [
@@ -1081,9 +1113,12 @@ export class ExcelService {
             }
             
             // Prioritize showing the reference days_offset in the 'Days Offset' column
-            const displayOffset = (p as any).days_offset !== undefined && (p as any).days_offset !== null
-                ? (p as any).days_offset.toString()
-                : (p.max_days_offset != null ? `Less Than ${p.max_days_offset}` : '-');
+            const isRestricted = (p as any).is_restricted ?? false;
+            const base = (p as any).days_offset !== undefined && (p as any).days_offset !== null ? String((p as any).days_offset) : '-';
+            let displayOffset = base;
+            if (isRestricted && p.max_days_offset != null) {
+                displayOffset = `${base} (Less Than ${p.max_days_offset})`;
+            }
 
             return { 
                 kind: 'purchase', 
