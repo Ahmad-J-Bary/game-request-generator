@@ -85,7 +85,7 @@ export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, 
           switch (exportType) {
             case 'game':
               if (gameId) {
-                success = await ExcelService.exportGameData(gameId, layout, colorSettings, theme, data, levelsProgress, purchaseProgress, branchId);
+                success = await ExcelService.exportGameData(gameId, layout, colorSettings, theme, data, levelsProgress, purchaseProgress, branchId, mode);
               }
               break;
             case 'all':
@@ -98,7 +98,7 @@ export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, 
           switch (exportType) {
             case 'game':
               if (gameId) {
-                success = await ExcelService.exportGameData(gameId, layout, colorSettings, theme);
+                success = await ExcelService.exportGameData(gameId, layout, colorSettings, theme, undefined, undefined, undefined, undefined, mode);
               }
               break;
             case 'account':

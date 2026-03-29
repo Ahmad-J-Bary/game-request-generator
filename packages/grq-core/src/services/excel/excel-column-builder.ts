@@ -24,7 +24,7 @@ export function buildColumns(levels: Level[], purchaseEvents: PurchaseEvent[]): 
   const levelCols: ColumnData[] = levels.map((l) => ({
     kind: 'level' as const,
     id: l.id,
-    token: l.event_token,
+    token: l.event_token.split('_day')[0],
     fullToken: l.event_token,
     name: l.level_name,
     daysOffset: l.days_offset,

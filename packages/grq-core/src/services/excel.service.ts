@@ -427,7 +427,8 @@ export class ExcelService {
     theme: 'light' | 'dark',
     columnsData?: any[],
     levelsProgress?: any,
-    purchaseProgress?: any
+    purchaseProgress?: any,
+    mode: 'event-only' | 'all' = 'event-only'
   ): Promise<boolean> {
     try {
       const workbook = XLSX.utils.book_new();
@@ -437,7 +438,12 @@ export class ExcelService {
       if (columnsData && columnsData.length > 0) {
         columns = columnsData;
       } else {
-        columns = buildColumns(levels, purchaseEvents);
+        const branchColumns = buildColumns(levels, purchaseEvents);
+        let filteredColumns = branchColumns;
+        if (mode === 'event-only') {
+           filteredColumns = branchColumns.filter(c => !(c.kind === 'level' && c.name === '-'));
+        }
+        columns = [...filteredColumns.filter(c => c.kind === 'level'), ...filteredColumns.filter(c => c.kind === 'purchase')];
       }
 
       // Convert progress arrays to records for the helper method
@@ -498,7 +504,7 @@ export class ExcelService {
   /**
    * Export game data with matrix layout
    */
-  static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any, purchaseProgress?: any, branchId?: number): Promise<boolean> {
+  static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any, purchaseProgress?: any, branchId?: number, mode: 'event-only' | 'all' = 'event-only'): Promise<boolean> {
     try {
       const game = await TauriService.getGameById(gameId);
       const gameName = game?.name || 'Game';
@@ -512,7 +518,7 @@ export class ExcelService {
         ]);
 
         const sortedAccounts = this.sortAccountsByDate(accounts);
-        return await this.exportToExcelMatrix(levels, purchaseEvents, sortedAccounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress);
+        return await this.exportToExcelMatrix(levels, purchaseEvents, sortedAccounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress, mode);
       }
 
       // If no branchId, export ALL branches stacked vertically
@@ -535,6 +541,13 @@ export class ExcelService {
 
         const sortedAccounts = this.sortAccountsByDate(accounts);
         const branchColumns = buildColumns(levels, purchaseEvents);
+        
+        // Apply Mode-based Filtering
+        let filteredColumns = branchColumns;
+        if (mode === 'event-only') {
+           filteredColumns = branchColumns.filter(c => !(c.kind === 'level' && c.name === '-'));
+        }
+        const finalColumns = [...filteredColumns.filter(c => c.kind === 'level'), ...filteredColumns.filter(c => c.kind === 'purchase')];
 
         // Fetch progress for these accounts if not provided
         let effectiveLevelsProgress = levelsProgress;
@@ -564,7 +577,7 @@ export class ExcelService {
           levels,
           purchaseEvents,
           sortedAccounts,
-          branchColumns,
+          finalColumns,
           layout,
           colorSettings,
           theme,
@@ -894,7 +907,7 @@ export class ExcelService {
       } else {
         // Fallback to raw data
         const fallbackColumns = [
-          ...levels.map(l => ({ kind: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, isBonus: l.is_bonus, synthetic: l.level_name === '-' })),
+          ...levels.map(l => ({ kind: 'level', token: l.event_token.split('_day')[0], name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, isBonus: l.is_bonus, synthetic: l.level_name === '-' })),
           ...purchaseEvents.map(p => {
             const isRestricted = (p as any).is_restricted ?? false;
             const base = (p as any).days_offset !== undefined && (p as any).days_offset !== null ? String((p as any).days_offset) : '-';
