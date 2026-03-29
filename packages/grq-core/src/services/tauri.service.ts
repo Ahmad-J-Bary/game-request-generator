@@ -26,7 +26,8 @@ import type {
   UpdateAccountLevelProgressRequest,
   AccountPurchaseEventProgress,
   CreateAccountPurchaseEventProgressRequest,
-  UpdateAccountPurchaseEventProgressRequest
+  UpdateAccountPurchaseEventProgressRequest,
+  TelegramImportPreview
 } from '@grq/api-bindings';
 
 export class TauriService {
@@ -200,6 +201,19 @@ static async deletePurchaseEvent(id: number): Promise<boolean> {
 
   static async readTextFile(filePath: string): Promise<string> {
     return await invoke<string>('read_text_file', { filePath });
+  }
+
+  // ========== Telegram Commands (NEW) ==========
+  static async getTelegramUpdates(): Promise<TelegramImportPreview[]> {
+    return await invoke<TelegramImportPreview[]>('get_telegram_updates');
+  }
+
+  static async downloadTelegramFile(fileId: string): Promise<string> {
+    return await invoke<string>('download_telegram_file', { fileId });
+  }
+
+  static async updateTelegramOffset(offset: number): Promise<void> {
+    return await invoke<void>('update_telegram_offset', { offset });
   }
 
 }

@@ -339,6 +339,20 @@
     "reportSent": "Excel report sent successfully!",
     "generatingReport": "Generating report...",
     "resetColors": "Reset Colors",
+    "telegramImport": {
+      "title": "Telegram Import Center",
+      "checkUpdates": "Check for Updates",
+      "noNewFiles": "No new files found in the group",
+      "foundFiles": "{{count}} new files found",
+      "process": "Process",
+      "importing": "Importing...",
+      "finalize": "Finalize Account Import",
+      "invalidFile": "Invalid or empty file",
+      "success": "Account imported successfully!",
+      "selectGame": "Select Game",
+      "selectBranch": "Select Branch",
+      "templatePreview": "Template Preview"
+    },
     "colors": {
       "title": "Color Settings",
       "description": "Customize colors for levels and purchase events",

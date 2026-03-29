@@ -210,6 +210,7 @@ async fn get_telegram_config(app: tauri::AppHandle) -> Result<serde_json::Value,
         "chat_id": config.telegram_chat_id,
         "enabled": config.telegram_enabled,
         "auto_send": config.telegram_auto_send,
+        "last_offset": config.telegram_last_offset,
     }))
 }
 
@@ -226,6 +227,7 @@ async fn set_telegram_config(
     config.telegram_chat_id = chat_id;
     config.telegram_enabled = enabled;
     config.telegram_auto_send = auto_send;
+    // Don't overwrite last_offset here as it's updated through get_updates
     ConfigService::save(&app, &config)
 }
 
@@ -251,6 +253,24 @@ async fn send_excel_to_telegram(
     caption: Option<String>,
 ) -> Result<(), String> {
     TelegramService::send_document(&app, bytes, filename, caption).await
+}
+
+#[tauri::command]
+async fn get_telegram_updates(app: tauri::AppHandle) -> Result<Vec<grq_engine::services::telegram_service::TelegramImportPreview>, String> {
+    let config = ConfigService::load(&app);
+    TelegramService::get_updates(&app, config.telegram_last_offset).await
+}
+
+#[tauri::command]
+async fn download_telegram_file(app: tauri::AppHandle, file_id: String) -> Result<String, String> {
+    TelegramService::download_file(&app, &file_id).await
+}
+
+#[tauri::command]
+async fn update_telegram_offset(app: tauri::AppHandle, offset: i64) -> Result<(), String> {
+    let mut config = ConfigService::load(&app);
+    config.telegram_last_offset = Some(offset);
+    ConfigService::save(&app, &config)
 }
 
 // ==================== أوامر الإعدادات للبروكسي ====================
@@ -1390,6 +1410,9 @@ pub fn run() {
             test_proxy_connection,
             send_proxy_details_to_telegram,
             send_excel_to_telegram,
+            get_telegram_updates,
+            download_telegram_file,
+            update_telegram_offset,
             send_raw_request,
         ])
         .run(tauri::generate_context!())

@@ -14,6 +14,7 @@ pub struct AppConfig {
     pub telegram_chat_id: Option<String>,
     pub telegram_enabled: bool,
     pub telegram_auto_send: bool,
+    pub telegram_last_offset: Option<i64>,
     
     // Proxy Settings
     pub proxy_enabled: bool,
@@ -44,6 +45,7 @@ impl Default for AppConfig {
             telegram_chat_id: None,
             telegram_enabled: false,
             telegram_auto_send: false,
+            telegram_last_offset: None,
             proxy_enabled: false,
             proxy_type: None,
             proxy_host: None,

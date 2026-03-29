@@ -349,6 +349,20 @@
       "title": "البروكسي",
       "daysRemaining": "باقي {{count}} يوم لانتهاء البروكسي",
       "alertGroup": "إرسال تنبيه بالانتهاء للمجموعة"
+    },
+    "telegramImport": {
+      "title": "مركز استيراد التيليجرام",
+      "checkUpdates": "التحقق من المستجدات",
+      "noNewFiles": "لا توجد ملفات جديدة في المجموعة",
+      "foundFiles": "تم العثور على {{count}} ملفات جديدة",
+      "process": "معالجة",
+      "importing": "جاري الاستيراد...",
+      "finalize": "إتمام استيراد الحساب",
+      "invalidFile": "ملف غير صالح أو فارغ",
+      "success": "تم استيراد الحساب بنجاح!",
+      "selectGame": "اختر اللعبة",
+      "selectBranch": "اختر الفرع",
+      "templatePreview": "معاينة القالب"
     }
   },
   "colorSettings": {

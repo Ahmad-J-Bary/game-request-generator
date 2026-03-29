@@ -1,5 +1,5 @@
 // src/components/templates/MainLayout.tsx
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -29,6 +29,8 @@ import { Button } from '@grq/ui/atoms/button';
 import { CompletedTasksSidebar } from '@grq/ui/organisms/CompletedTasksSidebar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@grq/ui/atoms/sheet';
 import { ProxySettingsPanel } from '@grq/ui/molecules/ProxySettingsPanel';
+import { TelegramImportDialog } from '@grq/ui/organisms/TelegramImportDialog';
+import { TauriService } from '@grq/core/services/tauri.service';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -57,6 +59,24 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [proxySheetOpen, setProxySheetOpen] = useState(false);
   const [proxyPinned, setProxyPinned] = useState(false);
+  const [telegramImportOpen, setTelegramImportOpen] = useState(false);
+  const [pendingImportsCount, setPendingImportsCount] = useState(0);
+
+  // Periodically check for Telegram updates
+  const checkTelegramUpdates = async () => {
+    try {
+      const updates = await TauriService.getTelegramUpdates();
+      setPendingImportsCount(updates.length);
+    } catch (error) {
+      console.error('Failed to check Telegram updates:', error);
+    }
+  };
+
+  useEffect(() => {
+    checkTelegramUpdates();
+    const interval = setInterval(checkTelegramUpdates, 5 * 60 * 1000); // 5 mins
+    return () => clearInterval(interval);
+  }, []);
 
   const handlePinProxy = () => {
     setProxyPinned(true);
@@ -124,6 +144,21 @@ export function MainLayout({ children }: MainLayoutProps) {
               "h-4.5 w-4.5 group-hover:scale-110 transition-transform",
               completedSidebarOpen ? "text-primary" : "text-primary/70"
             )} />
+          </button>
+
+          {/* Telegram Import button */}
+          <button
+            onClick={() => setTelegramImportOpen(true)}
+            className="relative h-9 w-9 flex items-center justify-center rounded-xl hover:bg-primary/10 transition-colors group"
+            title="Telegram Imports"
+          >
+            <MessageSquare className="h-4.5 w-4.5 text-primary/70 group-hover:scale-110 transition-transform" />
+            {pendingImportsCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+              </span>
+            )}
           </button>
 
           {/* Utility drawer trigger */}
@@ -578,6 +613,12 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Telegram Import Center Dialog */}
+      <TelegramImportDialog 
+        open={telegramImportOpen} 
+        onOpenChange={setTelegramImportOpen} 
+      />
     </div>
   );
 }
