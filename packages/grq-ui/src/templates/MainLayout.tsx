@@ -416,6 +416,29 @@ export function MainLayout({ children }: MainLayoutProps) {
 
           {/* Bottom Actions */}
           <div className="mt-auto flex flex-col border-t bg-card/50 backdrop-blur-md p-3 gap-2">
+            {/* Telegram Import Button (Desktop) */}
+            <Button
+              variant={telegramImportOpen ? 'secondary' : 'ghost'}
+              onClick={() => setTelegramImportOpen(true)}
+              className={cn(
+                'w-full justify-start transition-all overflow-hidden relative border border-transparent',
+                sidebarCollapsed ? 'px-0 justify-center h-10' : 'px-3 bg-primary/5 hover:bg-primary/10 border-primary/10'
+              )}
+              title={t('settings.telegramImport.title')}
+            >
+               <MessageSquare className={cn('h-5 w-5 flex-shrink-0', !sidebarCollapsed ? 'mr-3 text-primary' : (telegramImportOpen ? 'text-primary' : 'text-muted-foreground'))} />
+               {!sidebarCollapsed && <span className="font-medium tracking-wide">Telegram</span>}
+               {pendingImportsCount > 0 && (
+                <span className={cn(
+                  "absolute flex h-2 w-2",
+                  sidebarCollapsed ? "top-2 right-2" : "top-3.5 right-4"
+                )}>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                </span>
+               )}
+            </Button>
+
             <Button
               variant={completedSidebarOpen ? 'secondary' : 'ghost'}
               onClick={toggleCompletedSidebar}

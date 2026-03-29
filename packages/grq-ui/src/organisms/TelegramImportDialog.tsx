@@ -112,7 +112,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         game_id: parseInt(selectedGameId),
         branch_id: parseInt(selectedBranchId),
         start_date: selectedImport.date.split(' ')[0], // Extract just the date YYYY-MM-DD
-        start_time: '00:00:00',
+        start_time: selectedImport.date.split(' ')[1] || '00:00:00', // Extract the time HH:MM:SS
         request_template: content,
       });
 

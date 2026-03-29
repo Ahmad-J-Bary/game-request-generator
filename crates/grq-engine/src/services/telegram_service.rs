@@ -180,7 +180,7 @@ impl TelegramService {
                         let unix_time = message["date"].as_i64().unwrap_or(0);
                         
                         use chrono::TimeZone;
-                        let date = chrono::Utc.timestamp_opt(unix_time, 0)
+                        let date = chrono::Local.timestamp_opt(unix_time, 0)
                             .single()
                             .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                             .unwrap_or_default();
