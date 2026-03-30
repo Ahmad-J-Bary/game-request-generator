@@ -216,6 +216,19 @@ static async deletePurchaseEvent(id: number): Promise<boolean> {
     return await invoke<void>('update_telegram_offset', { offset });
   }
 
+  // ========== KeyValue Store ==========
+  static async getStoreValue(key: string): Promise<string | null> {
+    return await invoke<string | null>('get_store_value', { key });
+  }
+
+  static async setStoreValue(key: string, value: string): Promise<void> {
+    return await invoke<void>('set_store_value', { key, value });
+  }
+
+  static async deleteStoreValue(key: string): Promise<void> {
+    return await invoke<void>('delete_store_value', { key });
+  }
+
 }
 
 export const tauriService = new TauriService();

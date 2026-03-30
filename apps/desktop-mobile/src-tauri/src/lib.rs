@@ -31,6 +31,7 @@ use grq_engine::services::purchase_event_service::PurchaseEventService;
 use grq_engine::db::config::ConfigService;
 use grq_engine::services::repeater_service::{RepeaterResponse, RepeaterService};
 use grq_engine::services::telegram_service::TelegramService;
+use grq_engine::db::key_value::KeyValueService;
 
 // === حالة التطبيق ===
 struct AppState {
@@ -1380,6 +1381,21 @@ async fn import_request_templates(
     }))
 }
 
+#[tauri::command]
+fn get_store_value(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
+    KeyValueService::get_value(&app, &key)
+}
+
+#[tauri::command]
+fn set_store_value(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
+    KeyValueService::set_value(&app, &key, &value)
+}
+
+#[tauri::command]
+fn delete_store_value(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    KeyValueService::delete_value(&app, &key)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1455,6 +1471,9 @@ pub fn run() {
             backup_database_now,
             restore_database_from_telegram,
             send_raw_request,
+            get_store_value,
+            set_store_value,
+            delete_store_value,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

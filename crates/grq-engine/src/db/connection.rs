@@ -152,6 +152,12 @@ impl Database {
                 FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
                 FOREIGN KEY (purchase_event_id) REFERENCES purchase_events(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS key_value_store (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             "
         )?;
 

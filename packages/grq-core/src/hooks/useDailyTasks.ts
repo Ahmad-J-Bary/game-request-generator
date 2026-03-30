@@ -7,6 +7,8 @@ import { TaskCompletionHandler } from '@grq/core/utils/taskCompletion';
 import { RequestProcessor } from '@grq/core/services/tauri.service';
 import type { GameBatch, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings';
 
+import { asyncStorageService } from '@grq/core/services/storage.service';
+
 export interface UseDailyTasksReturn {
   // State
   batches: GameBatch[];
@@ -31,7 +33,7 @@ export interface UseDailyTasksReturn {
 
 export const useDailyTasks = (): UseDailyTasksReturn => {
   const [batches, setBatches] = useState<GameBatch[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Default to true while hydrating
   const [games, setGames] = useState<any[]>([]);
   // @ts-expect-error - used for internal state management and persistence
   const [accountScheduledTime, setAccountScheduledTime] = useState<{ [accountId: number]: number[] }>({});
@@ -56,31 +58,32 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
 
   // Load persisted account data on mount
   useEffect(() => {
-    try {
-      // Load task assignments
-      const savedAssignments = localStorage.getItem('accountTaskAssignments');
-      if (savedAssignments) {
-        const parsedAssignments = JSON.parse(savedAssignments);
-        // Filter out old assignments (older than 24 hours)
-        const currentTime = Date.now();
-        const filteredAssignments: { [accountId: number]: AccountTaskAssignment[] } = {};
+    let mounted = true;
+    const hydrateData = async () => {
+      try {
+        setLoading(true);
+        // Load task assignments
+        const parsedAssignments = await asyncStorageService.get('accountTaskAssignments') as any;
+        if (parsedAssignments) {
+          // Filter out old assignments (older than 24 hours)
+          const currentTime = Date.now();
+          const filteredAssignments: { [accountId: number]: AccountTaskAssignment[] } = {};
 
-        Object.entries(parsedAssignments).forEach(([accountId, assignments]) => {
-          const validAssignments = (assignments as AccountTaskAssignment[]).filter(
-            assignment => (currentTime - assignment.assignedTime) < (24 * 60 * 60 * 1000) // 24 hours
-          );
-          if (validAssignments.length > 0) {
-            filteredAssignments[parseInt(accountId)] = validAssignments;
-          }
-        });
+          Object.entries(parsedAssignments).forEach(([accountId, assignments]) => {
+            const validAssignments = (assignments as AccountTaskAssignment[]).filter(
+              assignment => (currentTime - assignment.assignedTime) < (24 * 60 * 60 * 1000) // 24 hours
+            );
+            if (validAssignments.length > 0) {
+              filteredAssignments[parseInt(accountId)] = validAssignments;
+            }
+          });
 
-        setAccountTaskAssignments(filteredAssignments);
-      }
+          if (mounted) setAccountTaskAssignments(filteredAssignments);
+        }
 
       // Load completion records
-      const savedCompletions = localStorage.getItem('accountCompletionRecords');
-      if (savedCompletions) {
-        const parsedCompletions = JSON.parse(savedCompletions);
+      const parsedCompletions = await asyncStorageService.get('accountCompletionRecords') as any;
+      if (parsedCompletions) {
         // Filter out old completion records (older than 7 days)
         const currentTime = Date.now();
         const filteredCompletions: { [accountId: number]: AccountCompletionRecord } = {};
@@ -92,50 +95,87 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
           }
         });
 
-        setAccountCompletionRecords(filteredCompletions);
+        if (mounted) setAccountCompletionRecords(filteredCompletions);
       }
 
       // Load account start states
-      const savedStartStates = localStorage.getItem('accountStartStates');
-      if (savedStartStates) {
-        const parsedStartStates = JSON.parse(savedStartStates);
+      const parsedStartStates = await asyncStorageService.get('accountStartStates') as any;
+      if (parsedStartStates && mounted) {
         setAccountStartStates(parsedStartStates);
       }
 
       // Load completed tasks
       const today = new Date().toISOString().split('T')[0];
-      const savedCompleted = localStorage.getItem(`dailyTasks_completed_${today}`);
-      if (savedCompleted) {
-        setCompletedTasks(JSON.parse(savedCompleted));
+      const savedCompleted = await asyncStorageService.get(`dailyTasks_completed_${today}`) as any;
+      if (savedCompleted && mounted) {
+        setCompletedTasks(savedCompleted);
       }
+      
+      // Load batches
+      const savedBatches = await asyncStorageService.get(`dailyTasks_batches_${today}`) as any;
+      if (savedBatches && savedBatches.batches && mounted) {
+          // Re-hydrate Sets
+          const hydratedBatches = savedBatches.batches.map((batch: any) => ({
+              ...batch,
+              tasks: batch.tasks.map((t: any) => ({
+                  ...t,
+                  completedTasks: new Set(t.completedTasks || [])
+              }))
+          }));
+          setBatches(hydratedBatches);
+          if (savedBatches.accountScheduledTime) {
+              setAccountScheduledTime(savedBatches.accountScheduledTime);
+          }
+      }
+
+      if (mounted) setLoading(false);
     } catch (error) {
       console.error('Error loading account data:', error);
+      if (mounted) setLoading(false);
     }
+  };
+  hydrateData();
+  return () => { mounted = false; };
   }, []);
 
-  // Save account data to localStorage whenever they change
+  // Save account data to AsyncStorage whenever they change
   useEffect(() => {
-    try {
-      localStorage.setItem('accountTaskAssignments', JSON.stringify(accountTaskAssignments));
-    } catch (error) {
-      console.error('Error saving account task assignments:', error);
-    }
+    const save = async () => {
+      try {
+        if (Object.keys(accountTaskAssignments).length > 0) {
+          await asyncStorageService.set('accountTaskAssignments', accountTaskAssignments);
+        }
+      } catch (error) {
+        console.error('Error saving account task assignments:', error);
+      }
+    };
+    save();
   }, [accountTaskAssignments]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('accountCompletionRecords', JSON.stringify(accountCompletionRecords));
-    } catch (error) {
-      console.error('Error saving account completion records:', error);
-    }
+    const save = async () => {
+      try {
+        if (Object.keys(accountCompletionRecords).length > 0) {
+          await asyncStorageService.set('accountCompletionRecords', accountCompletionRecords);
+        }
+      } catch (error) {
+        console.error('Error saving account completion records:', error);
+      }
+    };
+    save();
   }, [accountCompletionRecords]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('accountStartStates', JSON.stringify(accountStartStates));
-    } catch (error) {
-      console.error('Error saving account start states:', error);
-    }
+    const save = async () => {
+      try {
+        if (Object.keys(accountStartStates).length > 0) {
+          await asyncStorageService.set('accountStartStates', accountStartStates);
+        }
+      } catch (error) {
+        console.error('Error saving account start states:', error);
+      }
+    };
+    save();
   }, [accountStartStates]);
 
   // Generate today's tasks using the TaskGenerator utility
@@ -155,7 +195,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       setBatches(batches);
       setAccountScheduledTime(accountScheduledTime);
 
-      // Save to localStorage for persistence
+      // Save to AsyncStorage for persistence
       const today = new Date().toISOString().split('T')[0];
       const serializedBatches = batches.map(batch => ({
         ...batch,
@@ -164,10 +204,10 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
           completedTasks: Array.from(task.completedTasks)
         }))
       }));
-      localStorage.setItem(`dailyTasks_batches_${today}`, JSON.stringify({
+      await asyncStorageService.set(`dailyTasks_batches_${today}`, {
         batches: serializedBatches,
         accountScheduledTime
-      }));
+      });
 
       if (batches.length > 0) {
         NotificationService.success(`Generated ${batches.length} batches`);
@@ -194,11 +234,11 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
 
       await completionHandler.completeTask(accountId, requestIndex, batchIndex);
 
-      // Refresh completed tasks from localStorage
+      // Refresh completed tasks from AsyncStorage
       const today = new Date().toISOString().split('T')[0];
-      const savedCompleted = localStorage.getItem(`dailyTasks_completed_${today}`);
+      const savedCompleted = await asyncStorageService.get(`dailyTasks_completed_${today}`) as any;
       if (savedCompleted) {
-        setCompletedTasks(JSON.parse(savedCompleted));
+        setCompletedTasks(savedCompleted);
       }
     } catch (error: any) {
       console.error('Error completing task:', error);

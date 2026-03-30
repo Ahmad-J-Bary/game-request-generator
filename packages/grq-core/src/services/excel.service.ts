@@ -3,6 +3,7 @@
 
 import XLSX from 'xlsx-js-style';
 import { TauriService } from './tauri.service';
+import { asyncStorageService } from './storage.service';
 import type { Game, Account, Level, PurchaseEvent } from '@grq/api-bindings';
 import type { ColorSettings } from '@grq/ui/contexts/SettingsContext';
 
@@ -828,8 +829,8 @@ export class ExcelService {
       const yesterdayString = yesterday.toISOString().split('T')[0];
 
       const completedKey = `dailyTasks_completed_${todayString}`;
-      const existingCompleted = localStorage.getItem(completedKey);
-      const todayCompletions = existingCompleted ? JSON.parse(existingCompleted) : [];
+      const existingCompleted = await asyncStorageService.get<any[]>(completedKey);
+      const todayCompletions = existingCompleted ? existingCompleted : [];
 
       const infoRows = [
         ['Field', 'Value', 'Description'],

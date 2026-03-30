@@ -15,6 +15,7 @@ import { ExcelService } from '@grq/core/services/excel.service';
 import { TauriService, ImportService } from '@grq/core/services/tauri.service';
 import { useQueryClient } from '@tanstack/react-query';
 import { NotificationService } from '@grq/core/utils/notifications';
+import { asyncStorageService } from '@grq/core/services/storage.service';
 
 interface ImportDialogProps {
   open: boolean;
@@ -399,8 +400,8 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
           console.log(`Restoring ${todayRecords.length} completion records for today`);
           const today = new Date().toISOString().split('T')[0];
           const completedKey = `dailyTasks_completed_${today}`;
-          const existingCompleted = localStorage.getItem(completedKey);
-          let completedList: any[] = existingCompleted ? JSON.parse(existingCompleted) : [];
+          const existingCompleted = await asyncStorageService.get<any[]>(completedKey);
+          let completedList: any[] = existingCompleted ? existingCompleted : [];
           
           for (const newRecord of todayRecords) {
             // 1. Restore Sidebar Record
@@ -478,7 +479,7 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
             }
           }
           
-          localStorage.setItem(completedKey, JSON.stringify(completedList));
+          await asyncStorageService.set(completedKey, completedList);
           window.dispatchEvent(new CustomEvent('daily-task-completed'));
         }
 

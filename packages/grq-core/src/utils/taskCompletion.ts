@@ -4,6 +4,7 @@ import { ApiService } from '@grq/core/services/api.service';
 import { TauriService } from '@grq/core/services/tauri.service';
 import type { ApiResponse } from '@grq/core/services/api.service';
 import type { DailyTask, GameBatch, AccountCompletionRecord, CompletedDailyTask } from '@grq/api-bindings';
+import { asyncStorageService } from '@grq/core/services/storage.service';
 
 export interface TaskCompletionOptions {
   batches: GameBatch[];
@@ -136,13 +137,13 @@ export class TaskCompletionHandler {
           isPurchase: true,
         };
 
-        // Save to localStorage
+        // Save to AsyncStorage
         const completedDate = new Date().toISOString().split('T')[0];
         const completedKey = `dailyTasks_completed_${completedDate}`;
-        const existingCompleted = localStorage.getItem(completedKey);
-        const completedList: CompletedDailyTask[] = existingCompleted ? JSON.parse(existingCompleted) : [];
+        const existingCompleted = await asyncStorageService.get<CompletedDailyTask[]>(completedKey);
+        const completedList: CompletedDailyTask[] = existingCompleted ? existingCompleted : [];
         completedList.push(completedTask);
-        localStorage.setItem(completedKey, JSON.stringify(completedList));
+        await asyncStorageService.set(completedKey, completedList);
 
 
         // Dispatch event to update sidebar
@@ -196,7 +197,7 @@ export class TaskCompletionHandler {
 
           this.options.setBatches(filteredBatches);
 
-          // Update localStorage with filtered batches
+          // Update AsyncStorage with filtered batches
           const serializedFilteredBatches = filteredBatches.map(batch => ({
             ...batch,
             tasks: batch.tasks.map(task => ({
@@ -204,12 +205,12 @@ export class TaskCompletionHandler {
               completedTasks: Array.from(task.completedTasks)
             }))
           }));
-          localStorage.setItem(`dailyTasks_batches_${completedDate}`, JSON.stringify({
+          await asyncStorageService.set(`dailyTasks_batches_${completedDate}`, {
             batches: serializedFilteredBatches,
             accountScheduledTime: {}
-          }));
+          });
         } else {
-          // Update localStorage with partially completed task
+          // Update AsyncStorage with partially completed task
           const serializedBatches = updatedBatches.map(batch => ({
             ...batch,
             tasks: batch.tasks.map(task => ({
@@ -217,10 +218,10 @@ export class TaskCompletionHandler {
               completedTasks: Array.from(task.completedTasks)
             }))
           }));
-          localStorage.setItem(`dailyTasks_batches_${completedDate}`, JSON.stringify({
+          await asyncStorageService.set(`dailyTasks_batches_${completedDate}`, {
             batches: serializedBatches,
             accountScheduledTime: {}
-          }));
+          });
         }
 
         // Dispatch progress-updated event
@@ -307,13 +308,13 @@ export class TaskCompletionHandler {
             isPurchase: false,
           };
 
-          // Save to localStorage
+          // Save to AsyncStorage
           const completedDate = new Date().toISOString().split('T')[0];
           const completedKey = `dailyTasks_completed_${completedDate}`;
-          const existingCompleted = localStorage.getItem(completedKey);
-          const completedList: CompletedDailyTask[] = existingCompleted ? JSON.parse(existingCompleted) : [];
+          const existingCompleted = await asyncStorageService.get<CompletedDailyTask[]>(completedKey);
+          const completedList: CompletedDailyTask[] = existingCompleted ? existingCompleted : [];
           completedList.push(levelCompletedTask);
-          localStorage.setItem(completedKey, JSON.stringify(completedList));
+          await asyncStorageService.set(completedKey, completedList);
 
           // Dispatch event to update sidebar
           window.dispatchEvent(new CustomEvent('daily-task-completed'));
@@ -373,8 +374,8 @@ export class TaskCompletionHandler {
               // Remove any existing individual completion records for this pair
               const completedDate = new Date().toISOString().split('T')[0];
               const completedKey = `dailyTasks_completed_${completedDate}`;
-              const existingCompleted = localStorage.getItem(completedKey);
-              let completedList: CompletedDailyTask[] = existingCompleted ? JSON.parse(existingCompleted) : [];
+              const existingCompleted = await asyncStorageService.get<CompletedDailyTask[]>(completedKey);
+              let completedList: CompletedDailyTask[] = existingCompleted ? existingCompleted : [];
 
               // Remove any individual completions for this pair's requests
               completedList = completedList.filter(task => {
@@ -407,7 +408,7 @@ export class TaskCompletionHandler {
               };
 
               completedList.push(pairCompletedTask);
-              localStorage.setItem(completedKey, JSON.stringify(completedList));
+              await asyncStorageService.set(completedKey, completedList);
 
               // Dispatch event to update sidebar
               window.dispatchEvent(new CustomEvent('daily-task-completed'));
@@ -425,7 +426,7 @@ export class TaskCompletionHandler {
 
               this.options.setBatches(filteredBatches);
 
-              // Update localStorage with filtered batches
+              // Update AsyncStorage with filtered batches
               const serializedFilteredBatches = filteredBatches.map(batch => ({
                 ...batch,
                 tasks: batch.tasks.map(task => ({
@@ -433,10 +434,10 @@ export class TaskCompletionHandler {
                   completedTasks: Array.from(task.completedTasks)
                 }))
               }));
-              localStorage.setItem(`dailyTasks_batches_${completedDate}`, JSON.stringify({
+              await asyncStorageService.set(`dailyTasks_batches_${completedDate}`, {
                 batches: serializedFilteredBatches,
                 accountScheduledTime: {} // This would need to be passed in or managed differently
-              }));
+              });
 
               // Dispatch progress-updated event
               window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));

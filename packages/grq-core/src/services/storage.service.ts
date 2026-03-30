@@ -33,4 +33,52 @@ class StorageService {
   }
 }
 
+// ==== Asynchronous DB Storage Wrapper ====
+import { TauriService } from './tauri.service';
+
+class AsyncStorageService {
+  private prefix = 'grq_';
+
+  async set<T>(key: string, value: T): Promise<void> {
+    try {
+      const serialized = JSON.stringify(value);
+      await TauriService.setStoreValue(this.prefix + key, serialized);
+    } catch (error) {
+      console.error('Error saving to AsyncStorage:', error);
+    }
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    try {
+      const item = await TauriService.getStoreValue(this.prefix + key);
+      if (item) {
+          return JSON.parse(item);
+      }
+      
+      // Automatic transparent migration from LocalStorage if not found in DB
+      const legacyItem = localStorage.getItem('game_request_' + key) || localStorage.getItem(key);
+      if (legacyItem) {
+          console.log(`Migrating ${key} from LocalStorage to Database...`);
+          const parsed = JSON.parse(legacyItem);
+          await this.set(key, parsed);
+          return parsed;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error reading from AsyncStorage:', error);
+      return null;
+    }
+  }
+
+  async remove(key: string): Promise<void> {
+      try {
+          await TauriService.deleteStoreValue(this.prefix + key);
+      } catch (error) {
+          console.error('Error removing from AsyncStorage:', error);
+      }
+  }
+}
+
 export const storageService = new StorageService();
+export const asyncStorageService = new AsyncStorageService();

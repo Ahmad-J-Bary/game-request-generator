@@ -15,6 +15,7 @@ import {
 } from '@grq/ui/atoms/dropdown-menu';
 import { cn } from '@grq/ui/lib/utils';
 import type { CompletedDailyTask } from '@grq/api-bindings/types/daily-tasks.types';
+import { asyncStorageService } from '@grq/core/services/storage.service';
 
 interface CompletedTasksSidebarProps {
     isOpen: boolean;
@@ -39,32 +40,26 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
         return () => window.removeEventListener('daily-task-completed', handleTaskCompleted);
     }, []);
 
-    const loadCompletedTasks = () => {
+    const loadCompletedTasks = async () => {
         const today = new Date().toISOString().split('T')[0];
         const storageKey = `dailyTasks_completed_${today}`;
-        const stored = localStorage.getItem(storageKey);
-
-
-        if (stored) {
-            try {
-                const tasks: CompletedDailyTask[] = JSON.parse(stored);
-                setCompletedTasks(tasks);
-
-                // Note: We no longer auto-expand everything. 
-                // New completions will naturally be collapsed (capped).
-            } catch (error) {
-                console.error('Error loading completed tasks:', error);
+        try {
+            const stored = await asyncStorageService.get<CompletedDailyTask[]>(storageKey);
+            if (stored) {
+                setCompletedTasks(stored);
+            } else {
                 setCompletedTasks([]);
             }
-        } else {
+        } catch (error) {
+            console.error('Error loading completed tasks:', error);
             setCompletedTasks([]);
         }
     };
 
-    const clearCompletedTasks = () => {
+    const clearCompletedTasks = async () => {
         const today = new Date().toISOString().split('T')[0];
         const storageKey = `dailyTasks_completed_${today}`;
-        localStorage.removeItem(storageKey);
+        await asyncStorageService.remove(storageKey);
         setCompletedTasks([]);
         setExpandedAccounts(new Set());
     };
