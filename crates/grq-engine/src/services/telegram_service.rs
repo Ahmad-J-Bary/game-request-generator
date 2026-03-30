@@ -41,6 +41,8 @@ impl TelegramService {
                     builder = builder.proxy(proxy);
                 }
             }
+        } else {
+            builder = builder.no_proxy();
         }
 
         builder.build().unwrap_or_else(|_| reqwest::Client::new())
@@ -74,7 +76,7 @@ impl TelegramService {
             }))
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("{:?}", e))?;
 
         if !response.status().is_success() {
             let error_text = response
@@ -157,7 +159,7 @@ impl TelegramService {
             }))
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("{:?}", e))?;
 
         if !response.status().is_success() {
             let error_text = response
@@ -202,7 +204,7 @@ impl TelegramService {
             .query(&query)
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("{:?}", e))?;
 
         if !response.status().is_success() {
             let error_text = response
@@ -277,7 +279,7 @@ impl TelegramService {
             .get(get_file_url)
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("{:?}", e))?;
         if !response.status().is_success() {
             return Err("Failed to get file path from Telegram".to_string());
         }
@@ -292,7 +294,7 @@ impl TelegramService {
             .get(download_url)
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("{:?}", e))?;
 
         if !content_res.status().is_success() {
             return Err("Failed to download file content".to_string());
@@ -431,7 +433,7 @@ impl TelegramService {
         let url = format!("https://api.telegram.org/bot{}/getUpdates", token);
         let client = Self::build_client(&config);
 
-        let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+        let response = client.get(url).send().await.map_err(|e| format!("{:?}", e))?;
         if !response.status().is_success() {
             return Err(format!("Telegram API error: {}", response.status()));
         }
@@ -468,14 +470,14 @@ impl TelegramService {
         // 1. Get file path
         let get_file_url = format!("https://api.telegram.org/bot{}/getFile?file_id={}", token, file_id);
         let client = Self::build_client(&config);
-        let response = client.get(get_file_url).send().await.map_err(|e| e.to_string())?;
-        let data: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+        let response = client.get(get_file_url).send().await.map_err(|e| format!("{:?}", e))?;
+        let data: serde_json::Value = response.json().await.map_err(|e| format!("{:?}", e))?;
         let file_path = data["result"]["file_path"].as_str().ok_or("File path not found")?;
 
         // 2. Download bytes
         let download_url = format!("https://api.telegram.org/file/bot{}/{}", token, file_path);
-        let content_res = client.get(download_url).send().await.map_err(|e| e.to_string())?;
-        let bytes = content_res.bytes().await.map_err(|e| e.to_string())?;
+        let content_res = client.get(download_url).send().await.map_err(|e| format!("{:?}", e))?;
+        let bytes = content_res.bytes().await.map_err(|e| format!("{:?}", e))?;
 
         // 3. Determine DB path
         let db_path = if let Some(custom_path) = config.db_path.clone() {
