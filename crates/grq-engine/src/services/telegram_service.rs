@@ -220,7 +220,15 @@ impl TelegramService {
         if let Some(updates) = data["result"].as_array() {
             for update in updates {
                 let update_id = update["update_id"].as_i64().unwrap_or(0);
-                let message = &update["message"];
+                
+                // Allow both regular messages and channel posts (important if bot is posting to a channel)
+                let message = if !update["message"].is_null() {
+                    &update["message"]
+                } else if !update["channel_post"].is_null() {
+                    &update["channel_post"]
+                } else {
+                    continue;
+                };
 
                 // Only process messages from the configured chat
                 let msg_chat_id = message["chat"]["id"].as_i64().map(|id| id.to_string());
@@ -237,6 +245,15 @@ impl TelegramService {
                             .unwrap_or("Unknown")
                             .to_string();
                         let unix_time = message["date"].as_i64().unwrap_or(0);
+
+                        // If the bot hasn't read anything yet (offset is None), only fetch messages from the last 16 hours
+                        // to prevent downloading too many old messages. Otherwise, fetch all unread updates.
+                        if offset.is_none() {
+                            let now_unix = chrono::Utc::now().timestamp();
+                            if now_unix - unix_time > 16 * 60 * 60 {
+                                continue; // Skip messages older than 16 hours
+                            }
+                        }
 
                         use chrono::TimeZone;
                         let date = chrono::Local
@@ -444,7 +461,15 @@ impl TelegramService {
         if let Some(updates) = data["result"].as_array() {
             // We want the latest one, so we iterate from the end or just find the one with largest date/id
             for update in updates.iter().rev() {
-                let message = &update["message"];
+                // Determine if this is a conventional message or a channel post
+                let message = if !update["message"].is_null() {
+                    &update["message"]
+                } else if !update["channel_post"].is_null() {
+                    &update["channel_post"]
+                } else {
+                    continue;
+                };
+
                 let msg_chat_id = message["chat"]["id"].as_i64().map(|id| id.to_string());
                 
                 if msg_chat_id == Some(chat_id.clone()) {

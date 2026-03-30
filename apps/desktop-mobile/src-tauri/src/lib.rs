@@ -224,11 +224,17 @@ async fn set_telegram_config(
     auto_send: bool,
 ) -> Result<(), String> {
     let mut config = ConfigService::load(&app);
+    
+    // Reset offset if tracking a completely new chat or bot to ensure we don't skip unread queues
+    if config.telegram_chat_id != chat_id || config.telegram_bot_token != bot_token {
+        config.telegram_last_offset = None;
+    }
+
     config.telegram_bot_token = bot_token;
     config.telegram_chat_id = chat_id;
     config.telegram_enabled = enabled;
     config.telegram_auto_send = auto_send;
-    // Don't overwrite last_offset here as it's updated through get_updates
+    
     ConfigService::save(&app, &config)
 }
 

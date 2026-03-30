@@ -12,7 +12,8 @@ import {
   ChevronRight,
   Loader2,
   ArrowRight,
-  ArrowLeft
+  ArrowLeft,
+  Check
 } from 'lucide-react';
 import { 
   Dialog, 
@@ -30,6 +31,7 @@ import { toast } from 'sonner';
 import { TauriService } from '@grq/core/services/tauri.service';
 import { TelegramImportPreview, Game, GameBranch } from '@grq/api-bindings';
 import { cn } from '@grq/ui/lib/utils';
+import { asyncStorageService } from '@grq/core/services/storage.service';
 
 interface TelegramImportDialogProps {
   open: boolean;
@@ -46,6 +48,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
   const [selectedGameId, setSelectedGameId] = useState<string>('');
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [importing, setImporting] = useState(false);
+  const [dismissedUpdates, setDismissedUpdates] = useState<number[]>([]);
 
   const fetchUpdates = async () => {
     setLoading(true);
@@ -71,6 +74,9 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
 
   useEffect(() => {
     if (open) {
+      asyncStorageService.get<number[]>('dismissed_telegram_updates').then(res => {
+        setDismissedUpdates(res || []);
+      });
       fetchUpdates();
       fetchGames();
     }
@@ -166,6 +172,11 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
 
       // 3. Update offset to mark as processed
       await TauriService.updateTelegramOffset(selectedImport.update_id);
+      
+      // Also add to local dismissal cache so it disappears immediately
+      const newDismissed = [...dismissedUpdates, selectedImport.update_id];
+      setDismissedUpdates(newDismissed);
+      await asyncStorageService.set('dismissed_telegram_updates', newDismissed);
 
       toast.success(t('settings.telegramImport.success'));
       
@@ -181,6 +192,19 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
       setImporting(false);
     }
   };
+
+  const handleDismiss = async (e: React.MouseEvent, updateId: number) => {
+    e.stopPropagation();
+    const newDismissed = [...dismissedUpdates, updateId];
+    setDismissedUpdates(newDismissed);
+    await asyncStorageService.set('dismissed_telegram_updates', newDismissed);
+    toast.success('Marked as read');
+    if (selectedImport?.update_id === updateId) {
+      setSelectedImport(null);
+    }
+  };
+
+  const visibleImports = imports.filter(item => !dismissedUpdates.includes(item.update_id));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -229,7 +253,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                   </div>
                 )}
 
-                {!loading && imports.length === 0 && (
+                {!loading && visibleImports.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
                     <div className="h-16 w-16 rounded-full bg-accent/50 flex items-center justify-center">
                       <CheckCircle2 className="h-8 w-8 text-muted-foreground/40" />
@@ -245,7 +269,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                   </div>
                 )}
 
-                {!loading && imports.map((item) => (
+                {!loading && visibleImports.map((item) => (
                   <Card 
                     key={item.update_id}
                     className={cn(
@@ -269,7 +293,16 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                           </span>
                         </div>
                       </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground/40 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-full transition-colors ml-1"
+                        onClick={(e) => handleDismiss(e, item.update_id)}
+                        title="Mark as read"
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/50 ml-1" />
                     </CardContent>
                   </Card>
                 ))}
@@ -374,11 +407,11 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
           )}
         </div>
 
-        {!selectedImport && imports.length > 0 && (
+        {!selectedImport && visibleImports.length > 0 && (
           <div className="p-4 bg-primary/5 border-t border-border/40 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
               <AlertCircle className="h-3.5 w-3.5 text-primary" />
-              {t('settings.telegramImport.foundFiles', { count: imports.length })}
+              {t('settings.telegramImport.foundFiles', { count: visibleImports.length })}
             </div>
             <p className="text-[10px] text-muted-foreground">Select a file to begin the import process</p>
           </div>
