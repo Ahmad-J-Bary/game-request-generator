@@ -80,7 +80,7 @@ export default function Dashboard() {
       setIsReporting(true);
       NotificationService.info(t('settings.generatingReport', 'Generating report...'));
       
-      const buffer = await ExcelService.generateAllGamesBuffer('vertical', colors, theme);
+      const buffer = await ExcelService.generateAllGamesBuffer('vertical', colors, theme, 'event-only', true);
       
       if (!buffer) {
         throw new Error('Failed to generate Excel buffer');

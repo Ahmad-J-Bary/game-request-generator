@@ -636,9 +636,9 @@ export class ExcelService {
   /**
    * Generates the Excel workbook buffer for all games
    */
-  static async generateAllGamesBuffer(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<any> {
+  static async generateAllGamesBuffer(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', excludeInfoSheets: boolean = false): Promise<any> {
     try {
-      const workbook = await this.generateAllGamesWorkbook(layout, colorSettings, theme, mode);
+      const workbook = await this.generateAllGamesWorkbook(layout, colorSettings, theme, mode, excludeInfoSheets);
       if (!workbook) return null;
       return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     } catch (error) {
@@ -650,7 +650,7 @@ export class ExcelService {
   /**
    * Internal logic to generate the workbook object for all games
    */
-  private static async generateAllGamesWorkbook(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<any> {
+  private static async generateAllGamesWorkbook(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', excludeInfoSheets: boolean = false): Promise<any> {
     try {
       const games = await TauriService.getGames();
       const workbook = XLSX.utils.book_new();
@@ -802,12 +802,14 @@ export class ExcelService {
             level.time_spent,
             level.is_bonus ? 'Yes' : 'No'
           ]);
-          const levelSheet = XLSX.utils.aoa_to_sheet([levelHeaders, ...levelRows]);
-          XLSX.utils.book_append_sheet(workbook, levelSheet, `${sheetBaseName}_Lvl`);
+          if (!excludeInfoSheets) {
+            const levelSheet = XLSX.utils.aoa_to_sheet([levelHeaders, ...levelRows]);
+            XLSX.utils.book_append_sheet(workbook, levelSheet, `${sheetBaseName}_Lvl`);
+          }
         }
 
         // 3. Create Purchase Events sheet
-        if (allGamePurchaseEvents.length > 0) {
+        if (allGamePurchaseEvents.length > 0 && !excludeInfoSheets) {
           const purchaseHeaders = ['Event Token', 'Restricted', 'Max Days Offset'];
           const purchaseRows = allGamePurchaseEvents.map(event => [
             event.event_token,
@@ -817,6 +819,10 @@ export class ExcelService {
           const purchaseSheet = XLSX.utils.aoa_to_sheet([purchaseHeaders, ...purchaseRows]);
           XLSX.utils.book_append_sheet(workbook, purchaseSheet, `${sheetBaseName}_Evt`);
         }
+      }
+
+      if (excludeInfoSheets) {
+          return workbook;
       }
 
       // 4. Create Completion Info sheet
