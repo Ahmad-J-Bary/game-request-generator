@@ -172,17 +172,29 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
         </CardHeader>
         <CardContent className="px-3 pb-3 sm:px-4 sm:pb-4">
           <div className="space-y-3">
-            {task.requests.map((request, index) => (
-              <RequestItem
-                key={index}
-                request={request}
-                isCompleted={task.completedTasks.has(index.toString())}
-                isReady={isReady}
-                onComplete={() => onCompleteTask(task.account.id, index, batchIndex)}
-                onCopy={(content, eventToken, timeSpent) =>
-                  onCopyRequest(content, eventToken, timeSpent)}
-              />
-            ))}
+            {task.requests.map((request, index) => {
+              // Calculate logical index for this account across all batches
+              const accountTasks = allBatches.flatMap(b => b.tasks).filter(t => t.account.id === accountId);
+              const accountTaskTotal = accountTasks.length;
+              // Find which one the current task is
+              const accountTaskIndex = allBatches
+                .slice(0, batchIndex)
+                .reduce((acc, b) => acc + b.tasks.filter(t => t.account.id === accountId).length, 0) + 1;
+
+              return (
+                <RequestItem
+                  key={index}
+                  index={accountTaskIndex}
+                  total={accountTaskTotal}
+                  request={request}
+                  isCompleted={task.completedTasks.has(index.toString())}
+                  isReady={isReady}
+                  onComplete={() => onCompleteTask(task.account.id, index, batchIndex)}
+                  onCopy={(content, eventToken, timeSpent) =>
+                    onCopyRequest(content, eventToken, timeSpent)}
+                />
+              );
+            })}
           </div>
         </CardContent>
       </Card>

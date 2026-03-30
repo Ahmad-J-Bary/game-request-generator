@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@grq/ui/lib/utils';
-import { CheckCircle, Copy, Send, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, Copy, Send, Loader2, ChevronDown, ChevronUp, Hash, Clock, ShieldCheck } from 'lucide-react';
 import { Button } from '@grq/ui/atoms/button';
 import { Badge } from '@grq/ui/atoms/badge';
 import { RequestProcessor } from '@grq/core/services/tauri.service';
@@ -24,9 +24,11 @@ interface RequestItemProps {
     isReady: boolean;
     onComplete: () => void;
     onCopy: (content: string, eventToken?: string, timeSpent?: number) => void;
+    index: number;
+    total: number;
 }
 
-export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy }: RequestItemProps) {
+export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy, index, total }: RequestItemProps) {
     const { t } = useTranslation();
     const [isSending, setIsSending] = useState(false);
     const [response, setResponse] = useState<RepeaterResponse | null>(null);
@@ -97,34 +99,49 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy 
             !isReady ? "bg-gray-100/50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800 opacity-60 grayscale-[0.5]" : "bg-card border-border shadow-sm"
         )}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
-                <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={getRequestTypeBadgeVariant(request.request_type)}>
+                <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Index Counter - Large and clear */}
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-primary/5 border border-primary/20 rounded-lg shadow-sm" title="Account Task Order">
+                        <Hash className="h-3 w-3 text-primary" />
+                        <span className="text-xs font-black tracking-tight text-primary">
+                            TASK {index}<span className="opacity-40 font-medium">/{total}</span>
+                        </span>
+                    </div>
+
+                    <Badge variant={getRequestTypeBadgeVariant(request.request_type)} className="shadow-sm">
+                        <ShieldCheck className="h-3 w-3 mr-1 opacity-70" />
                         {getRequestTypeLabel(request.request_type)}
                     </Badge>
+
                     {request.event_token && (
-                        <span className="text-xs text-muted-foreground font-mono break-all px-2 py-0.5 bg-accent/50 rounded-md">
-                            {request.event_token}
-                        </span>
+                        <div className="group flex items-center gap-2 text-[10px] sm:text-xs text-muted-foreground font-mono bg-accent/30 hover:bg-accent/50 px-2 py-1 rounded-lg border border-border/40 transition-colors cursor-help" title="Event Token">
+                            <span className="opacity-40">ETC:</span>
+                            <span className="break-all">{request.event_token}</span>
+                        </div>
                     )}
-                    <Badge variant="outline" className="text-xs font-mono">
-                        {request.time_spent}s
-                    </Badge>
+
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-secondary/30 border border-secondary/20 rounded-lg text-xs font-mono text-muted-foreground shadow-sm">
+                        <Clock className="h-3 w-3 opacity-60" />
+                        <span>{request.time_spent}s</span>
+                    </div>
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    <Button
-                        variant="default"
-                        size="sm"
-                        disabled={!isReady || isSending}
-                        onClick={handleSendRequest}
-                        className={cn(
-                            "flex-1 sm:flex-none font-bold tracking-tight shadow-md shadow-primary/20",
-                            !isReady ? "opacity-30 cursor-not-allowed grayscale" : "transition-all active:scale-95"
-                        )}
-                    >
-                        {isSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-                        {t('dailyTasks.sendRequest', 'Send')}
-                    </Button>
+                    {!isCompleted && (
+                        <Button
+                            variant="default"
+                            size="sm"
+                            disabled={!isReady || isSending}
+                            onClick={handleSendRequest}
+                            className={cn(
+                                "flex-1 sm:flex-none font-bold tracking-tight shadow-md shadow-primary/20",
+                                !isReady ? "opacity-30 cursor-not-allowed grayscale" : "transition-all active:scale-95"
+                            )}
+                        >
+                            {isSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                            {t('dailyTasks.sendRequest', 'Send')}
+                        </Button>
+                    )}
                     
                     <Button
                         variant="outline"

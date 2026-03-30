@@ -23,13 +23,16 @@ export const BatchTasks: React.FC<BatchTasksProps> = ({
   onCopyRequest,
   completedTasks = [],
 }) => {
+  const totalTasks = allBatches.reduce((acc, b) => acc + b.tasks.length, 0);
+  const previousTasksCount = allBatches.slice(0, batch.batchIndex).reduce((acc, b) => acc + b.tasks.length, 0);
+
   return (
     <div className="space-y-4">
       {batch.tasks.map((task, taskIndex) => (
         <div key={task.account.id}>
           <div className="mb-2">
             <span className="text-sm font-medium text-muted-foreground">
-              {taskIndex + 1}- {task.account.name}
+              {previousTasksCount + taskIndex + 1}- {task.account.name}
             </span>
           </div>
           <TaskItem
@@ -42,6 +45,8 @@ export const BatchTasks: React.FC<BatchTasksProps> = ({
             batchIndex={batch.batchIndex}
             allBatches={allBatches}
             completedTasks={completedTasks}
+            globalIndex={previousTasksCount + taskIndex + 1}
+            totalTasks={totalTasks}
           />
         </div>
       ))}
