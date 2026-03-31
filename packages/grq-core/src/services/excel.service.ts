@@ -622,9 +622,9 @@ export class ExcelService {
    * Export all games data with matrix layout
    * Each game gets 3 sheets: accounts progress, levels definitions, and events definitions
    */
-  static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<boolean> {
+  static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', excludeMetadata: boolean = false): Promise<boolean> {
     try {
-      const buffer = await this.generateAllGamesBuffer(layout, colorSettings, theme, mode);
+      const buffer = await this.generateAllGamesBuffer(layout, colorSettings, theme, mode, excludeMetadata);
       if (!buffer) return false;
       return await this.saveFile('All_Games.xlsx', buffer);
     } catch (error) {
@@ -636,9 +636,9 @@ export class ExcelService {
   /**
    * Generates the Excel workbook buffer for all games
    */
-  static async generateAllGamesBuffer(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', excludeInfoSheets: boolean = false): Promise<any> {
+  static async generateAllGamesBuffer(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', excludeMetadata: boolean = false): Promise<any> {
     try {
-      const workbook = await this.generateAllGamesWorkbook(layout, colorSettings, theme, mode, excludeInfoSheets);
+      const workbook = await this.generateAllGamesWorkbook(layout, colorSettings, theme, mode, excludeMetadata);
       if (!workbook) return null;
       return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     } catch (error) {
