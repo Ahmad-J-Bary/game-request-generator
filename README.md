@@ -1,26 +1,39 @@
 # Game Request Generator 🕹️
 
-A comprehensive **Turborepo Monorepo** desktop application for managing game progression tracking, automated request generation, and daily task management. Built with Tauri, React, and Rust for a native desktop and mobile-friendly experience.
+A comprehensive **Turborepo Monorepo** desktop application for managing game progression tracking, automated request simulation, and daily task management. Built with **Tauri 2.0**, **React**, and **Rust** for a high-performance, native experience across Windows and Mobile.
 
-## 🌟 Features
+---
 
-### 🎮 Game & Account Management
-- **Multi-Game Support**: Manage multiple games with custom level tracking and purchase events.
-- **Automated Task Generation**: Generates daily HTTP requests based on account progress.
-- **Modern Responsive UI**: A premium, mobile-friendly interface with a dynamic sidebar and dark/light modes.
-- **Multi-Language**: Full support for English and Arabic (العربية).
+## 🌟 Advanced Features
 
-### 🚀 Technical Excellence
-- **Monorepo Architecture**: Powered by **pnpm workspaces** and **Turborepo** for efficient builds and scaling.
-- **Tauri 2.0**: Native performance with a Rust backend and a React/TypeScript frontend.
-- **Automated CI/CD**: Seamless release workflow targeting Windows, macOS, Linux, and Android.
+### 📅 Daily Task Management
+- **Smart Batching**: Automatically groups accounts and generates task batches.
+- **Progressive Indexing**: Tasks are indexed per account for clear tracking of progression.
+- **Completion Tracking**: Real-time monitoring of completed vs. pending tasks.
+
+### 📤 Telegram Synchronization & Automation
+- **Database Backup/Restore**: Seamlessly sync your entire database through Telegram for easy migration or backup.
+- **Auto-Reports**: Automated delivery of Excel progression reports directly to Telegram groups.
+- **Smart Notifications**: Integrated alerts for system events and task completions.
+
+### 🌐 Connectivity & Security
+- **Proxy Management**: Built-in support for **HTTP** and **SOCKS5** proxies to route all request traffic safely.
+- **Smart Expiry Alerts**: Automatically monitors proxy expiration dates and sends warning notifications to Telegram 24 hours before expiry.
+- **Parsing Utilities**: Smart parsing of proxy links from Telegram bot messages.
+
+### 🛠️ HTTP Repeater (Pro Toolbox)
+- **Raw Request Simulation**: A powerful **Burp Suite-like Repeater** integrated into the app.
+- **Manual Control**: Edit and replay raw HTTP/1.1 and HTTP/2 requests with custom headers and payloads.
+- **Proxy Routing**: Simulated requests automatically respect your global proxy settings.
+
+---
 
 ## 📁 Project Structure
 
-This project is organized as a monorepo to separate concerns and maximize code reuse:
+The project is architected as a highly modular monorepo:
 
 ```
-game-request-generator-APP/
+game-request-generator/
 ├── apps/
 │   └── desktop-mobile/       # Main Tauri + React application
 ├── packages/
@@ -34,65 +47,38 @@ game-request-generator-APP/
 └── turbo.json                # Turborepo orchestration
 ```
 
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
-
 - **Node.js** (v18+)
 - **Rust** (latest stable)
-- **pnpm** (Required for workspaces)
+- **pnpm** (Workspace management)
 
-### Installation & Development
+### Installation
+```bash
+git clone <repository-url>
+cd game-request-generator
+pnpm install
+```
 
-1. **Clone and Install:**
-   ```bash
-   git clone <repository-url>
-   cd game-request-generator-APP
-   pnpm install
-   ```
-
-2. **Start Development:**
-   ```bash
-   pnpm start
-   ```
-   *This runs the Tauri development environment (Vite + Rust).*
-
-3. **Build for Production:**
-   ```bash
-   pnpm build
-   ```
-
-## 🛠️ Development Workflow
-
-We use **pnpm** and **Turborepo** to manage the workflow across all packages:
-
-- `pnpm dev`: Start the desktop application in dev mode.
-- `pnpm build`: Build all packages and the main application.
-- `pnpm lint`: Run linting across the entire workspace.
-- `pnpm type-check`: Validate TypeScript types globally.
-
-## 📱 Mobile & Responsiveness
-
-The UI has been meticulously designed to be **mobile-first**:
-- **Desktop**: A persistent sidebar with collapse/expand capabilities.
-- **Mobile**: A sliding drawer navigation triggered by a top header hamburger menu.
-- **Tables**: All data tables are optimized for both horizontal and vertical viewing.
-
-## 📦 Releases (CI/CD)
-
-The project includes an automated release workflow in `.github/workflows/release.yml`:
-1. Push a tag (e.g., `v9.9.9`).
-2. GitHub Actions will build binaries for:
-   - **Windows** (.msi, .exe)
-   - **macOS** (.dmg, .app)
-   - **Linux** (.deb, .AppImage)
-   - **Android** (.apk)
-3. Artifacts are automatically uploaded to a GitHub Release draft.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Development
+```bash
+pnpm start
+```
+*This launches the Tauri environment with hot-reloading for both Rust and React.*
 
 ---
 
+## 📦 Releases (CI/CD)
+The project utilizes an automated pipeline via GitHub Actions to build and distribute:
+- **Windows**: `.msi`, `.exe`
+- **Mobile**: `.apk` (Android)
+- **Cross-Platform**: Linux (`.deb`) and macOS supported.
+
+## 📄 License
+This project is licensed under the MIT License.
+
+---
 **Built with ❤️ using Turborepo, Tauri, React, and Rust**
