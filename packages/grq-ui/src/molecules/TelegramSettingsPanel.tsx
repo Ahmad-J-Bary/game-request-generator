@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Send, ShieldCheck, AlertCircle, Loader2, Save } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@grq/ui/atoms/button';
@@ -9,6 +10,7 @@ import { Badge } from '@grq/ui/atoms/badge';
 import { cn } from '@grq/ui/lib/utils';
 
 export function TelegramSettingsPanel() {
+  const { t } = useTranslation();
   const [botToken, setBotToken] = useState('');
   const [chatId, setChatId] = useState('');
   const [enabled, setEnabled] = useState(false);
@@ -30,7 +32,7 @@ export function TelegramSettingsPanel() {
       setAutoSend(config.auto_send || false);
     } catch (error) {
       console.error('Failed to load Telegram config:', error);
-      toast.error('Failed to load Telegram configuration');
+      toast.error(t('settings.telegram.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -45,10 +47,10 @@ export function TelegramSettingsPanel() {
         enabled,
         autoSend
       });
-      toast.success('Telegram configuration saved');
+      toast.success(t('settings.telegram.saveSuccess'));
     } catch (error) {
       console.error('Failed to save Telegram config:', error);
-      toast.error('Failed to save configuration');
+      toast.error(t('settings.telegram.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -56,16 +58,16 @@ export function TelegramSettingsPanel() {
 
   const handleTest = async () => {
     if (!botToken || !chatId) {
-      toast.error('Please enter both Bot Token and Chat ID to test');
+      toast.error(t('settings.telegram.testRequired'));
       return;
     }
     try {
       setTesting(true);
       await invoke('test_telegram_connection', { botToken, chatId });
-      toast.success('Test message sent! Check your Telegram group.');
+      toast.success(t('settings.telegram.testSuccess'));
     } catch (error: any) {
       console.error('Test connection failed:', error);
-      toast.error(`Verification failed: ${error}`);
+      toast.error(t('settings.telegram.testFailed', { error }));
     } finally {
       setTesting(false);
     }
@@ -83,32 +85,32 @@ export function TelegramSettingsPanel() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Send className="h-5 w-5 text-primary" />
-            <CardTitle>Telegram Integration</CardTitle>
+            <CardTitle>{t('settings.telegram.title')}</CardTitle>
           </div>
           <Badge variant={enabled ? "default" : "secondary"} className={cn(enabled ? "bg-green-500" : "")}>
-            {enabled ? "Connected" : "Not Linked"}
+            {enabled ? t('settings.telegram.connected') : t('settings.telegram.notLinked')}
           </Badge>
         </div>
         <CardDescription>
-          Automatically send names of completed game accounts to a Telegram group. Use @userinfobot to find your Chat ID.
+          {t('settings.telegram.description')}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid gap-4">
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold">Bot API Token</label>
+            <label className="text-sm font-semibold">{t('settings.telegram.botToken')}</label>
             <Input
               type="password"
-              placeholder="e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+              placeholder={t('settings.telegram.botTokenPlaceholder', 'e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11')}
               value={botToken}
               onChange={(e) => setBotToken(e.target.value)}
               className="bg-background/50 border-primary/20 focus:border-primary"
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold">Group Chat ID</label>
+            <label className="text-sm font-semibold">{t('settings.telegram.chatId')}</label>
             <Input
-              placeholder="e.g. -100123456789"
+              placeholder={t('settings.telegram.chatIdPlaceholder', 'e.g. -100123456789')}
               value={chatId}
               onChange={(e) => setChatId(e.target.value)}
               className="bg-background/50 border-primary/20 focus:border-primary"
@@ -117,13 +119,14 @@ export function TelegramSettingsPanel() {
         </div>
 
         <div className="flex flex-col gap-4 py-2">
+          {/* Enable Integration Toggle */}
           <div className="flex items-center justify-between p-3 rounded-xl bg-background/40 border-2 border-primary/10">
             <div className="space-y-0.5">
               <div className="text-sm font-bold flex items-center gap-2">
-                Enable Integration
+                {t('settings.telegram.enableIntegration')}
                 {enabled && <ShieldCheck className="h-3 w-3 text-green-500" />}
               </div>
-              <div className="text-[10px] text-muted-foreground">Turn Telegram connectivity on/off</div>
+              <div className="text-[10px] text-muted-foreground">{t('settings.telegram.enableIntegrationDesc')}</div>
             </div>
             <button
                onClick={() => setEnabled(!enabled)}
@@ -134,15 +137,16 @@ export function TelegramSettingsPanel() {
             >
               <span className={cn(
                 "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                enabled ? "translate-x-6" : "translate-x-1"
+                enabled ? "ltr:translate-x-6 rtl:-translate-x-6" : "ltr:translate-x-1 rtl:-translate-x-1"
               )} />
             </button>
           </div>
 
+          {/* Auto-Send Toggle */}
           <div className="flex items-center justify-between p-3 rounded-xl bg-background/40 border-2 border-primary/10">
             <div className="space-y-0.5">
-              <div className="text-sm font-bold">Auto-Send on Completion</div>
-              <div className="text-[10px] text-muted-foreground">Sync legendary accounts as soon as they reach 100%</div>
+              <div className="text-sm font-bold">{t('settings.telegram.autoSend')}</div>
+              <div className="text-[10px] text-muted-foreground">{t('settings.telegram.autoSendDesc')}</div>
             </div>
             <button
                disabled={!enabled}
@@ -155,29 +159,35 @@ export function TelegramSettingsPanel() {
             >
               <span className={cn(
                 "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                autoSend ? "translate-x-6" : "translate-x-1"
+                autoSend ? "ltr:translate-x-6 rtl:-translate-x-6" : "ltr:translate-x-1 rtl:-translate-x-1"
               )} />
             </button>
           </div>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-primary/10">
-          <Button 
+          <Button
             className="flex-1 rounded-xl h-11 font-bold shadow-lg shadow-primary/20"
             onClick={handleSave}
             disabled={saving}
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-            Save Configuration
+            {saving
+              ? <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" />
+              : <Save className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+            }
+            {t('settings.telegram.saveConfig')}
           </Button>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             className="flex-1 rounded-xl h-11 font-bold border-primary/30 hover:bg-primary/5"
             onClick={handleTest}
             disabled={testing || !botToken || !chatId}
           >
-            {testing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2 text-primary" />}
-            Test Connection
+            {testing
+              ? <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" />
+              : <Send className="h-4 w-4 ltr:mr-2 rtl:ml-2 text-primary" />
+            }
+            {t('settings.telegram.testConnection')}
           </Button>
         </div>
 
@@ -185,7 +195,7 @@ export function TelegramSettingsPanel() {
           <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex gap-2 items-start">
             <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
             <p className="text-[11px] text-yellow-700 leading-tight italic">
-              Create a bot with @BotFather to get your token and add it to your group to send updates.
+              {t('settings.telegram.setupHint')}
             </p>
           </div>
         )}

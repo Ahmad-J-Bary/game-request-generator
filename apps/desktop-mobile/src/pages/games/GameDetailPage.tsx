@@ -408,7 +408,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
             
             {branches.length > 0 && (
                 <div className="flex items-center gap-2 bg-accent/30 p-1 rounded-md border border-border/50">
-                    <span className="text-sm font-medium px-2 text-muted-foreground">{branches.length} Branches</span>
+                    <span className="text-sm font-medium px-2 text-muted-foreground">{t('branches.count', { count: branches.length })}</span>
                     
                     <Button 
                         variant="ghost" 
@@ -500,6 +500,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
                           name="game-detail-mode-mobile"
                           checked={mode === 'event-only'}
                           onChange={() => setMode('event-only')}
+                          className="accent-primary"
                         />
                         <span className="text-sm">{t('common.eventOnly')}</span>
                       </label>
@@ -509,6 +510,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
                           name="game-detail-mode-mobile"
                           checked={mode === 'all'}
                           onChange={() => setMode('all')}
+                          className="accent-primary"
                         />
                         <span className="text-sm">{t('common.all')}</span>
                       </label>
@@ -517,7 +519,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
                 </div>
 
                 <div className="space-y-2 pt-2 border-t">
-                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.actions', 'Actions')}</Label>
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">{t('common.actions')}</Label>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       variant="outline"
@@ -554,7 +556,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
                 className="flex items-center gap-2 h-9"
               >
                 <Edit3 className="h-4 w-4" />
-                <span className="hidden xs:inline">{t('common.edit', 'Edit')}</span>
+                <span className="hidden xs:inline">{t('common.edit')}</span>
               </Button>
           ) : (
             <div className="flex items-center gap-2">
@@ -565,7 +567,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
                 className="flex items-center gap-2 h-9 bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20"
               >
                 <Save className="h-4 w-4" />
-                <span className="hidden xs:inline">{t('common.save', 'Save')}</span>
+                <span className="hidden xs:inline">{t('common.save')}</span>
               </Button>
               <Button
                 variant="outline"
@@ -574,7 +576,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
                 className="flex items-center gap-2 h-9"
               >
                 <X className="h-4 w-4" />
-                <span className="hidden xs:inline">{t('common.cancel', 'Cancel')}</span>
+                <span className="hidden xs:inline">{t('common.cancel')}</span>
               </Button>
             </div>
           )}
@@ -638,15 +640,15 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
       <Dialog open={showManageBranches} onOpenChange={setShowManageBranches}>
         <DialogContent className="sm:max-w-md">
             <DialogHeader>
-                <DialogTitle>{t('branches.manageTitle', 'Manage Branches')}</DialogTitle>
+                <DialogTitle>{t('branches.manageTitle')}</DialogTitle>
                 <DialogDescription>
-                    {t('branches.manageDescription', 'Create, delete or duplicate branches for your game levels and events.')}
+                    {t('branches.manageDescription')}
                 </DialogDescription>
             </DialogHeader>
             
             <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                    <Label>{t('branches.existingBranches', 'Existing Branches')}</Label>
+                    <Label>{t('branches.existingBranches')}</Label>
                     <div className="space-y-2 max-h-[200px] overflow-auto pr-2">
                         {branches.map(b => (
                             <div key={b.id} className="flex items-center justify-between p-2 rounded-md border bg-accent/10">
@@ -674,25 +676,25 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
                 <div className="h-px bg-border my-2" />
                 
                 <div className="space-y-3">
-                    <Label>{t('branches.createNew', 'Create New Branch')}</Label>
+                    <Label>{t('branches.createNew')}</Label>
                     <div className="flex flex-col gap-3">
                         <Input 
-                            placeholder={t('branches.namePlaceholder', 'Branch Name')}
+                            placeholder={t('branches.namePlaceholder')}
                             value={newBranchName}
                             onChange={(e) => setNewBranchName(e.target.value)}
                         />
                         
                         <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">{t('branches.copyFrom', 'Copy levels from (Optional)')}</Label>
+                            <Label className="text-xs text-muted-foreground">{t('branches.copyFrom')}</Label>
                             <Select 
                                 value={copyFromBranchId?.toString() || 'none'} 
                                 onValueChange={(val) => setCopyFromBranchId(val === 'none' ? null : parseInt(val, 10))}
                             >
                                 <SelectTrigger className="h-9">
-                                    <SelectValue placeholder={t('common.none', 'None')} />
+                                    <SelectValue placeholder={t('common.none')} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="none">{t('common.none', 'None')}</SelectItem>
+                                    <SelectItem value="none">{t('common.none')}</SelectItem>
                                     {branches.map(b => (
                                         <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
                                     ))}
@@ -706,7 +708,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
                             onClick={handleCreateBranch}
                         >
                             {isCreatingBranch ? <span className="animate-spin mr-2">...</span> : <Plus className="h-4 w-4" />}
-                            {t('branches.createAction', 'Create Branch')}
+                            {t('branches.createAction')}
                         </Button>
                     </div>
                 </div>
@@ -902,9 +904,9 @@ function GameBranchSection({
 
     return (
         <section className="space-y-4">
-            <div className="flex items-center gap-2 px-4 py-2 bg-accent/20 rounded-t-lg border-x border-t">
+            <div className="flex items-center gap-2 px-4 py-2 bg-accent/20 rounded-t-lg border-x border-t ltr:text-left rtl:text-right">
                 <div className="h-4 w-1 rounded-full bg-primary" />
-                <h3 className="text-lg font-bold">{branch.name} {branch.is_default && <span className="ml-2 text-[10px] opacity-70 uppercase tracking-widest bg-primary/20 px-2 py-0.5 rounded">{t('common.default', { defaultValue: 'Default' })}</span>}</h3>
+                <h3 className="text-lg font-bold">{branch.name} {branch.is_default && <span className="ltr:ml-2 rtl:mr-2 text-[10px] opacity-70 uppercase tracking-widest bg-primary/20 px-2 py-0.5 rounded">{t('common.default')}</span>}</h3>
             </div>
             <Card className="rounded-t-none">
                 <CardContent className="p-0 overflow-auto">

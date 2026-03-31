@@ -198,7 +198,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
     const newDismissed = [...dismissedUpdates, updateId];
     setDismissedUpdates(newDismissed);
     await asyncStorageService.set('dismissed_telegram_updates', newDismissed);
-    toast.success('Marked as read');
+    toast.success(t('settings.telegramImport.markedAsRead'));
     if (selectedImport?.update_id === updateId) {
       setSelectedImport(null);
     }
@@ -220,7 +220,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                   {t('settings.telegramImport.title')}
                 </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                  Review and finalize account creation from group messages
+                  {t('settings.telegramImport.description')}
                 </DialogDescription>
               </div>
             </div>
@@ -233,7 +233,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
             >
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               <span className="hidden sm:inline">{t('settings.telegramImport.checkUpdates')}</span>
-              <span className="sm:hidden text-[10px]">Refresh</span>
+              <span className="sm:hidden text-[10px]">{t('settings.telegramImport.refresh')}</span>
             </Button>
           </div>
         </DialogHeader>
@@ -249,7 +249,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                 {loading && (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
                     <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                    <p className="text-sm text-muted-foreground">Checking for new messages...</p>
+                    <p className="text-sm text-muted-foreground">{t('settings.telegramImport.checking')}</p>
                   </div>
                 )}
 
@@ -263,7 +263,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                         {t('settings.telegramImport.noNewFiles')}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Any .txt files sent to your group will appear here.
+                        {t('settings.telegramImport.noNewFilesHint')}
                       </p>
                     </div>
                   </div>
@@ -296,9 +296,9 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-muted-foreground/40 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-full transition-colors ml-1"
+                        className="h-8 w-8 text-muted-foreground/40 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-full transition-colors ltr:ml-1 rtl:mr-1"
                         onClick={(e) => handleDismiss(e, item.update_id)}
-                        title="Mark as read"
+                        title={t('settings.telegramImport.markAsRead')}
                       >
                         <Check className="h-4 w-4" />
                       </Button>
@@ -321,12 +321,12 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                     className="lg:hidden flex items-center gap-2 text-primary font-bold text-xs mb-2 transition-transform active:scale-95"
                   >
                     <ArrowLeft className="h-4 w-4" />
-                    Back to List
+                    {t('settings.telegramImport.backToList')}
                   </button>
 
                   <div className="flex items-center gap-2 mb-2">
                     <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-                      Processing: {selectedImport.filename}
+                      {t('settings.telegramImport.processing')} {selectedImport.filename}
                     </Badge>
                   </div>
 
@@ -337,7 +337,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                     </label>
                     <Select value={selectedGameId} onValueChange={setSelectedGameId}>
                       <SelectTrigger className="rounded-xl bg-background border-border/40">
-                        <SelectValue placeholder="Select a game..." />
+                        <SelectValue placeholder={t('settings.telegramImport.selectGamePlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
                         {games.map(game => (
@@ -354,7 +354,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                     </label>
                     <Select value={selectedBranchId} onValueChange={setSelectedBranchId} disabled={!selectedGameId}>
                       <SelectTrigger className="rounded-xl bg-background border-border/40">
-                        <SelectValue placeholder={selectedGameId ? "Select branch..." : "Choose game first"} />
+                        <SelectValue placeholder={selectedGameId ? t('settings.telegramImport.selectBranchPlaceholder') : t('settings.telegramImport.chooseGameFirst')} />
                       </SelectTrigger>
                       <SelectContent>
                         {branches.map(branch => (
@@ -373,7 +373,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                     </div>
                     <CardContent className="p-4">
                        <p className="text-[10px] text-muted-foreground leading-relaxed italic">
-                         Content will be read from the file automatically. Original message date will be used as the start date.
+                         {t('settings.telegramImport.templateHint')}
                        </p>
                     </CardContent>
                   </Card>
@@ -398,7 +398,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                       onClick={() => setSelectedImport(null)}
                       disabled={importing}
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </Button>
                   </div>
                 </div>
@@ -413,7 +413,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
               <AlertCircle className="h-3.5 w-3.5 text-primary" />
               {t('settings.telegramImport.foundFiles', { count: visibleImports.length })}
             </div>
-            <p className="text-[10px] text-muted-foreground">Select a file to begin the import process</p>
+            <p className="text-[10px] text-muted-foreground">{t('settings.telegramImport.selectFileHint')}</p>
           </div>
         )}
       </DialogContent>

@@ -78,7 +78,12 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
       setDetectedImportType('request-templates');
       setImportResult({
         success: !result.cancelled && result.errors.length === 0,
-        message: result.cancelled ? 'Import cancelled' : `Processed ${result.total_processed} files, ${result.successful_imports} successful`,
+        message: result.cancelled 
+          ? t('common.cancel') 
+          : t('import.requestTemplatesSuccess', { 
+              successful: result.successful_imports, 
+              total: result.total_processed 
+            }),
         ...result
       });
     } catch (error) {
@@ -104,13 +109,13 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
         const totalProcessed = importResult.total_processed || 0;
 
         if (successfulImports > 0) {
-          NotificationService.success(`Successfully imported ${successfulImports} of ${totalProcessed} templates`);
+          NotificationService.success(t('import.requestTemplatesSuccess', { successful: successfulImports, total: totalProcessed }));
         }
 
         // Show errors if any
         if (importResult.errors && importResult.errors.length > 0) {
           console.warn('Import errors:', importResult.errors);
-          NotificationService.warning(`${importResult.errors.length} templates had errors`);
+          NotificationService.warning(t('import.requestTemplatesPartial', { errors: importResult.errors.length }));
         }
       } else {
         // Excel import logic
@@ -516,30 +521,23 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="border rounded-lg p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">📊</span>
-                  <h4 className="font-medium">Excel Data Import</h4>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Import levels, purchase events, and accounts from Excel spreadsheets.
-                </p>
                 <Button
                   onClick={handleExcelImport}
                   disabled={isImporting}
                   className="w-full"
                   variant="outline"
                 >
-                  {isImporting ? t('common.loading') : 'Import Excel Data'}
+                  {isImporting ? t('common.loading') : t('import.title')}
                 </Button>
               </div>
 
               <div className="border rounded-lg p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">📄</span>
-                  <h4 className="font-medium">Request Templates</h4>
+                  <h4 className="font-medium">{t('import.requestTemplatesTitle')}</h4>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Import request templates from text files or folders.
+                  {t('import.requestTemplatesDescription')}
                 </p>
                 <Button
                   onClick={handleTemplateImport}
@@ -547,21 +545,21 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
                   className="w-full"
                   variant="outline"
                 >
-                  {isImporting ? t('common.loading') : 'Import Templates'}
+                  {isImporting ? t('common.loading') : t('import.requestTemplates')}
                 </Button>
               </div>
             </div>
 
             <div className="bg-muted p-4 rounded-lg">
-              <h4 className="font-medium text-sm mb-2">Template File Naming</h4>
+              <h4 className="font-medium text-sm mb-2">{t('import.requestTemplatesInstructions')}</h4>
               <p className="text-sm text-muted-foreground mb-2">
-                Text files should be named exactly like the account they belong to:
+                {t('import.example')}
               </p>
               <div className="text-sm bg-background p-2 rounded border">
-                <strong>Example:</strong>
-                <ul className="ml-4 mt-1 space-y-1">
-                  <li>• <code>1- IN21 Word Trip.txt</code> → Account: "1- IN21 Word Trip"</li>
-                  <li>• <code>SA.17 Word Trip.txt</code> → Account: "SA.17 Word Trip"</li>
+                <strong>{t('import.example')}</strong>
+                <ul className="ps-4 mt-1 space-y-1">
+                  <li>• <code>1- IN21 Word Trip.txt</code> → {t('accounts.account')}: "1- IN21 Word Trip"</li>
+                  <li>• <code>SA.17 Word Trip.txt</code> → {t('accounts.account')}: "SA.17 Word Trip"</li>
                 </ul>
               </div>
             </div>
@@ -570,7 +568,7 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
           <div className="space-y-4">
             <div className={`p-4 rounded-lg ${importResult.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
               <div className="font-medium">
-                {importResult.success ? '✅ Preview' : '❌ Error'}
+                {importResult.success ? `✅ ${t('common.success')}` : `❌ ${t('common.error')}`}
               </div>
               <div className="text-sm mt-1">{importResult.message}</div>
             </div>
@@ -578,13 +576,13 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
             {importResult.success && detectedImportType === 'excel' && (
               <div className="space-y-2">
                 <div className="text-sm">
-                  <strong>{importResult.imported.levels.length}</strong> levels found
+                  <strong>{importResult.imported.levels.length}</strong> {t('levels.title')}
                 </div>
                 <div className="text-sm">
-                  <strong>{importResult.imported.purchaseEvents.length}</strong> purchase events found
+                  <strong>{importResult.imported.purchaseEvents.length}</strong> {t('purchaseEvents.title')}
                 </div>
                 <div className="text-sm">
-                  <strong>{importResult.imported.accounts.length}</strong> accounts found
+                  <strong>{importResult.imported.accounts.length}</strong> {t('accounts.title')}
                 </div>
               </div>
             )}
@@ -592,15 +590,15 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
             {detectedImportType === 'request-templates' && !importResult.cancelled && (
               <div className="space-y-2">
                 <div className="text-sm">
-                  <strong>{importResult.total_processed || 0}</strong> files processed
+                  <strong>{importResult.total_processed || 0}</strong> {t('import.filesProcessed')}
                 </div>
                 <div className="text-sm">
-                  <strong>{importResult.successful_imports || 0}</strong> templates imported successfully
+                  <strong>{importResult.successful_imports || 0}</strong> {t('import.templatesImportedSuccessfully')}
                 </div>
                 {importResult.imported_templates && importResult.imported_templates.length > 0 && (
                   <div className="text-sm">
-                    <div className="font-medium mb-1">Imported templates:</div>
-                    <ul className="ml-4 space-y-1 max-h-32 overflow-y-auto">
+                    <div className="font-medium mb-2">{t('import.importedTemplatesLabel')}</div>
+                    <ul className="ps-4 space-y-1 max-h-32 overflow-y-auto">
                       {importResult.imported_templates.map((template: any, idx: number) => (
                         <li key={idx} className="text-green-600">
                           ✓ {template.account_name}
@@ -611,8 +609,8 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
                 )}
                 {importResult.errors && importResult.errors.length > 0 && (
                   <div className="text-sm">
-                    <div className="font-medium mb-1 text-red-600">Errors:</div>
-                    <ul className="ml-4 space-y-1 max-h-32 overflow-y-auto">
+                    <div className="font-medium mb-1 text-red-600">{t('import.errorsLabel')}</div>
+                    <ul className="ps-4 space-y-1 max-h-32 overflow-y-auto">
                       {importResult.errors.map((error: string, idx: number) => (
                         <li key={idx} className="text-red-600">
                           ✗ {error}
@@ -636,14 +634,14 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
               <Button variant="outline" onClick={() => setImportResult(null)}>
                 {t('common.back')}
               </Button>
-              <Button
+                <Button
                 onClick={handleConfirmImport}
                 disabled={isImporting || (!importResult.success && detectedImportType !== 'request-templates') || importResult.cancelled}
               >
                 {isImporting ? t('common.saving') :
                   detectedImportType === 'request-templates'
-                    ? 'Apply Templates'
-                    : 'Import Data'
+                    ? t('import.confirmTemplates')
+                    : t('import.confirm')
                 }
               </Button>
             </>

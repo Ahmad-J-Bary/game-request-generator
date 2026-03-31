@@ -127,7 +127,7 @@ export function SyncSettingsPanel() {
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('settings.sync.botToken')}</label>
             <Input
               type="password"
-              placeholder="123456:ABC-DEF..."
+              placeholder={t('settings.sync.botTokenPlaceholder')}
               value={botToken}
               onChange={(e) => setBotToken(e.target.value)}
               className="bg-background/40 border-sky-500/20 focus:border-sky-500 rounded-xl h-11"
@@ -136,7 +136,7 @@ export function SyncSettingsPanel() {
           <div className="flex flex-col gap-2">
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('settings.sync.chatId')}</label>
             <Input
-              placeholder="-100..."
+              placeholder={t('settings.sync.chatIdPlaceholder')}
               value={chatId}
               onChange={(e) => setChatId(e.target.value)}
               className="bg-background/40 border-sky-500/20 focus:border-sky-500 rounded-xl h-11"
@@ -154,7 +154,7 @@ export function SyncSettingsPanel() {
                 {t('settings.sync.enabled')}
                 {enabled && <ShieldCheck className="h-3.5 w-3.5 text-sky-500" />}
               </div>
-              <div className="text-[10px] text-muted-foreground">Toggle connectivity for database sync bot</div>
+              <div className="text-[10px] text-muted-foreground">{t('settings.sync.enabledDesc')}</div>
             </div>
             <button
                onClick={() => setEnabled(!enabled)}
@@ -165,7 +165,7 @@ export function SyncSettingsPanel() {
             >
               <span className={cn(
                 "inline-block h-4 w-4 transform rounded-full bg-white transition-all duration-300 shadow-sm",
-                enabled ? "translate-x-6" : "translate-x-1"
+                enabled ? "ltr:translate-x-6 rtl:-translate-x-6" : "ltr:translate-x-1 rtl:-translate-x-1"
               )} />
             </button>
           </div>
@@ -177,7 +177,7 @@ export function SyncSettingsPanel() {
             onClick={handleSave}
             disabled={saving}
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" /> : <Save className="h-4 w-4 ltr:mr-2 rtl:ml-2" />}
             {t('common.save')}
           </Button>
           <Button 
@@ -188,12 +188,12 @@ export function SyncSettingsPanel() {
           >
             {backingUp ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" />
                 {t('settings.sync.backupInProgress')}
               </>
             ) : (
               <>
-                <CloudUpload className="h-4 w-4 mr-2" />
+                <CloudUpload className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
                 {t('settings.sync.backupNow')}
               </>
             )}
@@ -206,12 +206,12 @@ export function SyncSettingsPanel() {
           >
             {restoring ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" />
                 {t('settings.sync.restoreInProgress')}
               </>
             ) : (
               <>
-                <CloudDownload className="h-4 w-4 mr-2" />
+                <CloudDownload className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
                 {t('settings.sync.restoreNow')}
               </>
             )}
@@ -225,7 +225,7 @@ export function SyncSettingsPanel() {
               {t('settings.sync.subtitle')}
             </p>
             <p className="text-[10px] text-sky-600/70 leading-relaxed italic">
-              Your database will be sent as a .sqlite file. Recommended for daily backups to avoid data loss.
+              {t('settings.sync.backupHint')}
             </p>
           </div>
         </div>

@@ -69,7 +69,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
     // Waiting status (cooldown or initial delay)
     return (
       <Badge variant="secondary" className="text-xs bg-amber-500 text-white animate-premium-pulse shadow-sm shadow-amber-500/20">
-        {t('dailyTasks.waiting', 'Wait')} {formatRemainingTime(remainingTime)}
+        {t('dailyTasks.waiting')} {formatRemainingTime(remainingTime)}
       </Badge>
     );
   };

@@ -23,11 +23,11 @@ export default function SettingsPage({ section }: SettingsPageProps) {
   const activeTab: SettingTab = section ?? 'appearance';
 
   const tabs = [
-    { id: 'appearance' as const, label: t('settings.appearance', 'Appearance'),   icon: Palette,       href: '/settings/appearance', color: 'text-violet-500' },
-    { id: 'database'   as const, label: t('settings.database',   'Database'),      icon: Database,      href: '/settings/database',   color: 'text-sky-500'    },
-    { id: 'proxy'      as const, label: t('settings.proxy.title',      'Proxy'),         icon: Network,       href: '/settings/proxy',      color: 'text-emerald-500'},
-    { id: 'telegram'   as const, label: t('settings.telegram',   'Telegram Bot'),  icon: MessageSquare, href: '/settings/telegram',   color: 'text-amber-500'  },
-    { id: 'sync'       as const, label: t('settings.sync.title', 'Sync Bot'),      icon: Database,      href: '/settings/sync',       color: 'text-sky-500'    },
+    { id: 'appearance' as const, label: t('settings.appearance.title', 'Appearance'),   icon: Palette,       href: '/settings/appearance', color: 'text-violet-500' },
+    { id: 'database'   as const, label: t('settings.database.title', 'Database'),     icon: Database,      href: '/settings/database',   color: 'text-sky-500'    },
+    { id: 'proxy'      as const, label: t('settings.proxy.title',    'Proxy'),         icon: Network,       href: '/settings/proxy',      color: 'text-emerald-500'},
+    { id: 'telegram'   as const, label: t('settings.telegram.title', 'Telegram Bot'), icon: MessageSquare, href: '/settings/telegram',   color: 'text-amber-500'  },
+    { id: 'sync'       as const, label: t('settings.sync.title',     'Sync Bot'),      icon: Database,      href: '/settings/sync',       color: 'text-sky-500'    },
   ];
 
   const renderActivePanel = () => {
@@ -102,7 +102,7 @@ export default function SettingsPage({ section }: SettingsPageProps) {
                   key={tab.id}
                   onClick={() => navigate(tab.href)}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 text-left',
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ltr:text-left rtl:text-right',
                     isActive
                       ? 'bg-primary text-primary-foreground shadow-md shadow-primary/20'
                       : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'

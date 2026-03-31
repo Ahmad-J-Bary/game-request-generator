@@ -326,7 +326,7 @@ function AccountsDetailContent({
       <div className="flex-1 flex flex-col h-full bg-background/50">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 sticky top-0 bg-background/80 backdrop-blur-md z-30 p-2 rounded-lg border border-border/50">
         <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent px-2">
-            Accounts Detail
+            {t('nav.accountsDetail')}
         </h2>
 
         <div className="flex items-center gap-2 self-end md:self-auto px-2">

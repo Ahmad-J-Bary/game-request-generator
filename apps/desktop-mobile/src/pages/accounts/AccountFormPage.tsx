@@ -27,14 +27,19 @@ const SimpleCalendar = ({
   onDateSelect: (date: Date) => void;
   onClose: () => void;
 }) => {
+  const { t } = useTranslation();
   const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
 
   const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
+    t('common.months.january'), t('common.months.february'), t('common.months.march'), t('common.months.april'),
+    t('common.months.may'), t('common.months.june'), t('common.months.july'), t('common.months.august'),
+    t('common.months.september'), t('common.months.october'), t('common.months.november'), t('common.months.december')
   ];
 
-  const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  const dayNames = [
+    t('common.days.su'), t('common.days.mo'), t('common.days.tu'), t('common.days.we'),
+    t('common.days.th'), t('common.days.fr'), t('common.days.sa')
+  ];
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -150,6 +155,7 @@ const SimpleTimePicker = ({
   onTimeSelect: (time: string) => void;
   onClose: () => void;
 }) => {
+  const { t } = useTranslation();
   // Parse current time (handles HH:mm, HH:mm:ss, and hh:mm AM/PM)
   const parseTime = (timeStr: string) => {
     if (!timeStr) return { hour: 12, minute: 0, ampm: 'PM' };
@@ -204,7 +210,7 @@ const SimpleTimePicker = ({
         <div className="text-2xl font-mono font-bold">
           {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')} {ampm}
         </div>
-        <div className="text-sm text-muted-foreground">Selected Time</div>
+        <div className="text-sm text-muted-foreground">{t('accounts.selectedTime')}</div>
       </div>
 
       <div className="grid grid-cols-3 gap-2 mb-4">
@@ -398,7 +404,7 @@ export default function AccountFormPage() {
 
     const currentGameId = account ? account.game_id : gameId;
     if (!currentGameId || !name.trim() || !startDate || !startTime.trim() || !requestTemplate.trim()) {
-      NotificationService.error("All fields are required");
+      NotificationService.error(t('errors.required'));
       return;
     }
 
@@ -429,7 +435,7 @@ export default function AccountFormPage() {
       navigate('/accounts');
     } catch (error) {
       console.error('Failed to save account:', error);
-      NotificationService.error("An error occurred while saving the account");
+      NotificationService.error(t('errors.saveFailed'));
     } finally {
       setLoading(false);
     }
@@ -439,7 +445,7 @@ export default function AccountFormPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <BackButton variant="ghost" size="sm" className="h-9">
-            <ChevronLeft className="h-4 w-4 mr-1" />
+            <ChevronLeft className="h-4 w-4 ltr:mr-1 rtl:ml-1" />
             <span className="hidden xs:inline">{t('common.back')}</span>
         </BackButton>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
@@ -462,18 +468,18 @@ export default function AccountFormPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>{t('branches.branch', 'Branch')}</Label>
+              <Label>{t('branches.branch')}</Label>
               <Select 
                 value={selectedBranchId?.toString() || ""} 
                 onValueChange={(val) => setSelectedBranchId(val === "" ? null : parseInt(val, 10))}
               >
                 <SelectTrigger>
-                    <SelectValue placeholder={t('branches.selectBranch', 'Select Branch')} />
+                    <SelectValue placeholder={t('branches.selectBranch')} />
                 </SelectTrigger>
                 <SelectContent>
                     {branches.map(b => (
                         <SelectItem key={b.id} value={b.id.toString()}>
-                            {b.name} {b.is_default && `(${t('common.default', 'Default')})`}
+                            {b.name} {b.is_default && `(${t('common.default')})`}
                         </SelectItem>
                     ))}
                 </SelectContent>
@@ -489,8 +495,8 @@ export default function AccountFormPage() {
                       variant="outline"
                       className="w-full justify-start text-left font-normal"
                     >
-                      <Calendar className="mr-2 h-4 w-4" />
-                      {startDate ? formatDateForDisplay(startDate) : "Pick a date"}
+                      <Calendar className="ltr:mr-2 rtl:ml-2 h-4 w-4" />
+                      {startDate ? formatDateForDisplay(startDate) : t('accounts.pickDate')}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -511,8 +517,8 @@ export default function AccountFormPage() {
                       variant="outline"
                       className="w-full justify-start text-left font-normal"
                     >
-                      <Clock className="mr-2 h-4 w-4" />
-                      {startTime || "Pick a time"}
+                      <Clock className="ltr:mr-2 rtl:ml-2 h-4 w-4" />
+                      {startTime || t('accounts.pickTime')}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">

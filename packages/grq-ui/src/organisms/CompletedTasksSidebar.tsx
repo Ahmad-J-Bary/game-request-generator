@@ -108,8 +108,11 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
     return (
         <div
             className={cn(
-                "fixed inset-y-0 right-0 z-50 w-full sm:w-96 bg-card border-l shadow-2xl transition-transform duration-300",
-                isOpen ? "translate-x-0" : "translate-x-full"
+                "fixed inset-y-0 z-50 w-full sm:w-96 bg-card border-x shadow-2xl transition-all duration-300",
+                "ltr:right-0 rtl:left-0",
+                isOpen 
+                  ? "translate-x-0" 
+                  : "ltr:translate-x-full rtl:-translate-x-full"
             )}
         >
             <div className="flex h-full flex-col">
@@ -118,14 +121,14 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                     className="flex items-center justify-between border-b py-3 bg-card/60 backdrop-blur-md sticky top-0 z-10 shadow-sm"
                     style={{ 
                         paddingTop: 'calc(0.75rem + env(safe-area-inset-top))',
-                        paddingLeft: 'calc(1rem + env(safe-area-inset-left))',
-                        paddingRight: 'calc(1rem + env(safe-area-inset-right))'
+                        paddingInlineStart: 'calc(1rem + env(safe-area-inset-left))',
+                        paddingInlineEnd: 'calc(1rem + env(safe-area-inset-right))'
                     }}
                 >
                     <div className="flex items-center gap-2">
                         <CheckCircle className="h-5 w-5 text-green-500" />
                         <h2 className="text-lg font-semibold truncate max-w-[140px] xs:max-w-none">
-                            {t('dailyTasks.completedToday', 'Completed Today')}
+                            {t('dailyTasks.completedToday')}
                         </h2>
                         <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
                             {completedTasks.length}
@@ -143,8 +146,8 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                                         className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                                         onClick={clearCompletedTasks}
                                     >
-                                        <Trash2 className="h-4 w-4 mr-1.5" />
-                                        <span className="text-xs">{t('dailyTasks.clearCompleted', 'Clear All')}</span>
+                                        <Trash2 className="h-4 w-4 ltr:mr-1.5 rtl:ml-1.5" />
+                                        <span className="text-xs">{t('common.clear')}</span>
                                     </Button>
                                 </div>
                                 
@@ -159,8 +162,8 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end" className="w-48">
                                             <DropdownMenuItem onClick={clearCompletedTasks} className="text-destructive justify-center font-medium">
-                                                <Trash2 className="h-4 w-4 mr-2" />
-                                                {t('dailyTasks.clearCompleted', 'Clear All Completed')}
+                                                <Trash2 className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+                                                {t('dailyTasks.clearCompleted')}
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
@@ -182,18 +185,18 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                     style={{
                         paddingTop: '1rem',
                         paddingBottom: '1rem',
-                        paddingLeft: 'calc(1rem + env(safe-area-inset-left))',
-                        paddingRight: 'calc(1rem + env(safe-area-inset-right))'
+                        paddingInlineStart: 'calc(1rem + env(safe-area-inset-left))',
+                        paddingInlineEnd: 'calc(1rem + env(safe-area-inset-right))'
                     }}
                 >
                     {completedTasks.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-center p-8">
                             <Clock className="h-12 w-12 text-muted-foreground mb-4" />
                             <h3 className="text-lg font-semibold mb-2">
-                                {t('dailyTasks.noCompletedTasks', 'No Completed Tasks')}
+                                {t('dailyTasks.noCompletedTasks')}
                             </h3>
                             <p className="text-sm text-muted-foreground">
-                                {t('dailyTasks.noCompletedTasksDescription', 'Complete tasks to see them here')}
+                                {t('dailyTasks.noCompletedTasksDescription')}
                             </p>
                         </div>
                     ) : (
@@ -221,11 +224,11 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                                                             {isExpanded ? (
                                                                 <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
                                                             ) : (
-                                                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground ltr:rotate-0 rtl:rotate-180" />
                                                             )}
                                                             <span className="font-semibold text-sm truncate">{accountName}</span>
                                                         </div>
-                                                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                                                        <div className="flex items-center gap-2 shrink-0 ltr:ml-2 rtl:mr-2">
                                                             {!isExpanded && (
                                                                 <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
                                                                     {latestTask.timeSpent}s
@@ -265,7 +268,7 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                                                                                     !task.isPurchase && task.requestType === 'Session Only' && "bg-gray-600 hover:bg-gray-600 text-white"
                                                                                 )}
                                                                             >
-                                                                                {(task.requestType as string).includes('Session') ? 'Session' : 'Event'}
+                                                                                {(task.requestType as string).includes('Session') ? t('requests.session') : t('requests.event')}
                                                                             </Badge>
                                                                             {task.eventToken && (
                                                                                 <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[120px]">

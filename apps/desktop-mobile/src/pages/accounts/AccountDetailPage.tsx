@@ -616,7 +616,7 @@ export default function AccountDetailPage() {
             <div className="flex items-center gap-3 px-4 py-2 bg-accent/20 rounded-t-xl border-x border-t border-border/50">
                 <div className="h-5 w-1 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
                 <h3 className="text-sm font-bold text-foreground tracking-tight flex items-center gap-2 flex-1">
-                    {account.branch_name || 'Default Branch'}
+                    {account.branch_name || t('branches.defaultBranch', 'Default Branch')}
                 </h3>
             </div>
             <Card className="rounded-t-none border-t-0 shadow-lg shadow-black/5 bg-background/40 backdrop-blur-sm">

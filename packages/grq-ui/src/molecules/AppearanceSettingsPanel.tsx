@@ -20,7 +20,7 @@ export function AppearanceSettingsPanel() {
           <CardHeader className="pb-3 border-b border-border/40">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Sun className="h-4 w-4 text-amber-500" /> 
-              {t('settings.theme', 'Theme')}
+              {t('settings.theme.title', 'Theme')}
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-4 flex justify-between gap-3">
@@ -32,7 +32,7 @@ export function AppearanceSettingsPanel() {
               )}
             >
               <Sun className="h-6 w-6 mb-2" />
-              <span className="text-xs font-semibold">Light</span>
+              <span className="text-xs font-semibold">{t('settings.theme.light')}</span>
             </button>
             <button
               onClick={() => setTheme('dark')}
@@ -42,7 +42,7 @@ export function AppearanceSettingsPanel() {
               )}
             >
               <Moon className="h-6 w-6 mb-2" />
-              <span className="text-xs font-semibold">Dark</span>
+              <span className="text-xs font-semibold">{t('settings.theme.dark')}</span>
             </button>
           </CardContent>
         </Card>
@@ -52,28 +52,28 @@ export function AppearanceSettingsPanel() {
           <CardHeader className="pb-3 border-b border-border/40">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Languages className="h-4 w-4 text-emerald-500" /> 
-              {t('settings.language', 'Language')}
+              {t('settings.language.title', 'Language')}
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-4 flex flex-col gap-2">
             <button
               onClick={() => setLanguage('en')}
               className={cn(
-                "w-full flex flex-row items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left",
+                "w-full flex flex-row items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ltr:text-left rtl:text-right",
                 language === 'en' ? "border-primary bg-primary/5 text-primary" : "border-border/60 hover:border-primary/50 text-muted-foreground"
               )}
             >
-              <span className="font-semibold text-sm">English (EN)</span>
+              <span className="font-semibold text-sm">{t('settings.language.english')}</span>
               {language === 'en' && <div className="h-2 w-2 rounded-full bg-primary" />}
             </button>
             <button
               onClick={() => setLanguage('ar')}
               className={cn(
-                "w-full flex flex-row items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left",
+                "w-full flex flex-row items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ltr:text-left rtl:text-right",
                 language === 'ar' ? "border-primary bg-primary/5 text-primary" : "border-border/60 hover:border-primary/50 text-muted-foreground"
               )}
             >
-              <span className="font-semibold text-sm">العربية (AR)</span>
+              <span className="font-semibold text-sm">{t('settings.language.arabic')}</span>
               {language === 'ar' && <div className="h-2 w-2 rounded-full bg-primary" />}
             </button>
           </CardContent>

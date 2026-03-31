@@ -80,7 +80,7 @@ export function ProxySettingsPanel() {
       setRemainingTime(config.remaining_time || '');
     } catch (error) {
       console.error('Failed to load Proxy config:', error);
-      toast.error('Failed to load proxy configuration');
+      toast.error(t('settings.proxy.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -107,10 +107,10 @@ export function ProxySettingsPanel() {
         remaining_time: remainingTime || null,
         reminder_sent: false
       });
-      toast.success('Proxy configuration saved');
+      toast.success(t('settings.proxy.saveSuccess'));
     } catch (error) {
       console.error('Failed to save proxy config:', error);
-      toast.error('Failed to save configuration');
+      toast.error(t('common.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -138,10 +138,10 @@ export function ProxySettingsPanel() {
       if (parsed.remaining_time !== undefined) setRemainingTime(parsed.remaining_time || '');
       
       setEnabled(true);
-      toast.success('Proxy link parsed successfully! Click save to apply.');
+      toast.success(t('settings.proxy.parseSuccess'));
     } catch (error: any) {
       console.error('Failed to parse proxy link:', error);
-      toast.error(`Invalid proxy text/link: ${error}`);
+      toast.error(t('settings.proxy.parseError', { error: String(error) }));
     } finally {
       setParsing(false);
     }
@@ -149,7 +149,7 @@ export function ProxySettingsPanel() {
 
   const handleTestProxy = async () => {
     if (!host || !port) {
-      toast.error('Please enter Host and Port first.');
+      toast.error(t('settings.proxy.testRequired'));
       return;
     }
     try {
@@ -174,7 +174,7 @@ export function ProxySettingsPanel() {
     try {
       setSharing(true);
       await invoke('send_proxy_details_to_telegram');
-      toast.success('Proxy details sent to Telegram!');
+      toast.success(t('settings.proxy.telegramSuccess'));
     } catch (error: any) {
       console.error('Failed to send to Telegram:', error);
       toast.error(error);
@@ -224,14 +224,14 @@ export function ProxySettingsPanel() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Network className="h-5 w-5 text-primary" />
-            <CardTitle>Proxy Settings</CardTitle>
+            <CardTitle>{t('settings.proxy.config')}</CardTitle>
           </div>
           <Badge variant={enabled ? "default" : "secondary"} className={cn(enabled ? "bg-green-500" : "")}>
-            {enabled ? "Active" : "Disabled"}
+            {enabled ? t('settings.proxy.active') : t('settings.proxy.disabled')}
           </Badge>
         </div>
         <CardDescription>
-          Configure a proxy connection for the app. {daysDisplay !== null && (
+          {t('settings.proxy.configure')} {daysDisplay !== null && (
             <span className="text-primary font-bold block mt-1 animate-pulse">
               {t('settings.proxy.daysRemaining', { count: daysDisplay })}
             </span>
@@ -244,11 +244,11 @@ export function ProxySettingsPanel() {
         <div className="flex flex-col gap-2 p-3 rounded-xl bg-background/50 border border-primary/20">
           <label className="text-sm font-semibold flex items-center gap-2">
             <Link2 className="h-4 w-4 text-primary" />
-            Smart Telegram Link / Bot Message
+            {t('settings.proxy.smartLink')}
           </label>
           <div className="flex gap-2">
             <Input
-              placeholder="Paste proxy link or proxy bot message here..."
+              placeholder={t('settings.proxy.smartLinkPlaceholder')}
               value={proxyLink}
               onChange={(e) => setProxyLink(e.target.value)}
               className="bg-background focus:border-primary"
@@ -259,21 +259,21 @@ export function ProxySettingsPanel() {
                 disabled={!proxyLink || parsing}
                 className="shrink-0 font-bold"
             >
-              {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Extract"}
+              {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : t('settings.proxy.extract')}
             </Button>
           </div>
-          <p className="text-[10px] text-muted-foreground ml-1">
-             Paste a standard Telegram proxy link (tg://) or copy-paste the entire proxy details message sent by your provider bot.
+          <p className="text-[10px] text-muted-foreground ltr:ml-1 rtl:mr-1">
+             {t('settings.proxy.smartLinkHint')}
           </p>
         </div>
 
         {/* Manual Configuration */}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold">Proxy Type</label>
+            <label className="text-sm font-semibold">{t('settings.proxy.proxyType')}</label>
             <Select value={proxyType} onValueChange={setProxyType}>
               <SelectTrigger className="bg-background/50">
-                <SelectValue placeholder="Select type" />
+                <SelectValue placeholder={t('common.select')} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="http">HTTP / HTTPS</SelectItem>
@@ -288,9 +288,9 @@ export function ProxySettingsPanel() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold">Host / Server</label>
+            <label className="text-sm font-semibold">{t('settings.proxy.host')}</label>
             <Input
-              placeholder="e.g. 127.0.0.1"
+              placeholder={t('settings.proxy.hostPlaceholder')}
               value={host}
               onChange={(e) => setHost(e.target.value)}
               className="bg-background/50"
@@ -298,10 +298,10 @@ export function ProxySettingsPanel() {
           </div>
           
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold">Port</label>
+            <label className="text-sm font-semibold">{t('settings.proxy.port')}</label>
             <Input
               type="number"
-              placeholder="e.g. 1080"
+              placeholder={t('settings.proxy.portPlaceholder')}
               value={port}
               onChange={(e) => setPort(e.target.value)}
               className="bg-background/50"
@@ -309,9 +309,9 @@ export function ProxySettingsPanel() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold">Username <span className="text-muted-foreground font-normal">(Optional)</span></label>
+            <label className="text-sm font-semibold">{t('settings.proxy.username')} <span className="text-muted-foreground font-normal">{t('settings.proxy.optional')}</span></label>
             <Input
-              placeholder="Username"
+              placeholder={t('settings.proxy.username')}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="bg-background/50"
@@ -319,10 +319,10 @@ export function ProxySettingsPanel() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold">Password <span className="text-muted-foreground font-normal">(Optional)</span></label>
+            <label className="text-sm font-semibold">{t('settings.proxy.password')} <span className="text-muted-foreground font-normal">{t('settings.proxy.optional')}</span></label>
             <Input
               type="password"
-              placeholder="Password"
+              placeholder={t('settings.proxy.password')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="bg-background/50"
@@ -331,10 +331,10 @@ export function ProxySettingsPanel() {
 
           {proxyType === 'mtproxy' && (
              <div className="flex flex-col gap-2 sm:col-span-2">
-               <label className="text-sm font-semibold text-blue-500">MTProxy Secret <span className="text-muted-foreground font-normal">(Required for MTProxy)</span></label>
+                               <label className="text-sm font-semibold text-blue-500">{t('settings.proxy.mtproxySecret')} <span className="text-muted-foreground font-normal">{t('settings.proxy.requiredForMtproxy')}</span></label>
                <Input
                  type="password"
-                 placeholder="Secret block (e.g. eeeee...)"
+                 placeholder={t('settings.proxy.mtproxySecretPlaceholder')}
                  value={secret}
                  onChange={(e) => setSecret(e.target.value)}
                  className="bg-blue-500/5 focus:border-blue-500"
@@ -347,10 +347,10 @@ export function ProxySettingsPanel() {
           <div className="flex items-center justify-between p-3 rounded-xl bg-background/40 border-2 border-primary/10">
             <div className="space-y-0.5">
               <div className="text-sm font-bold flex items-center gap-2">
-                Enable Proxy Integration
+                {t('settings.proxy.enableIntegration')}
                 {enabled && <ShieldCheck className="h-3 w-3 text-green-500" />}
               </div>
-              <div className="text-[10px] text-muted-foreground">Route applicable app traffic through this proxy</div>
+              <div className="text-[10px] text-muted-foreground">{t('settings.proxy.routeTraffic')}</div>
             </div>
             <button
                onClick={() => setEnabled(!enabled)}
@@ -361,7 +361,7 @@ export function ProxySettingsPanel() {
             >
               <span className={cn(
                 "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                enabled ? "translate-x-6" : "translate-x-1"
+                enabled ? "ltr:translate-x-6 rtl:-translate-x-6" : "ltr:translate-x-1 rtl:-translate-x-1"
               )} />
             </button>
           </div>
@@ -374,8 +374,8 @@ export function ProxySettingsPanel() {
               onClick={handleSave}
               disabled={saving || testing || sharing}
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-              Save Configuration
+              {saving ? <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" /> : <Save className="h-4 w-4 ltr:mr-2 rtl:ml-2" />}
+              {t('settings.proxy.saveConfig')}
             </Button>
 
             <Button 
@@ -384,8 +384,8 @@ export function ProxySettingsPanel() {
               onClick={handleTestProxy}
               disabled={saving || testing || sharing || !host || !port}
             >
-              {testing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ActivitySquare className="h-4 w-4 mr-2" />}
-              Test Connection
+              {testing ? <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" /> : <ActivitySquare className="h-4 w-4 ltr:mr-2 rtl:ml-2" />}
+              {t('settings.proxy.testConnection')}
             </Button>
           </div>
 
@@ -396,7 +396,7 @@ export function ProxySettingsPanel() {
               onClick={handleSendToTelegram}
               disabled={saving || testing || sharing || !host || !port}
             >
-              {sharing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                             {sharing ? <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" /> : <Send className="h-4 w-4 ltr:mr-2 rtl:ml-2" />}
               {t('settings.proxy.alertGroup')}
             </Button>
           )}

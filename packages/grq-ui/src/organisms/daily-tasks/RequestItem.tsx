@@ -35,12 +35,12 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
     const [isResponseOpen, setIsResponseOpen] = useState(false);
 
     const getRequestTypeLabel = (type: string) => {
-        if (type.includes('Session')) return 'Session';
-        if (type.includes('Event')) return 'Event';
+        if (type.includes('Session')) return t('requests.session');
+        if (type.includes('Event')) return t('requests.event');
         switch (type) {
-            case 'session': return 'Session';
-            case 'event': return 'Event';
-            case 'purchase_event': return 'Purchase';
+            case 'session': return t('requests.session');
+            case 'event': return t('requests.event');
+            case 'purchase_event': return t('requests.purchaseEvent');
             default: return type;
         }
     };
@@ -69,16 +69,16 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
             setIsResponseOpen(true);
             
             if (res.status === 200) {
-                toast.success('Request completed successfully! (Status 200 OK)');
+                toast.success(t('dailyTasks.requestSuccess'));
                 if (!isCompleted) {
                     onComplete();
                 }
             } else {
-                toast.error(`Request finished with status code: ${res.status} ${res.status_text}`);
+                toast.error(t('dailyTasks.requestStatusError', { status: res.status, text: res.status_text }));
             }
         } catch (error: any) {
             console.error('Failed to send request:', error);
-            toast.error(`Repeater Error: ${error}`);
+            toast.error(t('dailyTasks.repeaterError', { error }));
         } finally {
             setIsSending(false);
         }
@@ -104,12 +104,12 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
                     <div className="flex items-center gap-1.5 px-2 py-1 bg-primary/5 border border-primary/20 rounded-lg shadow-sm" title="Account Task Order">
                         <Hash className="h-3 w-3 text-primary" />
                         <span className="text-xs font-black tracking-tight text-primary">
-                            TASK {index}<span className="opacity-40 font-medium">/{total}</span>
+                            {t('dailyTasks.taskLabel', { index })} <span className="opacity-40 font-medium">/{total}</span>
                         </span>
                     </div>
 
                     <Badge variant={getRequestTypeBadgeVariant(request.request_type)} className="shadow-sm">
-                        <ShieldCheck className="h-3 w-3 mr-1 opacity-70" />
+                        <ShieldCheck className="h-3 w-3 ltr:mr-1 rtl:ml-1 opacity-70" />
                         {getRequestTypeLabel(request.request_type)}
                     </Badge>
 
@@ -138,7 +138,7 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
                                 !isReady ? "opacity-30 cursor-not-allowed grayscale" : "transition-all active:scale-95"
                             )}
                         >
-                            {isSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                            {isSending ? <Loader2 className="h-4 w-4 ltr:mr-2 rtl:ml-2 animate-spin" /> : <Send className="h-4 w-4 ltr:mr-2 rtl:ml-2" />}
                             {t('dailyTasks.sendRequest', 'Send')}
                         </Button>
                     )}
@@ -153,7 +153,7 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
                             !isReady ? "opacity-30 cursor-not-allowed grayscale" : "hover:bg-primary hover:text-primary-foreground transition-colors"
                         )}
                     >
-                        <Copy className="h-4 w-4 mr-1" />
+                        <Copy className="h-4 w-4 ltr:mr-1 rtl:ml-1" />
                         {t('common.copy')}
                     </Button>
                     
@@ -168,15 +168,15 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
                                 !isReady ? "opacity-30 cursor-not-allowed grayscale" : "transition-all active:scale-95"
                             )}
                         >
-                            <CheckCircle className="h-4 w-4 mr-1" />
+                            <CheckCircle className="h-4 w-4 ltr:mr-1 rtl:ml-1" />
                             {t('dailyTasks.markComplete', 'Done')}
                         </Button>
                     )}
                     
                     {isCompleted && (
                         <Badge variant="default" className="bg-emerald-500 hover:bg-emerald-600 shadow-sm shadow-emerald-500/20 px-3 py-1">
-                            <CheckCircle className="h-4 w-4 mr-1.5" />
-                            Completed
+                            <CheckCircle className="h-4 w-4 ltr:mr-1.5 rtl:ml-1.5" />
+                            {t('dailyTasks.completed')}
                         </Badge>
                     )}
                 </div>

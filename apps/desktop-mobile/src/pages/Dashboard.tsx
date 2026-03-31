@@ -67,11 +67,11 @@ export default function Dashboard() {
     try {
       const message = `${account.name}`;
       await invoke('send_to_telegram', { message });
-      NotificationService.success(`Report sent to Telegram for ${account.name}!`);
+      NotificationService.success(t('dashboard.reportSent', { name: account.name }));
     } catch (e: unknown) {
       console.error(e);
       const error = e as Error;
-      NotificationService.error(error.message || 'Failed to send to Telegram. Check settings.');
+      NotificationService.error(error.message || t('errors.saveFailed'));
     }
   };
 
@@ -92,14 +92,14 @@ export default function Dashboard() {
       await invoke('send_excel_to_telegram', { 
         bytes: Array.from(uint8Array), 
         filename,
-        caption: `📊 <b>Complete Game Request Report</b>\nGenerated on: ${new Date().toLocaleString()}`
+        caption: t('dashboard.completeReportCaption', { date: new Date().toLocaleString() })
       });
 
-      NotificationService.success(t('settings.reportSent', 'Excel report sent successfully!'));
+      NotificationService.success(t('settings.reportSent'));
     } catch (e: unknown) {
       console.error(e);
       const error = e as Error;
-      NotificationService.error(error.message || 'Failed to send report. Check Telegram settings.');
+      NotificationService.error(error.message || t('errors.saveFailed'));
     } finally {
       setIsReporting(false);
     }
@@ -206,10 +206,10 @@ export default function Dashboard() {
       {/* --- KPI STATS --- */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: t('dashboard.totalGames'), val: games.length, icon: Gamepad2, color: 'text-blue-500', desc: 'Managed titles' },
-          { label: t('dashboard.totalAccounts', 'Total Accounts'), val: allAccounts.length, icon: Users, color: 'text-purple-500', desc: 'Across all games' },
-          { label: t('dailyTasks.title'), val: todayTasksCount, icon: Clock, color: 'text-orange-500', desc: 'Pending for today' },
-          { label: 'Success Rate', val: `${successRate}%`, icon: TrendingUp, color: 'text-green-500', desc: 'Task completion' },
+          { label: t('dashboard.totalGames'), val: games.length, icon: Gamepad2, color: 'text-blue-500', desc: t('dashboard.managedTitles') },
+          { label: t('dashboard.totalAccounts'), val: allAccounts.length, icon: Users, color: 'text-purple-500', desc: t('dashboard.acrossAllGames') },
+          { label: t('dailyTasks.title'), val: todayTasksCount, icon: Clock, color: 'text-orange-500', desc: t('dailyTasks.noTasksDescription') },
+          { label: t('dashboard.successRate'), val: `${successRate}%`, icon: TrendingUp, color: 'text-green-500', desc: t('dashboard.taskCompletion') },
         ].map((stat, i) => (
           <Card key={i} className="group hover:border-primary/50 transition-all duration-300 overflow-hidden relative border-none bg-card/50 backdrop-blur-sm border-2">
             <div className={`absolute top-0 left-0 w-1 h-full bg-gradient-to-b ${stat.color.replace('text', 'from').replace('-500', '-600')} to-transparent opacity-50`} />
@@ -235,9 +235,9 @@ export default function Dashboard() {
           <CardHeader className="px-0 pt-0">
             <CardTitle className="flex items-center gap-2 text-xl font-bold italic underline decoration-primary/30 decoration-4 underline-offset-4">
               <MapPin className="h-5 w-5 text-primary" />
-              Regional Proxy Distribution
+              {t('dashboard.regionalDist')}
             </CardTitle>
-            <CardDescription>Account spread across US proxy locations</CardDescription>
+            <CardDescription>{t('dashboard.regionalDistDesc')}</CardDescription>
           </CardHeader>
           <CardContent className="px-0 pt-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -257,7 +257,7 @@ export default function Dashboard() {
                     </div>
                     <Progress value={percentage} className="h-2" indicatorClassName={loc.color} />
                     <div className="text-[10px] text-muted-foreground font-bold flex justify-end uppercase">
-                      {percentage}% of total
+                      {percentage}% {t('dashboard.percentageOfTotal')}
                     </div>
                   </div>
                 );
@@ -270,7 +270,7 @@ export default function Dashboard() {
         <div className="lg:col-span-4 space-y-6">
            <Card className="border-primary/20 bg-primary/5">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-bold">Recommended</CardTitle>
+              <CardTitle className="text-lg font-bold">{t('dashboard.recommended')}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3">
               <Button 
@@ -280,7 +280,7 @@ export default function Dashboard() {
               >
                 <span className="flex items-center gap-2">
                   <Zap className="h-4 w-4" />
-                  Proceed to Daily Tasks
+                  {t('dashboard.proceedDaily')}
                 </span>
                 <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </Button>
@@ -291,7 +291,7 @@ export default function Dashboard() {
               >
                 <span className="flex items-center gap-2 text-muted-foreground group-hover:text-foreground">
                   <Gamepad2 className="h-4 w-4" />
-                  Manage Inventory
+                  {t('dashboard.manageInventory')}
                 </span>
               </Button>
             </CardContent>
@@ -299,7 +299,7 @@ export default function Dashboard() {
 
           <Card className="border-none shadow-none bg-transparent">
              <CardHeader className="px-0 pb-3">
-                <CardTitle className="text-lg font-bold italic">Latest Win</CardTitle>
+                <CardTitle className="text-lg font-bold italic">{t('dashboard.latestWin')}</CardTitle>
              </CardHeader>
              <CardContent className="px-0">
                 {completedAccounts.length > 0 ? (
@@ -309,11 +309,11 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <p className="text-sm font-bold truncate max-w-[150px]">{completedAccounts[0].name}</p>
-                      <p className="text-[10px] text-green-600 dark:text-green-400 font-black uppercase tracking-tighter">Achievement Unlocked</p>
+                      <p className="text-[10px] text-green-600 dark:text-green-400 font-black uppercase tracking-tighter">{t('dashboard.achievementUnlocked')}</p>
                     </div>
                   </div>
                 ) : (
-                  <div className="text-sm text-muted-foreground p-4 italic">No accounts completed yet. Keep pushing!</div>
+                  <div className="text-sm text-muted-foreground p-4 italic">{t('dashboard.noCompleted')}</div>
                 )}
              </CardContent>
           </Card>
@@ -326,14 +326,14 @@ export default function Dashboard() {
           <div className="space-y-1">
             <h3 className="text-2xl font-black flex items-center gap-3 italic">
               <ShieldCheck className="h-7 w-7 text-green-500" />
-              THE HALL OF FAME
+              {t('dashboard.hallOfFame')}
             </h3>
             <CardDescription className="font-medium text-sm">
-              Legendary accounts that reached 100% completion
+              {t('dashboard.hallOfFameDesc')}
             </CardDescription>
           </div>
           <Badge variant="secondary" className="px-4 py-1 text-sm font-black border-2 bg-green-500 text-white rounded-full">
-            {completedAccounts.length} LEGENDS
+            {completedAccounts.length} {t('dashboard.legends')}
           </Badge>
         </div>
 
@@ -341,20 +341,20 @@ export default function Dashboard() {
           {loading ? (
              <div className="flex items-center justify-center p-20 text-muted-foreground italic">
                <div className="animate-pulse flex items-center gap-3">
-                 <Zap className="h-6 w-6 text-primary animate-bounce" />
-                 Calling archives...
+                  <Zap className="h-6 w-6 text-primary animate-bounce" />
+                  {t('dashboard.callingArchives')}
                </div>
              </div>
           ) : completedAccounts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center text-center p-16 rounded-3xl border-2 border-dashed bg-muted/20">
-              <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center mb-6 opacity-40">
-                <ShieldCheck className="h-10 w-10" />
+              <div className="flex flex-col items-center justify-center text-center p-16 rounded-3xl border-2 border-dashed bg-muted/20">
+                <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center mb-6 opacity-40">
+                  <ShieldCheck className="h-10 w-10" />
+                </div>
+                <h3 className="text-xl font-black text-muted-foreground uppercase tracking-widest leading-none mb-2">{t('dashboard.emptyGallery')}</h3>
+                <p className="text-sm text-muted-foreground max-w-sm font-medium">
+                  {t('dashboard.emptyGalleryDesc')}
+                </p>
               </div>
-              <h3 className="text-xl font-black text-muted-foreground uppercase tracking-widest leading-none mb-2">Empty Gallery</h3>
-              <p className="text-sm text-muted-foreground max-w-sm font-medium">
-                Complete an account to immortalize it in the hall of fame. Every journey begins with a single request.
-              </p>
-            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {completedAccounts.map((account) => (
@@ -368,7 +368,7 @@ export default function Dashboard() {
                       size="icon"
                       className="h-9 w-9 rounded-full shadow-lg bg-background/80 backdrop-blur-sm border-primary/20 hover:border-primary hover:text-primary"
                       onClick={() => handleSendToTelegram(account)}
-                      title="Send to Telegram"
+                      title={t('dashboard.sendToTelegram')}
                     >
                       <Send className="h-4 w-4" />
                     </Button>
@@ -398,13 +398,13 @@ export default function Dashboard() {
                   
                   <div className="mt-auto flex items-end justify-between border-t pt-4 relative z-10">
                     <div className="flex flex-col">
-                      <span className="text-muted-foreground font-black uppercase tracking-widest text-[9px] mb-1">Enlisted On</span>
+                      <span className="text-muted-foreground font-black uppercase tracking-widest text-[9px] mb-1">{t('dashboard.enlistedOn')}</span>
                       <span className="font-bold text-sm">{account.start_date}</span>
                     </div>
                     <div className="flex flex-col text-right">
-                      <span className="text-muted-foreground font-black uppercase tracking-widest text-[9px] mb-1">Legacy</span>
+                      <span className="text-muted-foreground font-black uppercase tracking-widest text-[9px] mb-1">{t('dashboard.legacy')}</span>
                       <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-black text-sm italic">
-                        COMPLETED
+                        {t('dailyTasks.completed').toUpperCase()}
                         <CheckCircle className="h-4 w-4" />
                       </div>
                     </div>

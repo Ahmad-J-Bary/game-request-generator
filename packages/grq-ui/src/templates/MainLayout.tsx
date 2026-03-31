@@ -46,15 +46,15 @@ const navigation = [
 ];
 
 const settingsNavigation = [
-  { name: 'appearance', href: '/settings/appearance', icon: Palette,      labelKey: 'settings.appearance' },
-  { name: 'database',   href: '/settings/database',   icon: Database,     labelKey: 'settings.database'   },
+  { name: 'appearance', href: '/settings/appearance', icon: Palette,      labelKey: 'settings.appearance.title' },
+  { name: 'database',   href: '/settings/database',   icon: Database,     labelKey: 'settings.database.title'   },
   { name: 'proxy',      href: '/settings/proxy',      icon: Network,      labelKey: 'settings.proxy.title' },
-  { name: 'telegram',   href: '/settings/telegram',   icon: MessageSquare,labelKey: 'settings.telegram'   },
+  { name: 'telegram',   href: '/settings/telegram',   icon: MessageSquare,labelKey: 'settings.telegram.title'   },
   { name: 'sync',       href: '/settings/sync',       icon: Database,     labelKey: 'settings.sync.title' },
 ];
 
 export function MainLayout({ children }: MainLayoutProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar, completedSidebarOpen, toggleCompletedSidebar } = useSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -113,12 +113,12 @@ export function MainLayout({ children }: MainLayoutProps) {
         }}
       >
         {/* Logo */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl overflow-hidden bg-background shadow-md">
             <img src="/icon.png" alt="Logo" className="h-full w-full object-cover" />
           </div>
           <span className="font-bold text-base tracking-tight bg-gradient-to-r from-primary via-primary/80 to-primary/50 bg-clip-text text-transparent">
-            Game Manager
+            {t('nav.gameManager')}
           </span>
         </div>
 
@@ -128,7 +128,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           <button
             onClick={() => setProxySheetOpen(true)}
             className="relative h-9 w-9 flex items-center justify-center rounded-xl hover:bg-emerald-500/10 transition-colors group"
-            title="Proxy Settings"
+            title={t('settings.proxy.title')}
           >
             <Network className="h-4.5 w-4.5 text-emerald-500 group-hover:scale-110 transition-transform" />
           </button>
@@ -142,7 +142,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                 ? "bg-primary/10 hover:bg-primary/20"
                 : "hover:bg-primary/10"
             )}
-            title="Completed Tasks"
+            title={t('dailyTasks.completed')}
           >
             <CheckCircle className={cn(
               "h-4.5 w-4.5 group-hover:scale-110 transition-transform",
@@ -154,7 +154,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           <button
             onClick={() => setTelegramImportOpen(true)}
             className="relative h-9 w-9 flex items-center justify-center rounded-xl hover:bg-primary/10 transition-colors group"
-            title="Telegram Imports"
+            title={t('settings.telegramImport.title')}
           >
             <MessageSquare className="h-4.5 w-4.5 text-primary/70 group-hover:scale-110 transition-transform" />
             {pendingImportsCount > 0 && (
@@ -192,20 +192,23 @@ export function MainLayout({ children }: MainLayoutProps) {
       {/* Drawer panel */}
       <div
         className={cn(
-          'fixed top-0 right-0 bottom-0 z-50 w-72 flex flex-col lg:hidden',
-          'bg-card/95 backdrop-blur-2xl border-l border-border/40 shadow-2xl',
-          'transition-transform duration-300 ease-out',
-          drawerOpen ? 'translate-x-0' : 'translate-x-full'
+          'fixed top-0 bottom-0 z-50 w-72 flex flex-col lg:hidden',
+          'bg-card/95 backdrop-blur-2xl border-inline-end border-border/40 shadow-2xl',
+          'transition-all duration-300 ease-out',
+          'end-0',
+          drawerOpen 
+            ? 'translate-x-0' 
+            : 'translate-x-full rtl:-translate-x-full'
         )}
         style={{
           paddingTop:   'env(safe-area-inset-top)',
-          paddingRight: 'env(safe-area-inset-right)',
+          paddingInlineEnd: 'env(safe-area-inset-right)',
           paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))',
         }}
       >
         {/* Drawer header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/40">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-primary to-primary/50 flex items-center justify-center shadow">
               <SlidersHorizontal className="h-3.5 w-3.5 text-primary-foreground" />
             </div>
@@ -270,7 +273,7 @@ export function MainLayout({ children }: MainLayoutProps) {
             <span className="flex-1">{t('dailyTasks.completed', 'Completed')}</span>
             {completedSidebarOpen && (
               <span className="text-[10px] font-bold bg-primary-foreground/20 text-primary-foreground px-1.5 py-0.5 rounded-full">
-                Open
+                {t('common.open', 'Open')}
               </span>
             )}
           </button>
@@ -282,7 +285,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       ══════════════════════════════════════════════════*/}
       <aside
         className={cn(
-          'hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col border-r bg-card transition-all duration-300',
+          'hidden lg:flex fixed inset-y-0 z-50 flex-col border-inline-end bg-card start-0 transition-all duration-300',
           sidebarCollapsed ? 'w-16' : 'w-64'
         )}
       >
@@ -294,7 +297,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                 <div className="h-8 w-8 rounded-lg overflow-hidden flex items-center justify-center">
                   <img src="/icon.png" alt="Logo" className="h-full w-full object-cover" />
                 </div>
-                <span className="text-lg font-semibold whitespace-nowrap">Game Manager</span>
+                <span className="text-lg font-semibold whitespace-nowrap">{t('nav.gameManager')}</span>
               </div>
             ) : (
               <div className="h-8 w-8 mx-auto rounded-lg overflow-hidden flex items-center justify-center">
@@ -345,12 +348,12 @@ export function MainLayout({ children }: MainLayoutProps) {
                 )}
                 title={sidebarCollapsed ? t('settings.telegramImport.title') : undefined}
               >
-                 <MessageSquare className={cn('h-5 w-5 flex-shrink-0 transition-colors', !sidebarCollapsed ? 'mr-3' : '', telegramImportOpen ? 'text-primary' : 'group-hover:text-primary')} />
-                 {!sidebarCollapsed && <span className="flex-1 text-left">{t('settings.telegramImport.title')}</span>}
+                 <MessageSquare className={cn('h-5 w-5 flex-shrink-0 transition-colors', !sidebarCollapsed ? 'me-3' : '', telegramImportOpen ? 'text-primary' : 'group-hover:text-primary')} />
+                 {!sidebarCollapsed && <span className="flex-1 ltr:text-left rtl:text-right">{t('settings.telegramImport.title')}</span>}
                  {pendingImportsCount > 0 && (
                   <span className={cn(
                     "flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-background",
-                    sidebarCollapsed ? "absolute top-1.5 right-1.5" : "ml-2"
+                    sidebarCollapsed ? "absolute top-1.5 right-1.5" : "ms-2"
                   )}>
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                   </span>
@@ -367,8 +370,8 @@ export function MainLayout({ children }: MainLayoutProps) {
                 )}
                 title={sidebarCollapsed ? t('dailyTasks.completed') : undefined}
               >
-                <CheckCircle className={cn('h-5 w-5 flex-shrink-0 transition-colors', !sidebarCollapsed ? 'mr-3' : '', completedSidebarOpen ? 'text-primary' : '')} />
-                {!sidebarCollapsed && <span className="flex-1 text-left">{t('dailyTasks.completed')}</span>}
+                <CheckCircle className={cn('h-5 w-5 flex-shrink-0 transition-colors', !sidebarCollapsed ? 'ltr:mr-3 rtl:ml-3' : '', completedSidebarOpen ? 'text-primary' : '')} />
+                {!sidebarCollapsed && <span className="flex-1 ltr:text-left rtl:text-right">{t('dailyTasks.completed')}</span>}
               </button>
             </div>
           </nav>
@@ -394,10 +397,13 @@ export function MainLayout({ children }: MainLayoutProps) {
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent 
-                      side="right" 
+                      side={sidebarCollapsed ? (i18n.dir() === 'rtl' ? "left" : "right") : "bottom"} 
                       align="end" 
                       sideOffset={14} 
-                      className="w-48 bg-card/85 backdrop-blur-xl border-border/40 shadow-2xl p-1.5 animate-in slide-in-from-left-2 duration-200"
+                      className={cn(
+                        "w-48 bg-card/85 backdrop-blur-xl border-border/40 shadow-2xl p-1.5 duration-200",
+                        "animate-in slide-in-from-inline-start-2"
+                      )}
                     >
                       <DropdownMenuLabel className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 px-2 pb-1.5">
                         {t('settings.title', 'Settings')}
@@ -421,13 +427,13 @@ export function MainLayout({ children }: MainLayoutProps) {
                             {isProxy ? (
                               <div className="w-full flex items-center gap-2.5">
                                 <Icon className="h-4 w-4 text-emerald-500" />
-                                <span className="flex-1">{t(item.labelKey, item.name)}</span>
-                                <span className="text-[8px] font-bold text-emerald-500 bg-emerald-500/10 px-1 py-0.5 rounded-full border border-emerald-500/20">LIVE</span>
+                                <span className="flex-1 ltr:text-left rtl:text-right">{t(item.labelKey, item.name)}</span>
+                                <span className="text-[8px] font-bold text-emerald-500 bg-emerald-500/10 px-1 py-0.5 rounded-full border border-emerald-500/20">{t('common.live')}</span>
                               </div>
                             ) : (
                               <Link to={item.href} className="w-full h-full flex items-center gap-2.5">
                                 <Icon className="h-4 w-4" />
-                                <span>{t(item.labelKey, item.name)}</span>
+                                <span className="flex-1 ltr:text-left rtl:text-right">{t(item.labelKey, item.name)}</span>
                               </Link>
                             )}
                           </DropdownMenuItem>
@@ -439,12 +445,13 @@ export function MainLayout({ children }: MainLayoutProps) {
                   <div className="relative">
                     {/* The Upward Expanding Panel */}
                     <div className={cn(
-                      'absolute bottom-full mb-3 left-0 w-52 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] origin-bottom',
+                      'absolute bottom-full mb-3 w-52 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] origin-bottom',
+                      'start-0',
                       settingsOpen ? 'max-h-[30rem] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
                     )}>
-                      <div className="bg-card/95 backdrop-blur-2xl border border-border/50 rounded-2xl p-2 shadow-2xl shadow-primary/10 ml-0.5 mb-1.5">
+                      <div className="bg-card/95 backdrop-blur-2xl border border-border/40 rounded-2xl p-2 shadow-2xl shadow-primary/10 ps-0.5 mb-1.5">
                         <div className="px-2 pb-2 mb-2 border-b border-border/40">
-                             <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/50">System Management</span>
+                             <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/50">{t('settings.systemManagement')}</span>
                         </div>
                         <div className="space-y-1">
                           {settingsNavigation.map(item => {
@@ -513,12 +520,12 @@ export function MainLayout({ children }: MainLayoutProps) {
                   'h-10 w-10 flex items-center justify-center rounded-xl transition-all text-muted-foreground hover:bg-accent hover:text-primary group active:scale-90',
                   !sidebarCollapsed && 'hover:shadow-md border border-transparent hover:border-primary/20'
                 )}
-                title={sidebarCollapsed ? "Expand" : "Collapse"}
+                title={sidebarCollapsed ? t('nav.expand') : t('nav.collapse')}
               >
                 {sidebarCollapsed ? (
-                  <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" />
+                  <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5 rtl:-translate-x-0.5 rtl:rotate-180" />
                 ) : (
-                  <ChevronLeft className="h-5 w-5 transition-transform group-hover:-translate-x-0.5" />
+                  <ChevronLeft className="h-5 w-5 transition-transform group-hover:-translate-x-0.5 rtl:translate-x-0.5 rtl:rotate-180" />
                 )}
               </button>
             </div>
@@ -534,9 +541,10 @@ export function MainLayout({ children }: MainLayoutProps) {
       ══════════════════════════════════════════════════*/}
       <div
         className={cn(
-          'hidden lg:flex fixed inset-y-0 right-0 z-40 flex-col bg-card/95 backdrop-blur-xl border-l border-border/40 shadow-2xl transition-all duration-300',
+          'hidden lg:flex fixed inset-y-0 z-40 flex-col bg-card/95 backdrop-blur-xl border-inline-start border-border/40 shadow-2xl transition-all duration-300',
           'w-[26rem] xl:w-[30rem] 2xl:w-[34rem]',
-          proxyPinned ? 'translate-x-0' : 'translate-x-full'
+          'end-0',
+          proxyPinned ? 'translate-x-0' : 'ltr:translate-x-full rtl:-translate-x-full'
         )}
       >
         {/* Pinned panel header */}
@@ -547,8 +555,8 @@ export function MainLayout({ children }: MainLayoutProps) {
               <Network className="h-4.5 w-4.5 text-emerald-500" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold leading-tight truncate">{t('settings.proxy.title', 'Proxy Network')}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Configure and test your proxy connection</p>
+              <p className="text-sm font-bold leading-tight truncate">{t('settings.proxy.title')}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{t('settings.proxy.subtitle')}</p>
             </div>
           </div>
 
@@ -559,7 +567,7 @@ export function MainLayout({ children }: MainLayoutProps) {
               className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors"
             >
               <PinOff className="h-3.5 w-3.5" />
-              Unpin
+              {t('settings.proxy.unpin')}
             </button>
             <div className="h-4 w-px bg-border/60" />
             <button
@@ -567,7 +575,7 @@ export function MainLayout({ children }: MainLayoutProps) {
               className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
             >
               <X className="h-3.5 w-3.5" />
-              Close
+              {t('common.close')}
             </button>
           </div>
         </div>
@@ -584,12 +592,12 @@ export function MainLayout({ children }: MainLayoutProps) {
       <main
         className={cn(
           'transition-all duration-300 min-h-screen flex flex-col',
-          sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64',
+          sidebarCollapsed ? 'lg:ps-16' : 'lg:ps-64',
           completedSidebarOpen
-            ? 'lg:pr-96'
+            ? 'lg:pe-96'
             : proxyPinned
-              ? 'lg:pr-[26rem] xl:pr-[30rem] 2xl:pr-[34rem]'
-              : 'pr-0',
+              ? 'lg:pe-[26rem] xl:pe-[30rem] 2xl:pe-[34rem]'
+              : ''
         )}
         style={{
           paddingTop:    'calc(3.5rem + env(safe-area-inset-top))',   // below mobile header
@@ -660,11 +668,11 @@ export function MainLayout({ children }: MainLayoutProps) {
                 <Network className="h-4.5 w-4.5 text-emerald-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <SheetTitle className="text-base font-bold">
-                  {t('settings.proxy.title', 'Proxy Network')}
+                <SheetTitle className="text-base font-bold ltr:text-left rtl:text-right">
+                  {t('settings.proxy.title')}
                 </SheetTitle>
-                <SheetDescription>
-                  Configure and test your proxy connection
+                <SheetDescription className="ltr:text-left rtl:text-right">
+                  {t('settings.proxy.subtitle')}
                 </SheetDescription>
               </div>
             </div>
@@ -675,10 +683,10 @@ export function MainLayout({ children }: MainLayoutProps) {
                 onClick={handlePinProxy}
                 className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors group"
               >
-                <Pin className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" />
-                Pin to screen
+                <Pin className="h-3.5 w-3.5 group-hover:scale-110 transition-transform ltr:rotate-0 rtl:-rotate-90" />
+                {t('settings.proxy.pinToScreen')}
               </button>
-              <p className="ml-3 text-[10px] text-muted-foreground">Split screen with app</p>
+              <p className="mx-3 text-[10px] text-muted-foreground">{t('settings.proxy.splitScreen')}</p>
             </div>
           </SheetHeader>
 

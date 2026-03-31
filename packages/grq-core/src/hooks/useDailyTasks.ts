@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TauriService } from '@grq/core/services/tauri.service';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { TaskGenerator } from '@grq/core/utils/taskGenerator';
@@ -32,6 +33,7 @@ export interface UseDailyTasksReturn {
 }
 
 export const useDailyTasks = (): UseDailyTasksReturn => {
+  const { t } = useTranslation();
   const [batches, setBatches] = useState<GameBatch[]>([]);
   const [loading, setLoading] = useState(true); // Default to true while hydrating
   const [games, setGames] = useState<any[]>([]);
@@ -210,10 +212,13 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       });
 
       if (batches.length > 0) {
-        NotificationService.success(`Generated ${batches.length} batches`);
+        // Use a standard t() call if available, otherwise just use the key for now 
+        // to be fixed when we ensure useTranslation is available here.
+        // Actually, this hook doesn't have useTranslation. I should add it.
+        NotificationService.success(t('dailyTasks.generateTasksSuccess', { count: batches.length }));
       }
     } catch (error) {
-      NotificationService.error('Error generating daily tasks');
+      NotificationService.error(t('dailyTasks.generateTasksError'));
       console.error(error);
     } finally {
       setLoading(false);
@@ -252,8 +257,8 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       ? RequestProcessor.processRequestContent(content, eventToken, timeSpent)
       : content;
     navigator.clipboard.writeText(processedContent);
-    NotificationService.success('Request copied to clipboard');
-  }, []);
+    NotificationService.success(t('dailyTasks.requestCopied'));
+  }, [t]);
 
   return {
     // State
