@@ -1,38 +1,37 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@grq/ui/lib/utils';
 import { CheckCircle, Copy, Send, Loader2, ChevronDown, ChevronUp, Hash, Clock, ShieldCheck } from 'lucide-react';
 import { Button } from '@grq/ui/atoms/button';
 import { Badge } from '@grq/ui/atoms/badge';
 import { RequestProcessor } from '@grq/core/services/tauri.service';
-import type { DailyRequestsResponse } from '@grq/api-bindings';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { AnimatePresence, motion } from 'framer-motion';
-
-export interface RepeaterResponse {
-    status: number;
-    status_text: string;
-    headers: Record<string, string>;
-    body: string;
-    time_ms: number;
-}
+import type { DailyRequestsResponse, RepeaterResponse } from '@grq/api-bindings';
 
 interface RequestItemProps {
     request: DailyRequestsResponse['requests'][0];
     isCompleted: boolean;
     isReady: boolean;
-    onComplete: () => void;
+    lastResponse?: RepeaterResponse | null;
+    onComplete: (response?: RepeaterResponse) => void;
     onCopy: (content: string, eventToken?: string, timeSpent?: number) => void;
     index: number;
     total: number;
 }
 
-export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy, index, total }: RequestItemProps) {
+export const RequestItem = React.memo(({ request, isCompleted, isReady, lastResponse, onComplete, onCopy, index, total }: RequestItemProps) => {
     const { t } = useTranslation();
     const [isSending, setIsSending] = useState(false);
-    const [response, setResponse] = useState<RepeaterResponse | null>(null);
-    const [isResponseOpen, setIsResponseOpen] = useState(false);
+    const [isResponseOpen, setIsResponseOpen] = useState(!!lastResponse);
+
+    // Sync isResponseOpen with lastResponse presence
+    useEffect(() => {
+        if (lastResponse) {
+            setIsResponseOpen(true);
+        }
+    }, [lastResponse]);
 
     const getRequestTypeLabel = (type: string) => {
         if (type.includes('Session')) return t('requests.session');
@@ -59,20 +58,27 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
     const handleSendRequest = async () => {
         if (!isReady) return;
         setIsSending(true);
-        setResponse(null);
         
         try {
             const rawRequestText = RequestProcessor.processRequestContent(request.content, request.event_token || '', request.time_spent);
             const res = await invoke<RepeaterResponse>('send_raw_request', { rawRequest: rawRequestText });
             
-            setResponse(res);
             setIsResponseOpen(true);
             
             if (res.status === 200) {
-                toast.success(t('dailyTasks.requestSuccess'));
-                if (!isCompleted) {
-                    onComplete();
+                let successMsg = t('dailyTasks.requestSuccess');
+                try {
+                    const parsed = JSON.parse(res.body);
+                    const extractedMsg = parsed.message || parsed.msg || parsed.result || parsed.status || (parsed.error && typeof parsed.error === 'string' ? parsed.error : null);
+                    if (extractedMsg && typeof extractedMsg === 'string') {
+                        successMsg = extractedMsg;
+                    }
+                } catch (e) {
+                    // Not JSON or no message, use default translated success message
                 }
+
+                toast.success(successMsg);
+                onComplete(res);
             } else {
                 toast.error(t('dailyTasks.requestStatusError', { status: res.status, text: res.status_text }));
             }
@@ -192,7 +198,7 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
 
             {/* Response Viewer */}
             <AnimatePresence>
-                {response && (
+                {lastResponse && (
                     <motion.div 
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
@@ -209,15 +215,15 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
                                         variant="default"
                                         className={cn(
                                             "font-bold font-mono px-2 py-0.5",
-                                            response.status >= 200 && response.status < 300 ? "bg-emerald-500 hover:bg-emerald-600 dark:text-emerald-950" : 
-                                            response.status >= 400 && response.status < 500 ? "bg-amber-500 hover:bg-amber-600 dark:text-amber-950" : 
+                                            lastResponse.status >= 200 && lastResponse.status < 300 ? "bg-emerald-500 hover:bg-emerald-600 dark:text-emerald-950" : 
+                                            lastResponse.status >= 400 && lastResponse.status < 500 ? "bg-amber-500 hover:bg-amber-600 dark:text-amber-950" : 
                                             "bg-red-500 hover:bg-red-600 dark:text-red-950"
                                         )}
                                     >
-                                        {response.status} {response.status_text}
+                                        {lastResponse.status} {lastResponse.status_text}
                                     </Badge>
                                     <span className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
-                                        <Loader2 className="h-3 w-3" /> {response.time_ms}ms
+                                        <Loader2 className="h-3 w-3" /> {lastResponse.time_ms}ms
                                     </span>
                                 </div>
                                 <div>
@@ -234,13 +240,13 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
                                         className="p-3 border-t border-border/50 space-y-3"
                                     >
                                         <div className="text-[11px] font-mono bg-background/50 p-2 rounded border border-border/40 max-h-32 overflow-y-auto">
-                                            {Object.entries(response.headers).map(([k, v]) => (
+                                            {Object.entries(lastResponse.headers).map(([k, v]) => (
                                                 <div key={k}><span className="text-primary/70">{k}:</span> {v}</div>
                                             ))}
                                         </div>
                                         <div className="bg-[#1e1e1e] text-[#d4d4d4] p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto font-medium shadow-inner">
                                             <pre>
-                                                <code>{formatJsonBody(response.body)}</code>
+                                                <code>{formatJsonBody(lastResponse.body)}</code>
                                             </pre>
                                         </div>
                                     </motion.div>
@@ -250,6 +256,7 @@ export function RequestItem({ request, isCompleted, isReady, onComplete, onCopy,
                     </motion.div>
                 )}
             </AnimatePresence>
+
         </div>
     );
-}
+});

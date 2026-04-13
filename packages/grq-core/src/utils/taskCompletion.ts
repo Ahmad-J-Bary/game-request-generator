@@ -22,7 +22,7 @@ export class TaskCompletionHandler {
     this.options = options;
   }
 
-  async completeTask(accountId: number, requestIndex: number, batchIndex: number): Promise<void> {
+  async completeTask(accountId: number, requestIndex: number, batchIndex: number, response?: RepeaterResponse): Promise<ApiResponse> {
     try {
       // Find the task across all batches
       let foundTask: DailyTask | null = null;
@@ -35,7 +35,7 @@ export class TaskCompletionHandler {
         }
       }
 
-      if (!foundTask) return;
+      if (!foundTask) return { success: false, error: 'Task not found' };
 
       const request = foundTask.requests[requestIndex];
 
@@ -54,7 +54,7 @@ export class TaskCompletionHandler {
         throw new Error('Task completion error');
       }
 
-      let result: boolean | ApiResponse;
+      let result: ApiResponse;
 
       if (isPurchaseEvent) {
         // Handle purchase event completion
@@ -160,7 +160,14 @@ export class TaskCompletionHandler {
             if (task.account.id === accountId) {
               const newCompletedTasks = new Set(task.completedTasks);
               newCompletedTasks.add(requestIndex.toString());
-              return { ...task, completedTasks: newCompletedTasks };
+              
+              // Merge the response if provided
+              const newLastResponses = { ...(task.lastResponses || {}) };
+              if (response) {
+                newLastResponses[requestIndex] = response;
+              }
+              
+              return { ...task, completedTasks: newCompletedTasks, lastResponses: newLastResponses };
             }
             return task;
           })
@@ -187,25 +194,10 @@ export class TaskCompletionHandler {
           taskInBatch.completedTasks.has(idx.toString())
         );
 
-        this.options.setBatches(updatedBatches);
-
-        // Update AsyncStorage with updated batches
-        const serializedBatches = updatedBatches.map(batch => ({
-          ...batch,
-          tasks: batch.tasks.map(task => ({
-            ...task,
-            completedTasks: Array.from(task.completedTasks)
-          }))
-        }));
-        await asyncStorageService.set(`dailyTasks_batches_${completedDate}`, {
-          batches: serializedBatches,
-          accountScheduledTime: {}
-        });
-
         // Dispatch progress-updated event
         window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
 
-        return; // Exit early since we've handled everything for purchase events
+        return result; // Return the result from TauriService
       } else {
         // Handle level event completion
         // Ensure progress record exists, then update it
@@ -305,7 +297,14 @@ export class TaskCompletionHandler {
             if (task.account.id === accountId) {
               const newCompletedTasks = new Set(task.completedTasks);
               newCompletedTasks.add(requestIndex.toString());
-              return { ...task, completedTasks: newCompletedTasks };
+              
+              // Merge the response if provided
+              const newLastResponses = { ...(task.lastResponses || {}) };
+              if (response) {
+                newLastResponses[requestIndex] = response;
+              }
+              
+              return { ...task, completedTasks: newCompletedTasks, lastResponses: newLastResponses };
             }
             return task;
           })
@@ -431,6 +430,8 @@ export class TaskCompletionHandler {
 
         // Dispatch progress-updated event to refresh other components
         window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
+        
+        return result; // Return the successful result
       } else {
         const errorMessage = typeof result === 'object' && result.error ? result.error : 'Failed to update progress';
         throw new Error(errorMessage);

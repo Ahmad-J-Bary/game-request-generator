@@ -77,10 +77,8 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
       layout
-      transition={{ duration: 0.4, ease: "easeOut" }}
+      transition={{ layout: { duration: 0.2, ease: "easeOut" } }}
     >
       <Card
           key={task.account.id}
@@ -200,9 +198,10 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
                   request={request}
                   isCompleted={task.completedTasks.has(index.toString())}
                   isReady={isReady}
-                  onComplete={() => onCompleteTask(task.account.id, index, batchIndex)}
+                  onComplete={(res) => onCompleteTask(task.account.id, index, batchIndex, res)}
                   onCopy={(content, eventToken, timeSpent) =>
                     onCopyRequest(content, eventToken, timeSpent)}
+                  lastResponse={task.lastResponses?.[index]}
                 />
               );
             })}

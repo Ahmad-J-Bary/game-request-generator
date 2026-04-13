@@ -1,12 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Clock } from 'lucide-react';
 
 import { EmptyState } from '@grq/ui/organisms/daily-tasks/EmptyState';
 import { BatchDisplay } from '@grq/ui/organisms/daily-tasks/BatchDisplay';
 import { TaskItem } from '@grq/ui/organisms/daily-tasks/TaskItem';
 import { useDailyTasks } from '@grq/core/hooks/useDailyTasks';
-import { checkTaskReadiness } from '@grq/core/utils/daily-tasks.utils';
 import type { GameBatch, DailyTask } from '@grq/api-bindings/types/daily-tasks.types';
 
 export default function DailyTasksPage() {
@@ -17,7 +17,6 @@ export default function DailyTasksPage() {
     deferredTasks: hookDeferredTasks,
     loading,
     games,
-    currentTime,
     accountCompletionRecords,
     accountTaskAssignments,
     accountStartStates,
@@ -27,6 +26,24 @@ export default function DailyTasksPage() {
     completedTasks,
   } = useDailyTasks();
 
+  const { readyBatches, pageDeferredTasks } = useMemo(() => {
+    const rBatches: GameBatch[] = [];
+    const pDeferred: { task: DailyTask; batchIndex: number }[] = [];
+
+    // KEEP ALL ACTIVE BATCHES IN THE READY SECTION
+    // This allows the user to see their progress as tasks stay in place after completion.
+    // The "Deferred" section will be strictly for tasks that were not generated as part of today's initial batches.
+    batches.forEach(batch => {
+      rBatches.push(batch);
+    });
+
+    // Also add tasks that were originally deferred by the generator
+    hookDeferredTasks.forEach(task => {
+      pDeferred.push({ task, batchIndex: -1 });
+    });
+
+    return { readyBatches: rBatches, pageDeferredTasks: pDeferred };
+  }, [batches, hookDeferredTasks]);
 
   // Generate today's tasks on mount and when games change
   useEffect(() => {
@@ -59,64 +76,56 @@ export default function DailyTasksPage() {
         <EmptyState />
       )}
 
-      <div className="w-full">
-          {(() => {
-            const readyBatches: GameBatch[] = [];
-            const pageDeferredTasks: { task: DailyTask; batchIndex: number }[] = [];
+      <div className="w-full min-h-[400px]">
+        <div className="space-y-12">
+          {/* Ready Batches */}
+          <div className="space-y-6">
+            <AnimatePresence mode="popLayout" initial={false}>
+              {readyBatches.map((batch, idx) => (
+                <motion.div
+                  key={`ready-batch-${batch.batchIndex}`}
+                  layout
+                  transition={{ layout: { duration: 0.2, ease: "easeOut" } }}
+                >
+                  <BatchDisplay
+                    batch={batch}
+                    allBatches={batches}
+                    accountCompletionRecords={accountCompletionRecords}
+                    accountTaskAssignments={accountTaskAssignments}
+                    accountStartStates={accountStartStates}
+                    onCompleteTask={completeTask}
+                    onCopyRequest={copyToClipboard}
+                    completedTasks={completedTasks}
+                    deferredTasks={hookDeferredTasks}
+                    showProxyNotice={idx < readyBatches.length - 1}
+                    isLastBatch={idx === readyBatches.length - 1}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
 
-            // Add tasks that are still deferred according to real-time check
-            batches.forEach(batch => {
-              const readyTasksInBatch: DailyTask[] = [];
-              batch.tasks.forEach(task => {
-                if (checkTaskReadiness(task, batch.batchIndex, batches, currentTime, accountCompletionRecords, accountStartStates, completedTasks, hookDeferredTasks)) {
-                  readyTasksInBatch.push(task);
-                } else {
-                  pageDeferredTasks.push({ task, batchIndex: batch.batchIndex });
-                }
-              });
-              if (readyTasksInBatch.length > 0) {
-                readyBatches.push({ ...batch, tasks: readyTasksInBatch });
-              }
-            });
-
-            // Also add tasks that were originally deferred by the generator
-            hookDeferredTasks.forEach(task => {
-              pageDeferredTasks.push({ task, batchIndex: -1 });
-            });
-
-            return (
-              <div className="space-y-12">
-                {/* Ready Batches */}
-                <div className="space-y-6">
-                  {readyBatches.map((batch, idx) => (
-                    <BatchDisplay
-                      key={`ready-batch-${batch.batchIndex}`}
-                      batch={batch}
-                      allBatches={batches}
-                      accountCompletionRecords={accountCompletionRecords}
-                      accountTaskAssignments={accountTaskAssignments}
-                      accountStartStates={accountStartStates}
-                      onCompleteTask={completeTask}
-                      onCopyRequest={copyToClipboard}
-                      completedTasks={completedTasks}
-                      deferredTasks={hookDeferredTasks}
-                      showProxyNotice={idx < readyBatches.length - 1}
-                      isLastBatch={idx === readyBatches.length - 1}
-                    />
-                  ))}
+          {/* Deferred Tasks Section */}
+          <AnimatePresence mode="popLayout">
+            {pageDeferredTasks.length > 0 && (
+              <motion.div 
+                layout
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="space-y-6 pt-8 border-t"
+              >
+                <div className="flex items-center gap-2 border-b pb-2">
+                    <Clock className="h-5 w-5 text-amber-500" />
+                    <h2 className="text-xl font-semibold">{t('dailyTasks.deferredTasksTitle', 'Deferred Tasks')}</h2>
                 </div>
-
-                {/* Deferred Tasks Section */}
-                {pageDeferredTasks.length > 0 && (
-                  <div className="space-y-6">
-                    <div className="flex items-center gap-2 border-b pb-2">
-                        <Clock className="h-5 w-5 text-amber-500" />
-                        <h2 className="text-xl font-semibold">{t('dailyTasks.deferredTasksTitle', 'Deferred Tasks')}</h2>
-                    </div>
-                    
-                    {pageDeferredTasks.map(({ task, batchIndex }) => (
+                
+                <div className="space-y-6">
+                  {pageDeferredTasks.map(({ task, batchIndex }) => (
+                    <motion.div
+                      key={`deferred-${task.account.id}-${batchIndex}`}
+                      layout
+                    >
                       <TaskItem
-                        key={`${task.account.id}-${batchIndex}`}
                         task={task}
                         batchIndex={batchIndex}
                         allBatches={batches}
@@ -128,12 +137,13 @@ export default function DailyTasksPage() {
                         completedTasks={completedTasks}
                         deferredTasks={hookDeferredTasks}
                       />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );

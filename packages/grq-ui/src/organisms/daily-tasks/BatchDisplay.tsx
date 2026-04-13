@@ -1,8 +1,8 @@
-// src/components/daily-tasks/BatchDisplay.tsx
+import React from 'react';
 import { BatchHeader } from './BatchHeader';
 import { BatchTasks } from './BatchTasks';
 import { ProxyChangeNotice } from './ProxyChangeNotice';
-import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings/types/daily-tasks.types';
+import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, RepeaterResponse } from '@grq/api-bindings/types/daily-tasks.types';
 
 interface BatchDisplayProps {
   batch: GameBatch;
@@ -10,7 +10,7 @@ interface BatchDisplayProps {
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
   accountTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
   accountStartStates: { [accountId: number]: AccountStartState };
-  onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number) => void;
+  onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number, response?: RepeaterResponse) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   completedTasks?: any[];
   deferredTasks?: DailyTask[];
@@ -18,7 +18,7 @@ interface BatchDisplayProps {
   isLastBatch?: boolean;
 }
 
-export const BatchDisplay: React.FC<BatchDisplayProps> = ({
+export const BatchDisplay = React.memo(({
   batch,
   allBatches,
   accountCompletionRecords,
@@ -28,9 +28,9 @@ export const BatchDisplay: React.FC<BatchDisplayProps> = ({
   onCopyRequest,
   completedTasks = [],
   deferredTasks = [],
-  showProxyNotice = true,
+  showProxyNotice = false,
   isLastBatch = false,
-}) => {
+}: BatchDisplayProps) => {
   return (
     <div key={`ready-batch-${batch.batchIndex}`}>
       {/* Batch Header */}
@@ -62,4 +62,4 @@ export const BatchDisplay: React.FC<BatchDisplayProps> = ({
       )}
     </div>
   );
-};
+});

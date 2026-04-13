@@ -1,6 +1,7 @@
 // src/components/daily-tasks/BatchTasks.tsx
+import React from 'react';
 import { TaskItem } from './TaskItem';
-import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings/types/daily-tasks.types';
+import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, RepeaterResponse } from '@grq/api-bindings/types/daily-tasks.types';
 
 interface BatchTasksProps {
   batch: GameBatch;
@@ -8,13 +9,13 @@ interface BatchTasksProps {
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
   accountTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
   accountStartStates: { [accountId: number]: AccountStartState };
-  onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number) => void;
+  onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number, response?: RepeaterResponse) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   completedTasks: any[];
   deferredTasks?: DailyTask[];
 }
 
-export const BatchTasks: React.FC<BatchTasksProps> = ({
+export const BatchTasks = React.memo(({
   batch,
   allBatches,
   accountCompletionRecords,
@@ -22,34 +23,31 @@ export const BatchTasks: React.FC<BatchTasksProps> = ({
   accountStartStates,
   onCompleteTask,
   onCopyRequest,
-  completedTasks = [],
+  completedTasks,
   deferredTasks = [],
-}) => {
-  const previousTasksCount = allBatches.slice(0, batch.batchIndex).reduce((acc, b) => acc + b.tasks.length, 0);
-
+}: BatchTasksProps) => {
+  const { readyBatches: _r, pageDeferredTasks: _p } = { readyBatches: [], pageDeferredTasks: [] }; // placeholder if needed, or just remove
+  
   return (
-    <div className="space-y-4">
-      {batch.tasks.map((task, taskIndex) => (
-        <div key={task.account.id}>
-          <div className="mb-2">
-            <span className="text-sm font-medium text-muted-foreground">
-              {previousTasksCount + taskIndex + 1}- {task.account.name}
-            </span>
+    <div className="space-y-6">
+      {batch.tasks.map((task, idx) => {
+        return (
+          <div key={`${task.account.id}-${batch.batchIndex}-${idx}`}>
+            <TaskItem
+              task={task}
+              onCompleteTask={onCompleteTask}
+              onCopyRequest={onCopyRequest}
+              accountCompletionRecords={accountCompletionRecords}
+              accountTaskAssignments={accountTaskAssignments}
+              accountStartStates={accountStartStates}
+              batchIndex={batch.batchIndex}
+              allBatches={allBatches}
+              completedTasks={completedTasks}
+              deferredTasks={deferredTasks}
+            />
           </div>
-          <TaskItem
-            task={task}
-            onCompleteTask={onCompleteTask}
-            onCopyRequest={onCopyRequest}
-            accountCompletionRecords={accountCompletionRecords}
-            accountTaskAssignments={accountTaskAssignments}
-            accountStartStates={accountStartStates}
-            batchIndex={batch.batchIndex}
-            allBatches={allBatches}
-            completedTasks={completedTasks}
-            deferredTasks={deferredTasks}
-          />
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
-};
+});

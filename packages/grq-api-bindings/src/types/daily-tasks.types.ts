@@ -55,12 +55,21 @@ export interface RequestGroup {
     requests: DailyRequestsResponse['requests'];
 }
 
+export interface RepeaterResponse {
+    status: number;
+    status_text: string;
+    headers: Record<string, string>;
+    body: string;
+    time_ms: number;
+}
+
 export interface DailyTask {
     account: Account;
     requests: DailyRequestsResponse['requests'];
     requestGroups?: RequestGroup[]; // Groups of related requests (Session + Event pairs)
     targetDate: string;
     completedTasks: Set<string>; // Track completed tasks by index
+    lastResponses?: Record<number, RepeaterResponse>; // Persistent responses for each request index
 }
 
 export interface GameBatch {
@@ -70,7 +79,7 @@ export interface GameBatch {
 
 export interface TaskItemProps {
     task: DailyTask;
-    onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number) => void;
+    onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number, response?: RepeaterResponse) => void;
     onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
     accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
     accountTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
@@ -80,3 +89,4 @@ export interface TaskItemProps {
     completedTasks: CompletedDailyTask[];
     deferredTasks?: DailyTask[];
 }
+
