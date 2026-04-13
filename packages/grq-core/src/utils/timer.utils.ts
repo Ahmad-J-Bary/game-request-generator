@@ -24,7 +24,8 @@ export const calculateTimerState = (
   currentTime: number,
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
   accountStartStates: { [accountId: number]: AccountStartState },
-  completedTasks: any[] = []
+  completedTasks: any[] = [],
+  extraTasks: DailyTask[] = []
 ): TimerState => {
   const accountId = task.account.id;
   const completionRecord = accountCompletionRecords[accountId];
@@ -45,6 +46,18 @@ export const calculateTimerState = (
           }
       }
       if (foundCurrent) break;
+  }
+
+  if (!foundCurrent) {
+      for (const t of extraTasks) {
+          if (t.account.id === accountId) {
+              if (t === task || (t.account.id === task.account.id && t.requests[0]?.event_token === task.requests[0]?.event_token && t.requests[0]?.level_id === task.requests[0]?.level_id)) {
+                  foundCurrent = true;
+                  break;
+              }
+              previousTask = t;
+          }
+      }
   }
   
   // Helper to get timeSpent of a task

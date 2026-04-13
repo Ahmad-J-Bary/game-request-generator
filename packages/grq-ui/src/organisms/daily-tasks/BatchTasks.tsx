@@ -1,6 +1,6 @@
 // src/components/daily-tasks/BatchTasks.tsx
 import { TaskItem } from './TaskItem';
-import type { GameBatch, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings/types/daily-tasks.types';
+import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings/types/daily-tasks.types';
 
 interface BatchTasksProps {
   batch: GameBatch;
@@ -11,6 +11,7 @@ interface BatchTasksProps {
   onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   completedTasks: any[];
+  deferredTasks?: DailyTask[];
 }
 
 export const BatchTasks: React.FC<BatchTasksProps> = ({
@@ -22,6 +23,7 @@ export const BatchTasks: React.FC<BatchTasksProps> = ({
   onCompleteTask,
   onCopyRequest,
   completedTasks = [],
+  deferredTasks = [],
 }) => {
   const previousTasksCount = allBatches.slice(0, batch.batchIndex).reduce((acc, b) => acc + b.tasks.length, 0);
 
@@ -44,6 +46,7 @@ export const BatchTasks: React.FC<BatchTasksProps> = ({
             batchIndex={batch.batchIndex}
             allBatches={allBatches}
             completedTasks={completedTasks}
+            deferredTasks={deferredTasks}
           />
         </div>
       ))}

@@ -78,4 +78,5 @@ export interface TaskItemProps {
     batchIndex: number;
     allBatches: GameBatch[];
     completedTasks: CompletedDailyTask[];
+    deferredTasks?: DailyTask[];
 }

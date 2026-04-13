@@ -58,7 +58,8 @@ export const checkTaskReadiness = (
     currentTime: number,
     accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
     accountStartStates: { [accountId: number]: AccountStartState },
-    completedTasks: any[] = []
+    completedTasks: any[] = [],
+    extraTasks: DailyTask[] = []
 ): boolean => {
     const timerState = calculateTimerState(
         task,
@@ -67,7 +68,8 @@ export const checkTaskReadiness = (
         currentTime,
         accountCompletionRecords,
         accountStartStates,
-        completedTasks
+        completedTasks,
+        extraTasks
     );
     return timerState.isReady;
 };
@@ -83,7 +85,8 @@ export const getTaskReadinessDetails = (
     currentTime: number,
     accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
     accountStartStates: { [accountId: number]: AccountStartState },
-    completedTasks: any[] = []
+    completedTasks: any[] = [],
+    extraTasks: DailyTask[] = []
 ) => {
     const timerState = calculateTimerState(
         task,
@@ -92,7 +95,8 @@ export const getTaskReadinessDetails = (
         currentTime,
         accountCompletionRecords,
         accountStartStates,
-        completedTasks
+        completedTasks,
+        extraTasks
     );
 
     return {

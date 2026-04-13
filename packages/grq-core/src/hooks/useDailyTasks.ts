@@ -6,13 +6,14 @@ import { NotificationService } from '@grq/core/utils/notifications';
 import { TaskGenerator } from '@grq/core/utils/taskGenerator';
 import { TaskCompletionHandler } from '@grq/core/utils/taskCompletion';
 import { RequestProcessor } from '@grq/core/services/tauri.service';
-import type { GameBatch, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings';
+import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, CompletedDailyTask } from '@grq/api-bindings';
 
 import { asyncStorageService } from '@grq/core/services/storage.service';
 
 export interface UseDailyTasksReturn {
   // State
   batches: GameBatch[];
+  deferredTasks: DailyTask[];
   loading: boolean;
   games: any[];
   currentTime: number;
@@ -35,6 +36,7 @@ export interface UseDailyTasksReturn {
 export const useDailyTasks = (): UseDailyTasksReturn => {
   const { t } = useTranslation();
   const [batches, setBatches] = useState<GameBatch[]>([]);
+  const [deferredTasks, setDeferredTasks] = useState<DailyTask[]>([]);
   const [loading, setLoading] = useState(true); // Default to true while hydrating
   const [games, setGames] = useState<any[]>([]);
   // @ts-expect-error - used for internal state management and persistence
@@ -43,6 +45,15 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   const [accountTaskAssignments, setAccountTaskAssignments] = useState<{ [accountId: number]: AccountTaskAssignment[] }>({});
   const [accountStartStates, setAccountStartStates] = useState<{ [accountId: number]: AccountStartState }>({});
   const [completedTasks, setCompletedTasks] = useState<any[]>([]);
+  const [currentTime, setCurrentTime] = useState(Date.now());
+ 
+  // Update current time every second for UI countdowns
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Load games on mount
   const refreshGames = useCallback(async () => {
@@ -128,6 +139,13 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
           if (savedBatches.accountScheduledTime) {
               setAccountScheduledTime(savedBatches.accountScheduledTime);
           }
+          if (savedBatches.deferredTasks && mounted) {
+              const hydratedDeferred = savedBatches.deferredTasks.map((t: any) => ({
+                  ...t,
+                  completedTasks: new Set(t.completedTasks || [])
+              }));
+              setDeferredTasks(hydratedDeferred);
+          }
       }
 
       if (mounted) setLoading(false);
@@ -190,11 +208,14 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
         accountStartStates,
         setAccountStartStates,
         setAccountTaskAssignments,
+        currentTime: Date.now(),
+        completedTasks,
       });
 
-      const { batches, accountScheduledTime } = await taskGenerator.generateTodaysTasks();
+      const { batches, deferredTasks: generatedDeferred, accountScheduledTime } = await taskGenerator.generateTodaysTasks();
 
       setBatches(batches);
+      setDeferredTasks(generatedDeferred);
       setAccountScheduledTime(accountScheduledTime);
 
       // Save to AsyncStorage for persistence
@@ -206,8 +227,15 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
           completedTasks: Array.from(task.completedTasks)
         }))
       }));
+
+      const serializedDeferred = generatedDeferred.map(task => ({
+        ...task,
+        completedTasks: Array.from(task.completedTasks)
+      }));
+
       await asyncStorageService.set(`dailyTasks_batches_${today}`, {
         batches: serializedBatches,
+        deferredTasks: serializedDeferred,
         accountScheduledTime
       });
 
@@ -263,8 +291,10 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   return {
     // State
     batches,
+    deferredTasks,
     loading,
     games,
+    currentTime,
     completedTasks,
 
     // Account state

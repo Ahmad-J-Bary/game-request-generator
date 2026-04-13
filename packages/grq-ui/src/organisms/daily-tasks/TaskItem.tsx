@@ -9,7 +9,7 @@ import { TaskItemProps } from '@grq/api-bindings/types/daily-tasks.types';
 import { useTimer } from '@grq/core/hooks/useTimer';
 import { cn } from '@grq/ui/lib/utils';
 
-export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks }: TaskItemProps) => {
+export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks, deferredTasks = [] }: TaskItemProps) => {
   const { t } = useTranslation();
   const currentTime = useTimer(1000);
 
@@ -34,7 +34,8 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
     currentTime,
     accountCompletionRecords,
     accountStartStates,
-    completedTasks
+    completedTasks,
+    deferredTasks
   );
 
   const { isReady, isBlocked, remainingTime } = timerState;
@@ -174,13 +175,22 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
         <CardContent className="px-3 pb-3 sm:px-4 sm:pb-4">
           <div className="space-y-3">
             {task.requests.map((request, index) => {
-              // Calculate logical index for this account across all batches
-              const accountTasks = allBatches.flatMap(b => b.tasks).filter(t => t.account.id === accountId);
+              // Calculate logical index for this account across ALL tasks (Batches + Deferred)
+              const flatReadyTasks = allBatches.flatMap(b => b.tasks);
+              const allDailyTasks = [...flatReadyTasks, ...deferredTasks];
+              
+              const accountTasks = allDailyTasks.filter(t => t.account.id === accountId);
               const accountTaskTotal = accountTasks.length;
-              // Find which one the current task is
-              const accountTaskIndex = allBatches
-                .slice(0, batchIndex)
-                .reduce((acc, b) => acc + b.tasks.filter(t => t.account.id === accountId).length, 0) + 1;
+              
+              // Find the index of the current task within the account's tasks for today
+              const currentTaskToken = task.requests?.[0]?.event_token || task.requestGroups?.[0]?.event_token;
+              const currentTaskLevel = task.requests?.[0]?.level_id || task.requestGroups?.[0]?.requests?.[0]?.level_id;
+              
+              const accountTaskIndex = accountTasks.findIndex(t => {
+                const tToken = t.requests?.[0]?.event_token || t.requestGroups?.[0]?.event_token;
+                const tLevel = t.requests?.[0]?.level_id || t.requestGroups?.[0]?.requests?.[0]?.level_id;
+                return tToken === currentTaskToken && tLevel === currentTaskLevel;
+              }) + 1;
 
               return (
                 <RequestItem

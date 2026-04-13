@@ -2,7 +2,7 @@
 import { BatchHeader } from './BatchHeader';
 import { BatchTasks } from './BatchTasks';
 import { ProxyChangeNotice } from './ProxyChangeNotice';
-import type { GameBatch, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings/types/daily-tasks.types';
+import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings/types/daily-tasks.types';
 
 interface BatchDisplayProps {
   batch: GameBatch;
@@ -13,6 +13,7 @@ interface BatchDisplayProps {
   onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   completedTasks?: any[];
+  deferredTasks?: DailyTask[];
   showProxyNotice?: boolean;
   isLastBatch?: boolean;
 }
@@ -26,6 +27,7 @@ export const BatchDisplay: React.FC<BatchDisplayProps> = ({
   onCompleteTask,
   onCopyRequest,
   completedTasks = [],
+  deferredTasks = [],
   showProxyNotice = true,
   isLastBatch = false,
 }) => {
@@ -48,6 +50,7 @@ export const BatchDisplay: React.FC<BatchDisplayProps> = ({
         onCompleteTask={onCompleteTask}
         onCopyRequest={onCopyRequest}
         completedTasks={completedTasks}
+        deferredTasks={deferredTasks}
       />
 
       {/* Separator and proxy change notice */}

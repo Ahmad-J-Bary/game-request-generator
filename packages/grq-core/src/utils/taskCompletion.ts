@@ -62,14 +62,18 @@ export class TaskCompletionHandler {
           throw new Error('Purchase event token is missing');
         }
 
-        // Get account details to find the game ID
+        // Get account details to find the branch ID
         const account = await TauriService.getAccountById(accountId);
         if (!account) {
           throw new Error('Account not found');
         }
 
-        // Get purchase events for this game to find the one with matching event_token
-        const gamePurchaseEvents = await TauriService.getGamePurchaseEvents(account.game_id);
+        if (!account.branch_id) {
+          throw new Error('Account has no branch associated with it');
+        }
+
+        // Get purchase events for this branch to find the one with matching event_token
+        const gamePurchaseEvents = await TauriService.getGamePurchaseEvents(account.branch_id);
         const purchaseEventDetails = gamePurchaseEvents.find(pe => pe.event_token === request.event_token);
 
         if (!purchaseEventDetails) {
@@ -183,46 +187,20 @@ export class TaskCompletionHandler {
           taskInBatch.completedTasks.has(idx.toString())
         );
 
-        if (allCompleted) {
-          // Remove this task from the specific batch it was in
-          const filteredBatches = updatedBatches.map(batch => {
-            if (batch.batchIndex === batchIndex) {
-              return {
-                ...batch,
-                tasks: batch.tasks.filter(task => task.account.id !== accountId)
-              };
-            }
-            return batch;
-          }).filter(batch => batch.tasks.length > 0);
+        this.options.setBatches(updatedBatches);
 
-          this.options.setBatches(filteredBatches);
-
-          // Update AsyncStorage with filtered batches
-          const serializedFilteredBatches = filteredBatches.map(batch => ({
-            ...batch,
-            tasks: batch.tasks.map(task => ({
-              ...task,
-              completedTasks: Array.from(task.completedTasks)
-            }))
-          }));
-          await asyncStorageService.set(`dailyTasks_batches_${completedDate}`, {
-            batches: serializedFilteredBatches,
-            accountScheduledTime: {}
-          });
-        } else {
-          // Update AsyncStorage with partially completed task
-          const serializedBatches = updatedBatches.map(batch => ({
-            ...batch,
-            tasks: batch.tasks.map(task => ({
-              ...task,
-              completedTasks: Array.from(task.completedTasks)
-            }))
-          }));
-          await asyncStorageService.set(`dailyTasks_batches_${completedDate}`, {
-            batches: serializedBatches,
-            accountScheduledTime: {}
-          });
-        }
+        // Update AsyncStorage with updated batches
+        const serializedBatches = updatedBatches.map(batch => ({
+          ...batch,
+          tasks: batch.tasks.map(task => ({
+            ...task,
+            completedTasks: Array.from(task.completedTasks)
+          }))
+        }));
+        await asyncStorageService.set(`dailyTasks_batches_${completedDate}`, {
+          batches: serializedBatches,
+          accountScheduledTime: {}
+        });
 
         // Dispatch progress-updated event
         window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
@@ -413,21 +391,10 @@ export class TaskCompletionHandler {
               // Dispatch event to update sidebar
               window.dispatchEvent(new CustomEvent('daily-task-completed'));
 
-              // Remove this task from the specific batch it was in
-              const filteredBatches = updatedBatches.map(batch => {
-                if (batch.batchIndex === batchIndex) {
-                  return {
-                    ...batch,
-                    tasks: batch.tasks.filter(task => task.account.id !== accountId)
-                  };
-                }
-                return batch;
-              }).filter(batch => batch.tasks.length > 0);
+              this.options.setBatches(updatedBatches);
 
-              this.options.setBatches(filteredBatches);
-
-              // Update AsyncStorage with filtered batches
-              const serializedFilteredBatches = filteredBatches.map(batch => ({
+              // Update AsyncStorage with updated batches
+              const serializedBatches = updatedBatches.map(batch => ({
                 ...batch,
                 tasks: batch.tasks.map(task => ({
                   ...task,
@@ -435,7 +402,7 @@ export class TaskCompletionHandler {
                 }))
               }));
               await asyncStorageService.set(`dailyTasks_batches_${completedDate}`, {
-                batches: serializedFilteredBatches,
+                batches: serializedBatches,
                 accountScheduledTime: {} // This would need to be passed in or managed differently
               });
 

@@ -14,6 +14,7 @@ export default function DailyTasksPage() {
 
   const {
     batches,
+    deferredTasks: hookDeferredTasks,
     loading,
     games,
     currentTime,
@@ -61,20 +62,26 @@ export default function DailyTasksPage() {
       <div className="w-full">
           {(() => {
             const readyBatches: GameBatch[] = [];
-            const deferredTasks: { task: DailyTask; batchIndex: number }[] = [];
+            const pageDeferredTasks: { task: DailyTask; batchIndex: number }[] = [];
 
+            // Add tasks that are still deferred according to real-time check
             batches.forEach(batch => {
               const readyTasksInBatch: DailyTask[] = [];
               batch.tasks.forEach(task => {
-                if (checkTaskReadiness(task, batch.batchIndex, batches, currentTime, accountCompletionRecords, accountStartStates, completedTasks)) {
+                if (checkTaskReadiness(task, batch.batchIndex, batches, currentTime, accountCompletionRecords, accountStartStates, completedTasks, hookDeferredTasks)) {
                   readyTasksInBatch.push(task);
                 } else {
-                  deferredTasks.push({ task, batchIndex: batch.batchIndex });
+                  pageDeferredTasks.push({ task, batchIndex: batch.batchIndex });
                 }
               });
               if (readyTasksInBatch.length > 0) {
                 readyBatches.push({ ...batch, tasks: readyTasksInBatch });
               }
+            });
+
+            // Also add tasks that were originally deferred by the generator
+            hookDeferredTasks.forEach(task => {
+              pageDeferredTasks.push({ task, batchIndex: -1 });
             });
 
             return (
@@ -92,6 +99,7 @@ export default function DailyTasksPage() {
                       onCompleteTask={completeTask}
                       onCopyRequest={copyToClipboard}
                       completedTasks={completedTasks}
+                      deferredTasks={hookDeferredTasks}
                       showProxyNotice={idx < readyBatches.length - 1}
                       isLastBatch={idx === readyBatches.length - 1}
                     />
@@ -99,14 +107,14 @@ export default function DailyTasksPage() {
                 </div>
 
                 {/* Deferred Tasks Section */}
-                {deferredTasks.length > 0 && (
+                {pageDeferredTasks.length > 0 && (
                   <div className="space-y-6">
                     <div className="flex items-center gap-2 border-b pb-2">
                         <Clock className="h-5 w-5 text-amber-500" />
                         <h2 className="text-xl font-semibold">{t('dailyTasks.deferredTasksTitle', 'Deferred Tasks')}</h2>
                     </div>
                     
-                    {deferredTasks.map(({ task, batchIndex }) => (
+                    {pageDeferredTasks.map(({ task, batchIndex }) => (
                       <TaskItem
                         key={`${task.account.id}-${batchIndex}`}
                         task={task}
@@ -118,6 +126,7 @@ export default function DailyTasksPage() {
                         onCompleteTask={completeTask}
                         onCopyRequest={copyToClipboard}
                         completedTasks={completedTasks}
+                        deferredTasks={hookDeferredTasks}
                       />
                     ))}
                   </div>
