@@ -157,6 +157,7 @@ export default function Dashboard() {
     CALIFORNIA: allAccounts.filter(a => a.proxy_state === 'CALIFORNIA').length,
     TEXAS: allAccounts.filter(a => a.proxy_state === 'TEXAS').length,
     'New York': allAccounts.filter(a => a.proxy_state === 'New York').length,
+    UK: allAccounts.filter(a => a.proxy_state === 'UK').length,
   };
 
   const successRate = (todayTasksCount + completedTodayCount) > 0 
@@ -240,12 +241,13 @@ export default function Dashboard() {
             <CardDescription>{t('dashboard.regionalDistDesc')}</CardDescription>
           </CardHeader>
           <CardContent className="px-0 pt-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
               {[
                 { state: 'FLORIDA', color: 'bg-orange-500', iconColor: 'text-orange-500', light: 'bg-orange-500/10' },
                 { state: 'CALIFORNIA', color: 'bg-blue-500', iconColor: 'text-blue-500', light: 'bg-blue-500/10' },
                 { state: 'TEXAS', color: 'bg-red-500', iconColor: 'text-red-500', light: 'bg-red-500/10' },
                 { state: 'New York', color: 'bg-slate-700', iconColor: 'text-slate-700', light: 'bg-slate-700/10' },
+                { state: 'UK', color: 'bg-teal-500', iconColor: 'text-teal-500', light: 'bg-teal-500/10' },
               ].map((loc) => {
                 const count = stateDistribution[loc.state as keyof typeof stateDistribution];
                 const percentage = allAccounts.length > 0 ? Math.round((count / allAccounts.length) * 100) : 0;

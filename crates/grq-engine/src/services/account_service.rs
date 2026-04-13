@@ -47,11 +47,23 @@ impl AccountService {
         use crate::models::account::PROXY_STATES;
 
         // 1. Find a package_id that doesn't have this game_id yet
+        let proxy_state_condition = if request.country == "UNITED STATES (UK)" {
+            "AND proxy_state = 'UK'"
+        } else {
+            "AND proxy_state != 'UK'"
+        };
+
+        let query = format!(
+            "SELECT DISTINCT package_id, proxy_state FROM accounts 
+             WHERE package_id NOT IN (SELECT package_id FROM accounts WHERE game_id = ?1)
+             {}
+             ORDER BY package_id LIMIT 1",
+            proxy_state_condition
+        );
+
         let package_info: Option<(i32, String)> = conn
             .query_row(
-                "SELECT DISTINCT package_id, proxy_state FROM accounts 
-             WHERE package_id NOT IN (SELECT package_id FROM accounts WHERE game_id = ?1)
-             ORDER BY package_id LIMIT 1",
+                &query,
                 params![request.game_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
@@ -72,32 +84,37 @@ impl AccountService {
 
                 let next_id = max_id + 1;
 
-                // Get states already used by this game today
-                let mut stmt = conn
-                    .prepare(
-                        "SELECT DISTINCT proxy_state FROM accounts 
-                     WHERE game_id = ?1 AND date(created_at) = date('now')",
-                    )
-                    .map_err(|e| format!("Failed to prepare state check: {}", e))?;
+                let chosen_state = if request.country == "UNITED STATES (UK)" {
+                    "UK".to_string()
+                } else {
+                    // Get states already used by this game today
+                    let mut stmt = conn
+                        .prepare(
+                            "SELECT DISTINCT proxy_state FROM accounts 
+                         WHERE game_id = ?1 AND date(created_at) = date('now')",
+                        )
+                        .map_err(|e| format!("Failed to prepare state check: {}", e))?;
 
-                let used_states: Vec<String> = stmt
-                    .query_map(params![request.game_id], |row| row.get(0))
-                    .map_err(|e| format!("Failed to query used states: {}", e))?
-                    .collect::<Result<Vec<String>, _>>()
-                    .map_err(|e| format!("Failed to collect used states: {}", e))?;
+                    let used_states: Vec<String> = stmt
+                        .query_map(params![request.game_id], |row| row.get(0))
+                        .map_err(|e| format!("Failed to query used states: {}", e))?
+                        .collect::<Result<Vec<String>, _>>()
+                        .map_err(|e| format!("Failed to collect used states: {}", e))?;
 
-                // Find a state that hasn't been used today for this game if possible
-                let mut chosen_state =
-                    PROXY_STATES[(next_id - 1) as usize % PROXY_STATES.len()].to_string();
+                    // Find a state that hasn't been used today for this game if possible
+                    let mut chosen =
+                        PROXY_STATES[(next_id - 1) as usize % PROXY_STATES.len()].to_string();
 
-                if used_states.contains(&chosen_state) {
-                    for state in PROXY_STATES {
-                        if !used_states.contains(&(*state).to_string()) {
-                            chosen_state = (*state).to_string();
-                            break;
+                    if used_states.contains(&chosen) {
+                        for state in PROXY_STATES {
+                            if !used_states.contains(&(*state).to_string()) {
+                                chosen = (*state).to_string();
+                                break;
+                            }
                         }
                     }
-                }
+                    chosen
+                };
 
                 (next_id, chosen_state)
             }
@@ -304,6 +321,11 @@ impl AccountService {
         if let Some(branch_id) = &request.branch_id {
             updates.push("branch_id = ?");
             values.push(branch_id as &dyn rusqlite::ToSql);
+        }
+
+        if let Some(proxy_state) = &request.proxy_state {
+            updates.push("proxy_state = ?");
+            values.push(proxy_state as &dyn rusqlite::ToSql);
         }
 
         if updates.is_empty() {

@@ -229,6 +229,7 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
               ...account,
               game_id: targetGameId,
               request_template: account.request_template || 'Needs to be filled in - imported from Excel export',
+              country: (account as any).country || 'UNITED STATES (US)',
             } as any);
             
             accountCache[cacheKey] = accId;

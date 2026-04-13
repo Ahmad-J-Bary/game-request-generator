@@ -49,6 +49,8 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [importing, setImporting] = useState(false);
   const [dismissedUpdates, setDismissedUpdates] = useState<number[]>([]);
+  const [selectedTime, setSelectedTime] = useState<string>('');
+  const [selectedCountry, setSelectedCountry] = useState<string>('UNITED STATES (US)');
 
   const fetchUpdates = async () => {
     setLoading(true);
@@ -144,6 +146,15 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
     }
   }, [selectedImport, games]);
 
+  // Sync selectedTime when selectedImport changes
+  useEffect(() => {
+    if (selectedImport) {
+      const timePart = selectedImport.date.split(' ')[1] || '00:00:00';
+      // Convert to HH:mm format for input[type=time]
+      setSelectedTime(timePart.substring(0, 5));
+    }
+  }, [selectedImport]);
+
   const handleProcessImport = async () => {
     if (!selectedImport || !selectedGameId || !selectedBranchId) return;
 
@@ -165,9 +176,10 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         name: accountName,
         game_id: parseInt(selectedGameId),
         branch_id: parseInt(selectedBranchId),
-        start_date: selectedImport.date.split(' ')[0], // Extract just the date YYYY-MM-DD
-        start_time: selectedImport.date.split(' ')[1] || '00:00:00', // Extract the time HH:MM:SS
+        start_date: selectedImport.date.split(' ')[0],
+        start_time: selectedTime ? `${selectedTime}:00` : (selectedImport.date.split(' ')[1] || '00:00:00'),
         request_template: content,
+        country: selectedCountry,
       });
 
       // 3. Update offset to mark as processed
@@ -364,7 +376,39 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                     </Select>
                   </div>
 
-                  {/* Info Card */}
+                  {/* Start Time */}
+                  <div className="space-y-2.5">
+                    <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5" /> {t('accounts.startTime', 'Start Time')}
+                    </label>
+                    <input
+                      type="time"
+                      value={selectedTime}
+                      onChange={(e) => setSelectedTime(e.target.value)}
+                      className="w-full rounded-xl bg-background border border-border/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      {t('settings.telegramImport.detectedTime', 'Detected from message')}: {selectedImport.date.split(' ')[1] || '00:00:00'}
+                    </p>
+                  </div>
+
+                  {/* Country Selection */}
+                  <div className="space-y-2.5">
+                    <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                      🌍 {t('accounts.country', 'Country')}
+                    </label>
+                    <Select value={selectedCountry} onValueChange={setSelectedCountry}>
+                      <SelectTrigger className="rounded-xl bg-background border-border/40">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="UNITED STATES (US)">🇺🇸 UNITED STATES (US)</SelectItem>
+                        <SelectItem value="UNITED STATES (UK)">🇬🇧 UNITED STATES (UK)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+
                   <Card className="bg-background/50 border-primary/10 overflow-hidden">
                     <div className="px-4 py-2 bg-primary/5 border-b border-primary/10">
                       <span className="text-[10px] font-bold text-primary uppercase tracking-tighter">

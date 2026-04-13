@@ -28,7 +28,7 @@ export class TaskGenerator {
 
   async generateTodaysTasks(): Promise<{ batches: GameBatch[], accountScheduledTime: { [accountId: number]: number[] } }> {
     const today = new Date().toISOString().split('T')[0];
-    const statesOrder = ["FLORIDA", "CALIFORNIA", "TEXAS", "New York"];
+    const statesOrder = ["FLORIDA", "CALIFORNIA", "TEXAS", "New York", "UK"];
     
     // 1. Get all accounts and group them by state, then by package_id
     const allAccounts = await TauriService.getAllAccounts();

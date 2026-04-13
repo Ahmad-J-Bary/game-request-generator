@@ -27,6 +27,7 @@ pub struct CreateAccountRequest {
     pub start_date: String,
     pub start_time: String,
     pub request_template: String,
+    pub country: String,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -37,4 +38,5 @@ pub struct UpdateAccountRequest {
     pub start_date: Option<String>,
     pub start_time: Option<String>,
     pub request_template: Option<String>,
+    pub proxy_state: Option<String>,
 }

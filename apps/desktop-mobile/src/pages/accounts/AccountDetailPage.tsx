@@ -480,6 +480,7 @@ export default function AccountDetailPage() {
                         account.proxy_state === 'CALIFORNIA' && "border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400",
                         account.proxy_state === 'TEXAS' && "border-red-500/50 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400",
                         account.proxy_state === 'New York' && "border-slate-500/50 text-slate-600 bg-slate-50 dark:bg-slate-900/20 dark:text-slate-400",
+                        account.proxy_state === 'UK' && "border-teal-500/50 text-teal-600 bg-teal-50 dark:bg-teal-900/20 dark:text-teal-400",
                       )}>
                         {account.proxy_state}
                       </Badge>
