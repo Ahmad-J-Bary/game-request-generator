@@ -131,16 +131,47 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
           gameCache[g.name.toLowerCase()] = g.id;
         });
 
-        // Helper to get or create game ID
-        const getOrCreateGameId = async (name?: string): Promise<number> => {
-          if (!name) return gameId || 0;
-          const lowerName = name.toLowerCase();
-          if (gameCache[lowerName]) return gameCache[lowerName];
+        // Cache for resolving default branch IDs
+        const branchCache: Record<number, number> = {}; // key: gameId, value: defaultBranchId
+
+        // Helper to get or create game ID and resolve its corresponding branch ID
+        const getOrCreateGameAndBranch = async (name?: string): Promise<{ targetGameId: number, targetBranchId: number } | null> => {
+          let targetGame = gameId;
           
-          console.log(`Creating new game: ${name}`);
-          const newId = await TauriService.addGame({ name });
-          gameCache[lowerName] = newId;
-          return newId;
+          if (name) {
+            const lowerName = name.toLowerCase();
+            if (gameCache[lowerName]) {
+              targetGame = gameCache[lowerName];
+            } else {
+              console.log(`Creating new game: ${name}`);
+              targetGame = await TauriService.addGame({ name });
+              gameCache[lowerName] = targetGame;
+            }
+          }
+          
+          if (!targetGame) return null;
+
+          // Resolve branch ID
+          // 1. If we are importing directly into the open game and a branch was provided
+          if (branchId && targetGame === gameId) {
+            return { targetGameId: targetGame, targetBranchId: branchId };
+          }
+
+          // 2. Already fetched default branch for this game in this import loop
+          if (branchCache[targetGame]) {
+            return { targetGameId: targetGame, targetBranchId: branchCache[targetGame] };
+          }
+
+          // 3. Fetch branches and use the default one
+          const branches = await TauriService.getGameBranches(targetGame);
+          const defaultBranch = branches.find(b => b.is_default) || branches[0];
+          
+          if (defaultBranch) {
+            branchCache[targetGame] = defaultBranch.id;
+            return { targetGameId: targetGame, targetBranchId: defaultBranch.id };
+          }
+
+          return null; // Should not happen realistically unless DB fails
         };
 
         console.log('Importing data:', {
@@ -153,14 +184,16 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
         // Import levels
         for (const level of importResult.imported.levels) {
           try {
-            const targetGameId = await getOrCreateGameId((level as any).gameName);
-            if (!targetGameId) continue;
+            const ids = await getOrCreateGameAndBranch((level as any).gameName);
+            if (!ids) continue;
+            
+            const { targetGameId, targetBranchId } = ids;
 
             console.log(`Importing level into game ${targetGameId}:`, level);
             const levelId = await TauriService.addLevel({
               ...level,
               game_id: targetGameId,
-              branch_id: branchId || undefined,
+              branch_id: targetBranchId,
               is_bonus: level.is_bonus || false,
             } as any);
             
@@ -184,14 +217,16 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
         // Import purchase events
         for (const event of importResult.imported.purchaseEvents) {
           try {
-            const targetGameId = await getOrCreateGameId((event as any).gameName);
-            if (!targetGameId) continue;
+            const ids = await getOrCreateGameAndBranch((event as any).gameName);
+            if (!ids) continue;
+
+            const { targetGameId, targetBranchId } = ids;
 
             console.log(`Importing purchase event into game ${targetGameId}:`, event);
             const peId = await TauriService.addPurchaseEvent({
               ...event,
               game_id: targetGameId,
-              branch_id: branchId || undefined,
+              branch_id: targetBranchId,
               is_restricted: event.is_restricted || false,
             } as any);
             
@@ -212,8 +247,10 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
         // Import accounts
         for (const account of importResult.imported.accounts) {
           try {
-            const targetGameId = await getOrCreateGameId((account as any).gameName);
-            if (!targetGameId) continue;
+            const ids = await getOrCreateGameAndBranch((account as any).gameName);
+            if (!ids) continue;
+
+            const { targetGameId, targetBranchId } = ids;
 
             const lowerAccName = account.name?.toLowerCase() || '';
             const cacheKey = `${targetGameId}_${lowerAccName}`;
@@ -228,6 +265,7 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
             const accId = await TauriService.addAccount({
               ...account,
               game_id: targetGameId,
+              branch_id: targetBranchId,
               request_template: account.request_template || 'Needs to be filled in - imported from Excel export',
               country: (account as any).country || 'UNITED STATES (US)',
             } as any);
@@ -314,7 +352,10 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
         // Import progress (completion status) - using matrix completion markers
         for (const p of importResult.imported.progress) {
           try {
-            const gid = await getOrCreateGameId(p.gameName);
+            const ids = await getOrCreateGameAndBranch(p.gameName);
+            if (!ids) continue;
+            const { targetGameId: gid } = ids;
+            
             const aid = accountCache[`${gid}_${p.accountName.toLowerCase()}`];
             if (!aid) continue;
 
@@ -417,7 +458,10 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
 
             // 2. Sync to Database
             try {
-              const gid = await getOrCreateGameId(newRecord.gameName);
+              const ids = await getOrCreateGameAndBranch(newRecord.gameName);
+              if (!ids) continue;
+              const { targetGameId: gid, targetBranchId } = ids;
+              
               const aid = accountCache[`${gid}_${newRecord.accountName.toLowerCase()}`];
               if (!aid) continue;
 
@@ -434,8 +478,8 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
                 // For completed today records, try to match by time_spent and event_token pattern
                 let targetLevelId = null;
 
-                // Get all levels for this game
-                const gameLevels = await TauriService.getGameLevels(gid);
+                // Get all levels for this branch
+                const gameLevels = await TauriService.getGameLevels(targetBranchId);
 
                 // Calculate expected base time_spent from completion record
                 // Completion time_spent is in milliseconds, level time_spent is in thousand seconds

@@ -151,62 +151,82 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
             result.purchaseEvents.push(...parsedData.purchaseEvents);
           }
 
-          // Extract progress (completion markers)
-          // Matrix rows start after accountHeaderRow
           let accountHeaderRow = -1;
-          for (let i = 4; i < matrixData.length; i++) {
+          for (let i = 3; i < Math.min(10, matrixData.length); i++) {
             if (matrixData[i] && matrixData[i][0] && matrixData[i][0].toString().toLowerCase().includes('account')) {
               accountHeaderRow = i;
               break;
             }
           }
 
-          if (accountHeaderRow !== -1) {
-            // Level/Event headers are in rows 0 and 1
-            const maxCols = Math.max(...matrixData.slice(0, accountHeaderRow).map(row => row.length));
-            const colHeaders: { name: string; isPurchase: boolean; token: string }[] = [];
+          let dataRowsStart = accountHeaderRow !== -1 ? accountHeaderRow + 1 : 4;
+
+          // Detect startCol for progress parsing based on events header
+          const maxCols = Math.max(...matrixData.slice(0, 4).map(row => row.length));
+          let startCol = 0;
+          for (let col = 0; col < Math.min(5, maxCols); col++) {
+            const valDayRaw = matrixData[2] && matrixData[2][col] !== undefined && matrixData[2][col] !== null ? matrixData[2][col] : '';
+            const valDay = valDayRaw.toString().trim();
+            const isDayNumeric = valDay !== '' && !isNaN(Number(valDay));
+            const isLess = valDay.toLowerCase().includes('less');
             
-            for (let col = 4; col < maxCols; col++) {
-              const token = matrixData[0] && matrixData[0][col] ? matrixData[0][col].toString().trim() : '';
-              const name = matrixData[1] && matrixData[1][col] ? matrixData[1][col].toString().trim() : '';
-              if (token) {
-                colHeaders.push({ name, token, isPurchase: name === '$$$' });
-              }
+            const valTokenRaw = matrixData[0] && matrixData[0][col] !== undefined && matrixData[0][col] !== null ? matrixData[0][col] : '';
+            const valToken = valTokenRaw.toString().trim().toLowerCase();
+            const isLabelColumn = valToken === 'event token' || valToken === 'levels' || valToken === '' || valToken.includes(' ');
+            
+            if ((isDayNumeric || isLess) && !isLabelColumn) {
+               startCol = col;
+               break;
             }
+          }
 
-            for (let i = accountHeaderRow + 1; i < matrixData.length; i++) {
-              const row = matrixData[i];
-              if (!row || !row[0]) continue;
-              const accountName = row[0].toString().trim();
-              
-              for (let col = 4; col < row.length; col++) {
-                const cellVal = row[col] ? row[col].toString().trim() : '';
-                if (cellVal && cellVal !== '-') {
-                  let isCompleted = false;
-                  let dateStr = '';
+          const colHeaders: { name: string; isPurchase: boolean; token: string }[] = [];
+          for (let col = startCol; col < maxCols; col++) {
+            const tokenRaw = matrixData[0] && matrixData[0][col] !== undefined && matrixData[0][col] !== null ? matrixData[0][col] : '';
+            const token = tokenRaw.toString().trim();
+            const nameRaw = matrixData[1] && matrixData[1][col] !== undefined && matrixData[1][col] !== null ? matrixData[1][col] : '';
+            const name = nameRaw.toString().trim();
+            if (token && token.toLowerCase() !== 'event token') {
+              colHeaders.push({ name, token, isPurchase: name === '$$$' });
+            } else {
+              colHeaders.push({ name: '', token: '', isPurchase: false }); // Empty placeholder to align indices
+            }
+          }
 
-                  if (cellVal.endsWith('(C)')) {
-                    isCompleted = true;
-                    dateStr = cellVal.replace('(C)', '').trim();
-                  } else if (/^\d{1,2}-[A-Za-z]{3}$/.test(cellVal)) {
-                    // It's a date but not completed (scheduled/incomplete with custom offset)
-                    isCompleted = false;
-                    dateStr = cellVal;
-                  }
+          for (let i = dataRowsStart; i < matrixData.length; i++) {
+            const row = matrixData[i];
+            if (!row || !row[0]) continue;
+            const accountName = row[0].toString().trim();
+            
+            // Note: startCol here relates to the horizontal shift of the overall matrix.
+            // Often Accounts are col 0..3, and progress starts at startCol.
+            for (let col = startCol; col < row.length; col++) {
+              const cellVal = row[col] ? row[col].toString().trim() : '';
+              if (cellVal && cellVal !== '-') {
+                let isCompleted = false;
+                let dateStr = '';
 
-                  if (dateStr) {
-                    const header = colHeaders[col - 4];
-                    if (header) {
-                      result.progress.push({
-                        gameName,
-                        accountName,
-                        levelName: header.isPurchase ? undefined : header.name,
-                        purchaseToken: header.isPurchase ? header.token : undefined,
-                        token: header.token,
-                        isCompleted,
-                        completionDate: dateStr
-                      });
-                    }
+                if (cellVal.endsWith('(C)')) {
+                  isCompleted = true;
+                  dateStr = cellVal.replace('(C)', '').trim();
+                } else if (/^\d{1,2}-[A-Za-z]{3}$/.test(cellVal)) {
+                  // It's a date but not completed (scheduled/incomplete with custom offset)
+                  isCompleted = false;
+                  dateStr = cellVal;
+                }
+
+                if (dateStr) {
+                  const header = colHeaders[col - startCol];
+                  if (header && header.token) {
+                    result.progress.push({
+                      gameName,
+                      accountName,
+                      levelName: header.isPurchase ? undefined : header.name,
+                      purchaseToken: header.isPurchase ? header.token : undefined,
+                      token: header.token,
+                      isCompleted,
+                      completionDate: dateStr
+                    });
                   }
                 }
               }
@@ -321,11 +341,20 @@ export function isAccountsDetailFormat(rows: any[][]): boolean {
  * Check if the data is in vertical game detail format (4 rows)
  */
 export function isVerticalGameDetailFormat(rows: any[][]): boolean {
-  return rows.length >= 4 && 
-         rows[0]?.[0]?.toString().toLowerCase().includes('event token') &&
-         rows[1]?.[0]?.toString().toLowerCase().includes('level name') &&
-         rows[2]?.[0]?.toString().toLowerCase().includes('days offset') &&
-         rows[3]?.[0]?.toString().toLowerCase().includes('time spent');
+  if (rows.length < 4) return false;
+  
+  // Heuristic: Check if row 2 mostly contains numbers (days offset) 
+  // and row 0 mostly contains strings (tokens)
+  let numberCountRow2 = 0;
+  for (let i = 0; i < Math.min(10, rows[2].length); i++) {
+     const v = rows[2][i];
+     if (v !== undefined && v !== null && String(v).trim() !== '' && (!isNaN(Number(v)) || String(v).toLowerCase().includes('less'))) {
+         numberCountRow2++;
+     }
+  }
+  
+  // If we see at least 2 numbers/offsets in row 2, it's very likely the vertical layout.
+  return numberCountRow2 >= 2;
 }
 
 /**
@@ -347,37 +376,50 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
   const purchaseEvents: Partial<PurchaseEvent>[] = [];
   const accounts: Partial<Account>[] = [];
 
-  if (rows.length < 6) {
+  if (rows.length < 4) {
     return { levels, purchaseEvents, accounts };
   }
 
-  // Find the account header row
+  // Find the account header row - can be row 3, 4, 5, etc.
   let accountHeaderRow = -1;
-  for (let i = 4; i < rows.length; i++) {
+  for (let i = 3; i < Math.min(10, rows.length); i++) {
     if (rows[i] && rows[i][0] && rows[i][0].toString().toLowerCase().includes('account')) {
       accountHeaderRow = i;
       break;
     }
   }
 
-  if (accountHeaderRow === -1) {
-    // Fallback to game detail parsing if no account section found
-    const gameData = parseVerticalLayoutData(rows);
-    return { levels: gameData.levels, purchaseEvents: gameData.purchaseEvents, accounts };
+  // Detect data columns start (where actual events/levels begin)
+  const maxCols = Math.max(...rows.slice(0, 4).map(row => row.length));
+  let startCol = 0;
+  for (let col = 0; col < Math.min(5, maxCols); col++) {
+    const valDayRaw = rows[2] && rows[2][col] !== undefined && rows[2][col] !== null ? rows[2][col] : '';
+    const valDay = valDayRaw.toString().trim();
+    const isDayNumeric = valDay !== '' && !isNaN(Number(valDay));
+    const isLess = valDay.toLowerCase().includes('less');
+    
+    const valTokenRaw = rows[0] && rows[0][col] !== undefined && rows[0][col] !== null ? rows[0][col] : '';
+    const valToken = valTokenRaw.toString().trim().toLowerCase();
+    const isLabelColumn = valToken === 'event token' || valToken === 'levels' || valToken === '' || valToken.includes(' ');
+    
+    if ((isDayNumeric || isLess) && !isLabelColumn) {
+       startCol = col;
+       break;
+    }
   }
 
-  // Parse levels and purchase events (rows 0-3 before account header)
-  const maxCols = Math.max(...rows.slice(0, accountHeaderRow).map(row => row.length));
-  // Skip the first 4 columns (Account, Start Date, Start Time, Last Completed Token)
-  for (let col = 4; col < maxCols; col++) {
-    const eventToken = rows[0] && rows[0][col] ? rows[0][col].toString().trim() : '';
-    const levelName = rows[1] && rows[1][col] ? rows[1][col].toString().trim() : '';
-    const daysOffsetCell = rows[2] && rows[2][col];
-    const daysOffsetStr = daysOffsetCell != null ? daysOffsetCell.toString().trim() : '';
-    const timeSpentCell = rows[3] && rows[3][col];
-    const timeSpentStr = timeSpentCell != null ? timeSpentCell.toString().trim() : '';
+  // Parse levels and purchase events (rows 0-3)
+  for (let col = startCol; col < maxCols; col++) {
+    const eventTokenRaw = rows[0] && rows[0][col] !== undefined && rows[0][col] !== null ? rows[0][col] : '';
+    const eventToken = eventTokenRaw.toString().trim();
+    const levelNameRaw = rows[1] && rows[1][col] !== undefined && rows[1][col] !== null ? rows[1][col] : '';
+    const levelName = levelNameRaw.toString().trim();
+    const daysOffsetRaw = rows[2] && rows[2][col] !== undefined && rows[2][col] !== null ? rows[2][col] : '';
+    const daysOffsetStr = daysOffsetRaw.toString().trim();
+    const timeSpentRaw = rows[3] && rows[3][col] !== undefined && rows[3][col] !== null ? rows[3][col] : '';
+    const timeSpentStr = timeSpentRaw.toString().trim();
 
-    if (!eventToken) continue;
+    if (!eventToken || eventToken.toLowerCase() === 'event token') continue;
 
     if (levelName === '$$$') {
       // Purchase event
@@ -442,12 +484,16 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
     }
   }
 
-  // Parse accounts (starting from accountHeaderRow + 1)
-  for (let i = accountHeaderRow + 1; i < rows.length; i++) {
+  // If no accountHeaderRow found explicitly, but we have rows past row 3, we should try parsing from row 4 anyway
+  let accountStartRow = accountHeaderRow !== -1 ? accountHeaderRow + 1 : 4;
+  
+  // Parse accounts
+  for (let i = accountStartRow; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length < 3) continue;
 
     const accountName = row[0] ? row[0].toString().trim() : '';
+
 
     // Handle start date - could be string or Excel date value
     let startDateStr = '';
@@ -647,16 +693,37 @@ export function parseVerticalLayoutData(rows: any[][]): { levels: Partial<Level>
   }
 
   // Find the maximum number of columns
-  const maxCols = Math.max(...rows.map(row => row.length));
+  const maxCols = Math.max(...rows.slice(0, 4).map(row => row.length));
 
-  // Skip the first column (index 0) as it contains headers, start from column 1
-  for (let col = 1; col < maxCols; col++) {
-    const eventToken = rows[0] && rows[0][col] ? rows[0][col].toString().trim() : '';
-    const levelName = rows[1] && rows[1][col] ? rows[1][col].toString().trim() : '';
-    const daysOffsetStr = rows[2] && rows[2][col] ? rows[2][col].toString().trim() : '';
-    const timeSpentStr = rows[3] && rows[3][col] ? rows[3][col].toString().trim() : '';
+  // Determine where actual data columns start (skipping label columns if present)
+  let startCol = 0;
+  for (let col = 0; col < Math.min(5, maxCols); col++) {
+    const valDayRaw = rows[2] && rows[2][col] !== undefined && rows[2][col] !== null ? rows[2][col] : '';
+    const valDay = valDayRaw.toString().trim();
+    const isDayNumeric = valDay !== '' && !isNaN(Number(valDay));
+    const isLess = valDay.toLowerCase().includes('less');
+    
+    const valTokenRaw = rows[0] && rows[0][col] !== undefined && rows[0][col] !== null ? rows[0][col] : '';
+    const valToken = valTokenRaw.toString().trim().toLowerCase();
+    const isLabelColumn = valToken === 'event token' || valToken === 'levels' || valToken === '' || valToken.includes(' ');
+    
+    if ((isDayNumeric || isLess) && !isLabelColumn) {
+       startCol = col;
+       break;
+    }
+  }
 
-    if (!eventToken) continue; // Skip empty columns
+  for (let col = startCol; col < maxCols; col++) {
+    const eventTokenRaw = rows[0] && rows[0][col] !== undefined && rows[0][col] !== null ? rows[0][col] : '';
+    const eventToken = eventTokenRaw.toString().trim();
+    const levelNameRaw = rows[1] && rows[1][col] !== undefined && rows[1][col] !== null ? rows[1][col] : '';
+    const levelName = levelNameRaw.toString().trim();
+    const daysOffsetRaw = rows[2] && rows[2][col] !== undefined && rows[2][col] !== null ? rows[2][col] : '';
+    const daysOffsetStr = daysOffsetRaw.toString().trim();
+    const timeSpentRaw = rows[3] && rows[3][col] !== undefined && rows[3][col] !== null ? rows[3][col] : '';
+    const timeSpentStr = timeSpentRaw.toString().trim();
+
+    if (!eventToken || eventToken.toLowerCase() === 'event token' || eventToken.toLowerCase() === 'levels') continue; // Skip empty/header columns
 
     // Check if this is a purchase event ($$$ in level name)
     if (levelName === '$$$') {
