@@ -111,7 +111,8 @@
     "viewDetails": "View Details",
     "account": "Account",
     "pickDate": "Pick a date",
-    "pickTime": "Pick a time"
+    "pickTime": "Pick a time",
+    "country": "Country"
   },
   "levels": {
     "title": "Levels",
@@ -317,8 +318,10 @@
     "percentageOfTotal": "of total"
   },
   "branches": {
+    "branch": "Branch",
     "defaultBranch": "Default Branch",
     "title": "Manage Branches",
+    "selectBranch": "Select Branch",
     "manageDescription": "Create, delete or duplicate branches for your game levels and events.",
     "existingBranches": "Existing Branches",
     "new": "New",
@@ -458,8 +461,15 @@
       "checkUpdates": "Check for Updates",
       "refresh": "Refresh",
       "checking": "Checking for new messages...",
+      "fetchFailed": "Failed to fetch Telegram updates",
+      "fetchFailedHint": "Check your Telegram token, chat ID, network, and proxy settings, then try again.",
       "noNewFiles": "No new files found in the group",
       "noNewFilesHint": "Any .txt files sent to your group will appear here.",
+      "integrationDisabledTitle": "Telegram import is disabled",
+      "integrationDisabledHint": "Enable Telegram integration from settings before importing accounts from group messages.",
+      "configurationIncompleteTitle": "Telegram configuration is incomplete",
+      "configurationIncompleteHint": "Add a valid bot token and chat ID, then enable the Telegram integration.",
+      "openTelegramSettings": "Open Telegram Settings",
       "foundFiles": "{{count}} new files found",
       "selectFileHint": "Select a file to begin the import process",
       "process": "Process",
@@ -477,7 +487,8 @@
       "selectBranchPlaceholder": "Select branch...",
       "chooseGameFirst": "Choose game first",
       "templatePreview": "Template Preview",
-      "templateHint": "Content will be read from the file automatically. Original message date will be used as the start date."
+      "templateHint": "Content will be read from the file automatically. Original message date will be used as the start date.",
+      "detectedTime": "Detected time"
     },
     "systemManagement": "System Management",
     "telegram": {

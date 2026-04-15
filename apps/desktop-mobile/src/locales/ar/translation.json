@@ -111,7 +111,8 @@
     "viewDetails": "عرض التفاصيل",
     "account": "الحساب",
     "pickDate": "اختر تاريخاً",
-    "pickTime": "اختر وقتاً"
+    "pickTime": "اختر وقتاً",
+    "country": "الدولة"
   },
   "levels": {
     "title": "المستويات",
@@ -317,6 +318,7 @@
     "percentageOfTotal": "من الإجمالي"
   },
   "branches": {
+    "branch": "الفرع",
     "defaultBranch": "الفرع الافتراضي",
     "title": "إدارة الفروع",
     "selectBranch": "اختر الفرع",
@@ -522,8 +524,15 @@
       "checkUpdates": "التحقق من المستجدات",
       "refresh": "تحديث",
       "checking": "جاري البحث عن رسائل جديدة...",
+      "fetchFailed": "فشل جلب تحديثات تيليجرام",
+      "fetchFailedHint": "تحقق من توكن البوت ومعرّف الدردشة والاتصال بالشبكة وإعدادات البروكسي ثم حاول مرة أخرى.",
       "noNewFiles": "لا توجد ملفات جديدة في المجموعة",
       "noNewFilesHint": "ستظهر هنا أي ملفات .txt مُرسلة إلى مجموعتك.",
+      "integrationDisabledTitle": "استيراد تيليجرام غير مفعّل",
+      "integrationDisabledHint": "فعّل تكامل تيليجرام من الإعدادات أولاً قبل استيراد الحسابات من رسائل المجموعة.",
+      "configurationIncompleteTitle": "إعدادات تيليجرام غير مكتملة",
+      "configurationIncompleteHint": "أضف توكن بوت صالحاً ومعرّف الدردشة ثم فعّل تكامل تيليجرام.",
+      "openTelegramSettings": "فتح إعدادات تيليجرام",
       "foundFiles": "تم العثور على {{count}} ملفات جديدة",
       "selectFileHint": "اختر ملفاً لبدء عملية الاستيراد",
       "process": "معالجة",
@@ -541,7 +550,9 @@
       "selectBranchPlaceholder": "اختر فرعاً...",
       "chooseGameFirst": "اختر اللعبة أولاً",
       "templatePreview": "معاينة القالب",
-      "templateHint": "سيتم قراءة المحتوى من الملف تلقائياً. سيُستخدم تاريخ الرسالة الأصلي كتاريخ البداية."
+      "templateHint": "سيتم قراءة المحتوى من الملف تلقائياً. سيُستخدم تاريخ الرسالة الأصلي كتاريخ البداية.",
+      "detectedTime": "تاريخ التحديد"
+
     },
     "systemManagement": "إدارة النظام",
     "telegram": {

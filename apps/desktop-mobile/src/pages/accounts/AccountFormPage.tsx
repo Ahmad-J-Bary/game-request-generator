@@ -314,7 +314,7 @@ const SimpleTimePicker = ({
 };
 
 export default function AccountFormPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams<{ id?: string }>();
@@ -326,10 +326,26 @@ export default function AccountFormPage() {
   const isEditMode = location.pathname.includes('/edit/');
   const accountId = id ? parseInt(id, 10) : undefined;
   const account = isEditMode && accountId ? (stateAccount || accounts.find(a => a.id === accountId)) : undefined;
+  const isRtl = i18n.dir() === 'rtl';
+
+  const getDefaultStartDate = () => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  };
+
+  const getDefaultStartTime = () => {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date()).toUpperCase();
+  };
 
   const [name, setName] = useState(account?.name || '');
-  const [startDate, setStartDate] = useState<Date | null>(account?.start_date ? new Date(account.start_date) : null);
-  const [startTime, setStartTime] = useState(account?.start_time || '');
+  const [startDate, setStartDate] = useState<Date | null>(
+    account?.start_date ? new Date(account.start_date) : (isEditMode ? null : getDefaultStartDate())
+  );
+  const [startTime, setStartTime] = useState(account?.start_time || (isEditMode ? '' : getDefaultStartTime()));
   const [requestTemplate, setRequestTemplate] = useState(account?.request_template || '');
   // Derive country from existing proxy_state for edit mode
   const initialCountry = account?.proxy_state === 'UK' ? 'UNITED STATES (UK)' : 'UNITED STATES (US)';
@@ -349,12 +365,25 @@ export default function AccountFormPage() {
         const data = await fetchBranches(currentGameId);
         setBranches(data);
         
-        // If no branch selected yet, select default
-        // We check selectedBranchId locally or just rely on it being null initially
         if (selectedBranchId === null) {
+            const latestCreatedBranch = [...data]
+              .filter(branch => !branch.is_default)
+              .sort((a, b) => {
+                const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+                const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+
+                if (aTime !== bTime) {
+                  return bTime - aTime;
+                }
+
+                return b.id - a.id;
+              })[0];
+
             const defaultBranch = data.find(b => b.is_default) || data[0];
-            if (defaultBranch) {
-                setSelectedBranchId(defaultBranch.id);
+            const preferredBranch = latestCreatedBranch || defaultBranch;
+
+            if (preferredBranch) {
+                setSelectedBranchId(preferredBranch.id);
             }
         }
       };
@@ -478,12 +507,19 @@ export default function AccountFormPage() {
                 value={selectedBranchId?.toString() || ""} 
                 onValueChange={(val) => setSelectedBranchId(val === "" ? null : parseInt(val, 10))}
               >
-                <SelectTrigger>
+                <SelectTrigger
+                  dir={i18n.dir()}
+                  className={isRtl ? "text-right [&>span]:text-right" : "text-left [&>span]:text-left"}
+                >
                     <SelectValue placeholder={t('branches.selectBranch')} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent dir={i18n.dir()}>
                     {branches.map(b => (
-                        <SelectItem key={b.id} value={b.id.toString()}>
+                        <SelectItem
+                          key={b.id}
+                          value={b.id.toString()}
+                          className={isRtl ? "text-right" : "text-left"}
+                        >
                             {b.name} {b.is_default && `(${t('common.default')})`}
                         </SelectItem>
                     ))}

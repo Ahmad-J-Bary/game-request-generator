@@ -199,6 +199,38 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
     save();
   }, [accountStartStates]);
 
+  useEffect(() => {
+    const saveTasksState = async () => {
+      if (loading) return;
+
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const serializedBatches = batches.map(batch => ({
+          ...batch,
+          tasks: batch.tasks.map(task => ({
+            ...task,
+            completedTasks: Array.from(task.completedTasks)
+          }))
+        }));
+
+        const serializedDeferred = deferredTasks.map(task => ({
+          ...task,
+          completedTasks: Array.from(task.completedTasks)
+        }));
+
+        await asyncStorageService.set(`dailyTasks_batches_${today}`, {
+          batches: serializedBatches,
+          deferredTasks: serializedDeferred,
+          accountScheduledTime
+        });
+      } catch (error) {
+        console.error('Error saving daily tasks state:', error);
+      }
+    };
+
+    saveTasksState();
+  }, [batches, deferredTasks, accountScheduledTime, loading]);
+
   // Generate today's tasks using the TaskGenerator utility
   const generateTodaysTasks = useCallback(async () => {
     setLoading(true);

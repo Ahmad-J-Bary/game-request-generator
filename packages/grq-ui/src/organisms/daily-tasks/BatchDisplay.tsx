@@ -11,6 +11,7 @@ interface BatchDisplayProps {
   accountTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
   accountStartStates: { [accountId: number]: AccountStartState };
   onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number, response?: RepeaterResponse) => void;
+  onUpdateResponse: (accountId: number, requestIndex: number, response: RepeaterResponse) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   completedTasks?: any[];
   deferredTasks?: DailyTask[];
@@ -25,6 +26,7 @@ export const BatchDisplay = React.memo(({
   accountTaskAssignments,
   accountStartStates,
   onCompleteTask,
+  onUpdateResponse,
   onCopyRequest,
   completedTasks = [],
   deferredTasks = [],
@@ -48,6 +50,7 @@ export const BatchDisplay = React.memo(({
         accountTaskAssignments={accountTaskAssignments}
         accountStartStates={accountStartStates}
         onCompleteTask={onCompleteTask}
+        onUpdateResponse={onUpdateResponse}
         onCopyRequest={onCopyRequest}
         completedTasks={completedTasks}
         deferredTasks={deferredTasks}

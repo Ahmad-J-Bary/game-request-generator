@@ -123,10 +123,11 @@ export class TaskCompletionHandler {
            const raw = (req.request_type as string).toLowerCase();
            return raw.includes('session') ? 'Purchase Session' : 'Purchase Event';
         };
+        const finalRequestType = deriveType(request);
 
         // Record completed purchase event
         const completedTask: CompletedDailyTask = {
-          id: `${accountId}_${request.event_token}_${Date.now()}`,
+          id: `${accountId}_${request.event_token}_${finalRequestType.replace(/\s+/g, '_')}_${Date.now()}`,
           accountId,
           accountName: account.name,
           gameId: account.game_id,
@@ -137,7 +138,7 @@ export class TaskCompletionHandler {
           completionDate: new Date().toISOString().split('T')[0],
           levelId: undefined, 
           levelName: request.level_name || '$$$',
-          requestType: deriveType(request), 
+          requestType: finalRequestType,
           isPurchase: true,
         };
 
@@ -186,13 +187,6 @@ export class TaskCompletionHandler {
             eventToken: request.event_token!,
           }
         }));
-
-        // Check if all requests for this account in this batch are completed
-        const currentBatch = updatedBatches.find(b => b.batchIndex === batchIndex);
-        const taskInBatch = currentBatch?.tasks.find(t => t.account.id === accountId);
-        const allCompleted = taskInBatch && taskInBatch.requests.every((_, idx) => 
-          taskInBatch.completedTasks.has(idx.toString())
-        );
 
         // Dispatch progress-updated event
         window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
@@ -260,10 +254,9 @@ export class TaskCompletionHandler {
         const finalRequestType = deriveFinalType(request);
 
         // Create individual completion records for all level events
-        // The pair completion logic will clean up duplicates for Session+Event pairs
         if (!isPurchaseEvent && request.level_id) {
           const levelCompletedTask: CompletedDailyTask = {
-            id: `${accountId}_level_${request.level_id}_${now}`,
+            id: `${accountId}_level_${request.level_id}_${finalRequestType.replace(/\s+/g, '_')}_${now}`,
             accountId,
             accountName: foundTask!.account.name,
             gameId: foundTask!.account.game_id,
@@ -327,11 +320,10 @@ export class TaskCompletionHandler {
             );
 
             if (allGroupCompleted && groupIndices.includes(requestIndex)) {
-              // Record the completion of this Session+Event pair with accurate timestamp
               const completionRecord: AccountCompletionRecord = {
                 accountId,
                 timeSpent: group.time_spent,
-                completionTime: now, // Use current timestamp for accurate cooldown calculation
+                completionTime: now,
                 levelId: request.level_id!,
                 eventToken: group.event_token,
               };
@@ -347,49 +339,7 @@ export class TaskCompletionHandler {
                 [accountId]: []
               }));
 
-              // For Session+Event pairs, ensure we only have one completion record
-              // Remove any existing individual completion records for this pair
               const completedDate = new Date().toISOString().split('T')[0];
-              const completedKey = `dailyTasks_completed_${completedDate}`;
-              const existingCompleted = await asyncStorageService.get<CompletedDailyTask[]>(completedKey);
-              let completedList: CompletedDailyTask[] = existingCompleted ? existingCompleted : [];
-
-              // Remove any individual completions for this pair's requests
-              completedList = completedList.filter(task => {
-                // Keep records that don't match this pair's requests
-                const isPairSession = task.id.startsWith(`${accountId}_level_`) &&
-                  group.requests.some(req => req.level_id === task.levelId && (req.request_type as string).includes('Session'));
-                const isPairEvent = task.eventToken === group.event_token &&
-                  task.id.includes(`_${group.event_token}_`);
-                return !isPairSession && !isPairEvent;
-              });
-
-              // Determine if this is a Purchase Event or Level Event pair
-              const isPurchasePair = group.requests.some(r => (r.request_type as string).includes('Purchase'));
-
-              // Add the single pair completion record
-              const pairCompletedTask: CompletedDailyTask = {
-                id: `${accountId}_${group.event_token}_${now}`,
-                accountId,
-                accountName: foundTask!.account.name,
-                gameId: foundTask!.account.game_id,
-                gameName: this.options.games.find(g => g.id === foundTask!.account.game_id)?.name || 'Unknown',
-                eventToken: group.event_token,
-                timeSpent: group.time_spent,
-                completionTime: now,
-                completionDate: completedDate,
-                levelId: request.level_id,
-                levelName: (request.level_name?.trim() || '') || (isPurchasePair ? '$$$' : '-'),
-                requestType: isPurchasePair ? 'Purchase Event' : 'Level Event', 
-                isPurchase: isPurchasePair,
-              };
-
-              completedList.push(pairCompletedTask);
-              await asyncStorageService.set(completedKey, completedList);
-
-              // Dispatch event to update sidebar
-              window.dispatchEvent(new CustomEvent('daily-task-completed'));
-
               this.options.setBatches(updatedBatches);
 
               // Update AsyncStorage with updated batches

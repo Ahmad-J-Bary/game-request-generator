@@ -15,13 +15,14 @@ interface RequestItemProps {
     isCompleted: boolean;
     isReady: boolean;
     lastResponse?: RepeaterResponse | null;
+    onResponseUpdate: (response: RepeaterResponse) => void;
     onComplete: (response?: RepeaterResponse) => void;
     onCopy: (content: string, eventToken?: string, timeSpent?: number) => void;
     index: number;
     total: number;
 }
 
-export const RequestItem = React.memo(({ request, isCompleted, isReady, lastResponse, onComplete, onCopy, index, total }: RequestItemProps) => {
+export const RequestItem = React.memo(({ request, isCompleted, isReady, lastResponse, onResponseUpdate, onComplete, onCopy, index, total }: RequestItemProps) => {
     const { t } = useTranslation();
     const [isSending, setIsSending] = useState(false);
     const [isResponseOpen, setIsResponseOpen] = useState(!!lastResponse);
@@ -64,23 +65,24 @@ export const RequestItem = React.memo(({ request, isCompleted, isReady, lastResp
             const res = await invoke<RepeaterResponse>('send_raw_request', { rawRequest: rawRequestText });
             
             setIsResponseOpen(true);
-            
-            if (res.status === 200) {
-                let successMsg = t('dailyTasks.requestSuccess');
-                try {
-                    const parsed = JSON.parse(res.body);
-                    const extractedMsg = parsed.message || parsed.msg || parsed.result || parsed.status || (parsed.error && typeof parsed.error === 'string' ? parsed.error : null);
-                    if (extractedMsg && typeof extractedMsg === 'string') {
-                        successMsg = extractedMsg;
-                    }
-                } catch (e) {
-                    // Not JSON or no message, use default translated success message
-                }
+            onResponseUpdate(res);
 
-                toast.success(successMsg);
+            let responseMessage = '';
+            try {
+                const parsed = JSON.parse(res.body);
+                const extractedMsg = parsed.message || parsed.msg || parsed.result || parsed.status || (parsed.error && typeof parsed.error === 'string' ? parsed.error : null);
+                if (typeof extractedMsg === 'string') {
+                    responseMessage = extractedMsg;
+                }
+            } catch (_error) {
+                responseMessage = '';
+            }
+            
+            if (res.status >= 200 && res.status < 300) {
+                toast.success(responseMessage || t('dailyTasks.requestSuccess'));
                 onComplete(res);
             } else {
-                toast.error(t('dailyTasks.requestStatusError', { status: res.status, text: res.status_text }));
+                toast.error(responseMessage || t('dailyTasks.requestStatusError', { status: res.status, text: res.status_text }));
             }
         } catch (error: any) {
             console.error('Failed to send request:', error);

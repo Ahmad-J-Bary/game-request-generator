@@ -27,6 +27,36 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
     const [completedTasks, setCompletedTasks] = useState<CompletedDailyTask[]>([]);
     const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
 
+    const getRequestTypeLabel = (task: CompletedDailyTask) => {
+        switch (task.requestType) {
+            case 'Level Session':
+            case 'Session Only':
+            case 'Purchase Session':
+                return t('requests.session');
+            case 'Level Event':
+            case 'Purchase Event':
+                return t('requests.event');
+            default:
+                return task.requestType || (task.isPurchase ? 'Purchase Event' : 'Level Event');
+        }
+    };
+
+    const getRequestTypeTone = (task: CompletedDailyTask) => {
+        if (task.isPurchase && task.requestType === 'Purchase Session') {
+            return "bg-amber-600 hover:bg-amber-600";
+        }
+        if (task.isPurchase) {
+            return "bg-amber-100 text-amber-900 border-amber-200";
+        }
+        if (task.requestType === 'Level Session') {
+            return "bg-blue-600 hover:bg-blue-600 text-white";
+        }
+        if (task.requestType === 'Session Only') {
+            return "bg-gray-600 hover:bg-gray-600 text-white";
+        }
+        return "";
+    };
+
     // Load completed tasks from localStorage
     useEffect(() => {
         loadCompletedTasks();
@@ -212,7 +242,8 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                                     <div className="space-y-2">
                                         {Object.entries(accounts).map(([accountId, { accountName, tasks }]) => {
                                             const isExpanded = expandedAccounts.has(`${gameId}-${accountId}`);
-                                            const latestTask = tasks[tasks.length - 1];
+                                            const sortedTasks = [...tasks].sort((a, b) => a.completionTime - b.completionTime);
+                                            const latestTask = sortedTasks[sortedTasks.length - 1];
 
                                             return (
                                                 <Card key={accountId} className="overflow-hidden border-muted">
@@ -242,7 +273,7 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
 
                                                     {isExpanded && (
                                                         <CardContent className="p-3 pt-0 space-y-2 border-t bg-muted/10">
-                                                            {tasks.map((task) => (
+                                                            {sortedTasks.map((task) => (
                                                                 <div
                                                                     key={task.id}
                                                                     className={cn(
@@ -260,16 +291,15 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                                                                         <div className="flex items-center gap-2">
                                                                             <Badge
                                                                                 variant={(task.requestType as string).includes('Session') ? 'default' : 'secondary'}
-                                                                                className={cn(
-                                                                                    "text-[10px] h-4 px-1.5",
-                                                                                    task.isPurchase && (task.requestType as string).includes('Session') && "bg-amber-600 hover:bg-amber-600",
-                                                                                    task.isPurchase && (task.requestType as string).includes('Event') && "bg-amber-100 text-amber-900 border-amber-200",
-                                                                                    !task.isPurchase && task.requestType === 'Level Session' && "bg-blue-600 hover:bg-blue-600 text-white",
-                                                                                    !task.isPurchase && task.requestType === 'Session Only' && "bg-gray-600 hover:bg-gray-600 text-white"
-                                                                                )}
+                                                                                className={cn("text-[10px] h-4 px-1.5", getRequestTypeTone(task))}
                                                                             >
-                                                                                {(task.requestType as string).includes('Session') ? t('requests.session') : t('requests.event')}
+                                                                                {getRequestTypeLabel(task)}
                                                                             </Badge>
+                                                                            {task.requestType && (
+                                                                                <span className="text-[10px] text-muted-foreground">
+                                                                                    {task.requestType}
+                                                                                </span>
+                                                                            )}
                                                                             {task.eventToken && (
                                                                                 <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[120px]">
                                                                                     {task.eventToken}

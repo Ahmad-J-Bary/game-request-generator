@@ -10,6 +10,7 @@ interface BatchTasksProps {
   accountTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
   accountStartStates: { [accountId: number]: AccountStartState };
   onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number, response?: RepeaterResponse) => void;
+  onUpdateResponse: (accountId: number, requestIndex: number, response: RepeaterResponse) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   completedTasks: any[];
   deferredTasks?: DailyTask[];
@@ -22,6 +23,7 @@ export const BatchTasks = React.memo(({
   accountTaskAssignments,
   accountStartStates,
   onCompleteTask,
+  onUpdateResponse,
   onCopyRequest,
   completedTasks,
   deferredTasks = [],
@@ -42,6 +44,7 @@ export const BatchTasks = React.memo(({
               accountStartStates={accountStartStates}
               batchIndex={batch.batchIndex}
               allBatches={allBatches}
+              onUpdateResponse={onUpdateResponse}
               completedTasks={completedTasks}
               deferredTasks={deferredTasks}
             />

@@ -63,23 +63,48 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [telegramImportOpen, setTelegramImportOpen] = useState(false);
   const [pendingImportsCount, setPendingImportsCount] = useState(0);
 
-  // Periodically check for Telegram updates
-  const checkTelegramUpdates = async () => {
-    try {
-      const updates = await TauriService.getTelegramUpdates();
-      setPendingImportsCount(updates.length);
-    } catch (error) {
-      // Silently fail or log sparingly for background checks to avoid console spam
-      if ((import.meta as any).env?.DEV) {
-        console.warn('Telegram background check failed (likely network or invalid token).');
-      }
-    }
-  };
-
   useEffect(() => {
+    let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+
+    const checkTelegramUpdates = async () => {
+      try {
+        const config = await TauriService.getTelegramConfig();
+        const canCheckTelegram = Boolean(
+          config.enabled && config.bot_token?.trim() && config.chat_id?.trim()
+        );
+
+        if (!canCheckTelegram) {
+          if (!cancelled) {
+            setPendingImportsCount(0);
+          }
+          return;
+        }
+
+        const updates = await TauriService.getTelegramUpdates();
+        if (!cancelled) {
+          setPendingImportsCount(updates.length);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPendingImportsCount(0);
+        }
+
+        if ((import.meta as any).env?.DEV) {
+          console.warn('Telegram background check failed (likely network or invalid token).');
+        }
+      }
+    };
+
     checkTelegramUpdates();
-    const interval = setInterval(checkTelegramUpdates, 5 * 60 * 1000); // 5 mins
-    return () => clearInterval(interval);
+    intervalId = setInterval(checkTelegramUpdates, 5 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   }, []);
 
   const handlePinProxy = () => {

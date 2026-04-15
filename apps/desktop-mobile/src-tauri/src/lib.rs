@@ -224,6 +224,13 @@ async fn set_telegram_config(
     auto_send: bool,
 ) -> Result<(), String> {
     let mut config = ConfigService::load(&app);
+    let bot_token = bot_token
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let chat_id = chat_id
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let telegram_enabled = enabled && bot_token.is_some() && chat_id.is_some();
     
     // Reset offset if tracking a completely new chat or bot to ensure we don't skip unread queues
     if config.telegram_chat_id != chat_id || config.telegram_bot_token != bot_token {
@@ -232,8 +239,8 @@ async fn set_telegram_config(
 
     config.telegram_bot_token = bot_token;
     config.telegram_chat_id = chat_id;
-    config.telegram_enabled = enabled;
-    config.telegram_auto_send = auto_send;
+    config.telegram_enabled = telegram_enabled;
+    config.telegram_auto_send = telegram_enabled && auto_send;
     
     ConfigService::save(&app, &config)
 }

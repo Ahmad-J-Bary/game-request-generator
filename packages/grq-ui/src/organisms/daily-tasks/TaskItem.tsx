@@ -9,7 +9,7 @@ import { TaskItemProps } from '@grq/api-bindings/types/daily-tasks.types';
 import { useTimer } from '@grq/core/hooks/useTimer';
 import { cn } from '@grq/ui/lib/utils';
 
-export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks, deferredTasks = [] }: TaskItemProps) => {
+export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks, deferredTasks = [] }: TaskItemProps) => {
   const { t } = useTranslation();
   const currentTime = useTimer(1000);
 
@@ -198,6 +198,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
                   request={request}
                   isCompleted={task.completedTasks.has(index.toString())}
                   isReady={isReady}
+                  onResponseUpdate={(res) => onUpdateResponse(task.account.id, index, res)}
                   onComplete={(res) => onCompleteTask(task.account.id, index, batchIndex, res)}
                   onCopy={(content, eventToken, timeSpent) =>
                     onCopyRequest(content, eventToken, timeSpent)}

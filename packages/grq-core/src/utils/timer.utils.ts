@@ -120,6 +120,7 @@ export const calculateTimerState = (
   // Check if ANY account completed this SAME level or event within the last hour
   const taskLevelId = task.requests[0]?.level_id;
   const taskEventToken = task.requests[0]?.event_token;
+  const taskGameId = task.account.game_id;
   
   if (taskLevelId || taskEventToken) {
     let globalCooldownTarget = 0;
@@ -128,6 +129,7 @@ export const calculateTimerState = (
     for (const completedTask of completedTasks) {
        // Skip own completions as they are handled by the sequential logic
        if (completedTask.accountId === accountId) continue;
+       if (completedTask.gameId !== taskGameId) continue;
 
        const isSameLevel = taskLevelId && completedTask.levelId === taskLevelId;
        const isSameEvent = taskEventToken && completedTask.eventToken === taskEventToken && !taskLevelId;

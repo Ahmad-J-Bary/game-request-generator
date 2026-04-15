@@ -8,6 +8,7 @@ import arTranslation from './locales/ar/translation.json';
 i18n
   .use(initReactI18next)
   .init({
+    debug: false,
     resources: {
       en: {
         translation: enTranslation,

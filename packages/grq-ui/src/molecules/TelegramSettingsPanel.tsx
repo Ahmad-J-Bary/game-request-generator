@@ -41,12 +41,18 @@ export function TelegramSettingsPanel() {
   const handleSave = async () => {
     try {
       setSaving(true);
+      const normalizedBotToken = botToken.trim();
+      const normalizedChatId = chatId.trim();
+
       await invoke('set_telegram_config', {
-        botToken: botToken || null,
-        chatId: chatId || null,
+        botToken: normalizedBotToken || null,
+        chatId: normalizedChatId || null,
         enabled,
         autoSend
       });
+      setBotToken(normalizedBotToken);
+      setChatId(normalizedChatId);
+      await loadConfig();
       toast.success(t('settings.telegram.saveSuccess'));
     } catch (error) {
       console.error('Failed to save Telegram config:', error);

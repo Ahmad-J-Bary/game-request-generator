@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { 
   MessageSquare, 
   RefreshCw, 
@@ -29,7 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@grq/ui/atoms/scroll-area';
 import { toast } from 'sonner';
 import { TauriService } from '@grq/core/services/tauri.service';
-import { TelegramImportPreview, Game, GameBranch } from '@grq/api-bindings';
+import { TelegramImportPreview, Game, GameBranch, TelegramConfig } from '@grq/api-bindings';
 import { cn } from '@grq/ui/lib/utils';
 import { asyncStorageService } from '@grq/core/services/storage.service';
 
@@ -40,6 +41,7 @@ interface TelegramImportDialogProps {
 
 export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialogProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [imports, setImports] = useState<TelegramImportPreview[]>([]);
   const [selectedImport, setSelectedImport] = useState<TelegramImportPreview | null>(null);
@@ -51,15 +53,90 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
   const [dismissedUpdates, setDismissedUpdates] = useState<number[]>([]);
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [selectedCountry, setSelectedCountry] = useState<string>('UNITED STATES (US)');
+  const [telegramStatus, setTelegramStatus] = useState<'loading' | 'ready' | 'disabled' | 'incomplete' | 'error'>('loading');
 
-  const fetchUpdates = async () => {
+  const isTelegramReady = (config: TelegramConfig) => {
+    return Boolean(config.enabled && config.bot_token?.trim() && config.chat_id?.trim());
+  };
+
+  const getErrorMessage = (error: unknown) => {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return String(error);
+  };
+
+  const resolveTelegramStatus = async (notifyOnFailure = false) => {
+    try {
+      const config = await TauriService.getTelegramConfig();
+
+      if (!config.enabled) {
+        setTelegramStatus('disabled');
+        setImports([]);
+        setSelectedImport(null);
+
+        if (notifyOnFailure) {
+          toast.error(t('settings.telegramImport.integrationDisabledHint'));
+        }
+
+        return false;
+      }
+
+      if (!isTelegramReady(config)) {
+        setTelegramStatus('incomplete');
+        setImports([]);
+        setSelectedImport(null);
+
+        if (notifyOnFailure) {
+          toast.error(t('settings.telegramImport.configurationIncompleteHint'));
+        }
+
+        return false;
+      }
+
+      setTelegramStatus('ready');
+      return true;
+    } catch (error) {
+      setTelegramStatus('error');
+      setImports([]);
+      setSelectedImport(null);
+
+      if (notifyOnFailure) {
+        toast.error(t('settings.telegramImport.fetchFailed'));
+      }
+
+      console.error('Failed to load Telegram config:', error);
+      return false;
+    }
+  };
+
+  const fetchUpdates = async (notifyOnUnavailable = false) => {
     setLoading(true);
     try {
+      const canFetchUpdates = await resolveTelegramStatus(notifyOnUnavailable);
+
+      if (!canFetchUpdates) {
+        return;
+      }
+
       const updates = await TauriService.getTelegramUpdates();
       setImports(updates);
     } catch (error) {
-      console.error('Failed to fetch Telegram updates:', error);
-      toast.error(t('settings.fetchFailed'));
+      const message = getErrorMessage(error).toLowerCase();
+
+      if (message.includes('telegram integration is disabled')) {
+        setTelegramStatus('disabled');
+      } else if (message.includes('bot token not configured') || message.includes('chat id not configured')) {
+        setTelegramStatus('incomplete');
+      } else {
+        setTelegramStatus('error');
+        console.error('Failed to fetch Telegram updates:', error);
+      }
+
+      setImports([]);
+      setSelectedImport(null);
+      toast.error(t('settings.telegramImport.fetchFailed'));
     } finally {
       setLoading(false);
     }
@@ -76,10 +153,11 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
 
   useEffect(() => {
     if (open) {
+      setTelegramStatus('loading');
       asyncStorageService.get<number[]>('dismissed_telegram_updates').then(res => {
         setDismissedUpdates(res || []);
       });
-      fetchUpdates();
+      fetchUpdates(false);
       fetchGames();
     }
   }, [open]);
@@ -160,6 +238,11 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
 
     setImporting(true);
     try {
+      const canImport = await resolveTelegramStatus(true);
+      if (!canImport) {
+        return;
+      }
+
       // 1. Download file content
       const content = await TauriService.downloadTelegramFile(selectedImport.file_id);
       
@@ -239,7 +322,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={fetchUpdates} 
+              onClick={() => fetchUpdates(true)} 
               disabled={loading}
               className="rounded-xl border-primary/20 hover:bg-primary/5 gap-1.5 h-8 sm:h-9"
             >
@@ -265,7 +348,75 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                   </div>
                 )}
 
-                {!loading && visibleImports.length === 0 && (
+                {!loading && telegramStatus === 'disabled' && (
+                  <Card className="border-yellow-500/20 bg-yellow-500/5">
+                    <CardContent className="p-5 flex flex-col items-center text-center gap-3">
+                      <AlertCircle className="h-8 w-8 text-yellow-600" />
+                      <div>
+                        <p className="font-semibold text-foreground">
+                          {t('settings.telegramImport.integrationDisabledTitle')}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {t('settings.telegramImport.integrationDisabledHint')}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() => {
+                          onOpenChange(false);
+                          navigate('/settings/telegram');
+                        }}
+                      >
+                        {t('settings.telegramImport.openTelegramSettings')}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {!loading && telegramStatus === 'incomplete' && (
+                  <Card className="border-yellow-500/20 bg-yellow-500/5">
+                    <CardContent className="p-5 flex flex-col items-center text-center gap-3">
+                      <AlertCircle className="h-8 w-8 text-yellow-600" />
+                      <div>
+                        <p className="font-semibold text-foreground">
+                          {t('settings.telegramImport.configurationIncompleteTitle')}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {t('settings.telegramImport.configurationIncompleteHint')}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() => {
+                          onOpenChange(false);
+                          navigate('/settings/telegram');
+                        }}
+                      >
+                        {t('settings.telegramImport.openTelegramSettings')}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {!loading && telegramStatus === 'error' && (
+                  <Card className="border-destructive/20 bg-destructive/5">
+                    <CardContent className="p-5 flex flex-col items-center text-center gap-3">
+                      <AlertCircle className="h-8 w-8 text-destructive" />
+                      <div>
+                        <p className="font-semibold text-foreground">
+                          {t('settings.telegramImport.fetchFailed')}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {t('settings.telegramImport.fetchFailedHint')}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {!loading && telegramStatus === 'ready' && visibleImports.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
                     <div className="h-16 w-16 rounded-full bg-accent/50 flex items-center justify-center">
                       <CheckCircle2 className="h-8 w-8 text-muted-foreground/40" />
@@ -281,7 +432,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                   </div>
                 )}
 
-                {!loading && visibleImports.map((item) => (
+                {!loading && telegramStatus === 'ready' && visibleImports.map((item) => (
                   <Card 
                     key={item.update_id}
                     className={cn(
@@ -451,7 +602,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
           )}
         </div>
 
-        {!selectedImport && visibleImports.length > 0 && (
+        {!selectedImport && telegramStatus === 'ready' && visibleImports.length > 0 && (
           <div className="p-4 bg-primary/5 border-t border-border/40 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
               <AlertCircle className="h-3.5 w-3.5 text-primary" />
