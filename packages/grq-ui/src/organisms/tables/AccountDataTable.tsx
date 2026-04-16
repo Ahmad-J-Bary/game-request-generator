@@ -17,13 +17,29 @@ import { useTheme } from '@grq/ui/contexts/ThemeContext';
 import { DataTableCell } from './DataTableCell';
 import { SimpleCalendar } from '@grq/ui/atoms/simple-calendar';
 
-export type ColumnData =
-  | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean }
-  | { kind: 'purchase'; id: number | string; token: string; name: string; isRestricted: boolean; daysOffset: number | null; displayDaysOffset?: string; timeSpent: number | null; maxDaysOffset: number | string | null; synthetic?: boolean };
+export type LevelColumn = { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean };
+export type PurchaseColumn = { kind: 'purchase'; id: number | string; token: string; name: string; isRestricted: boolean; daysOffset: number | null; displayDaysOffset?: string; timeSpent: number | null; maxDaysOffset: number | string | null; synthetic?: boolean };
+export type SplitColumn = {
+  kind: 'split';
+  id: string;
+  token: string;
+  name: string;
+  daysOffset: number;
+  timeSpent: number;
+  isBonus: boolean;
+  synthetic?: boolean;
+  session: LevelColumn;
+  event?: LevelColumn | PurchaseColumn;
+};
+
+export type ColumnData = LevelColumn | PurchaseColumn;
+export type TimelineColumnData = ColumnData | SplitColumn;
+
+export type TimelineCell = string | { session: string; event?: string };
 
 interface AccountDataTableProps {
-  columns: ColumnData[];
-  computedLevelDates: string[];
+  columns: TimelineColumnData[];
+  computedLevelDates: TimelineCell[];
   layout: 'horizontal' | 'vertical';
   levelsProgress?: { level_id: number; is_completed: boolean }[];
   purchaseProgress?: { purchase_event_id: number; is_completed: boolean }[];
@@ -59,77 +75,127 @@ export function AccountDataTable({
   const { theme } = useTheme();
   const getColorStyle = useColorStyle();
 
-  const renderCellContent = (col: ColumnData, field: 'token' | 'name' | 'daysOffset' | 'timeSpent' | 'accountDate', idx?: number) => {
+  const getDisplayToken = (col: TimelineColumnData): string => {
+    if (col.kind === 'split') return col.event?.token ?? col.session.token;
+    return col.token;
+  };
+
+  const getDisplayName = (col: TimelineColumnData): string => {
+    if (col.kind === 'split') return col.event?.name ?? col.session.name;
+    return col.name;
+  };
+
+  const getDisplayDaysOffsetText = (col: TimelineColumnData): string | number => {
+    if (col.kind === 'split') {
+      if (col.event?.kind === 'purchase') {
+        return col.event.displayDaysOffset ?? (col.event.daysOffset != null ? String(col.event.daysOffset) : '-');
+      }
+      return col.session.daysOffset;
+    }
+    if (col.kind === 'level') return col.daysOffset;
+    return col.displayDaysOffset ?? (col.daysOffset != null ? String(col.daysOffset) : '-');
+  };
+
+  const getDisplayTimeSpent = (col: TimelineColumnData): string | number => {
+    if (col.kind === 'split') {
+      if (col.event?.kind === 'purchase') return col.event.timeSpent ?? '-';
+      if (col.event?.kind === 'level') return col.event.timeSpent;
+      return col.session.timeSpent;
+    }
+    if (col.kind === 'level') return col.timeSpent;
+    if (mode === 'all' && (col.timeSpent ?? 0) > 0) return col.timeSpent as number;
+    return '-';
+  };
+
+  const renderAccountDate = (cell: TimelineCell) => {
+    if (typeof cell === 'string') return cell;
+    if (cell.event === undefined || cell.event === cell.session) return cell.session;
+    if (layout === 'vertical') {
+      return (
+        <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+          <span className="text-xs">{cell.session}</span>
+          {cell.event !== undefined && (
+            <>
+              <span className="text-xs opacity-60">/</span>
+              <span className="text-xs">{cell.event}</span>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center leading-tight">
+        <span className="text-xs">{cell.session}</span>
+        {cell.event !== undefined && (
+          <span className="text-xs mt-0.5">{cell.event}</span>
+        )}
+      </div>
+    );
+  };
+
+  const renderCellContent = (col: TimelineColumnData, field: 'token' | 'name' | 'daysOffset' | 'timeSpent' | 'accountDate', idx?: number) => {
     switch (field) {
       case 'token':
-        return col.token;
+        return getDisplayToken(col);
       case 'name':
-        return col.name;
+        return getDisplayName(col);
       case 'daysOffset':
-        if (col.kind === 'level') {
-          return col.daysOffset;
-        }
-        if (col.kind === 'purchase') {
-          return col.displayDaysOffset ?? (col.daysOffset != null ? String(col.daysOffset) : '-');
-        }
-        return '-';
+        return getDisplayDaysOffsetText(col);
       case 'timeSpent':
-        if (col.kind === 'level') {
-          return col.timeSpent;
-        }
-        if (mode === 'all' && col.timeSpent > 0) {
-          return col.timeSpent;
-        }
-        return '-';
+        return getDisplayTimeSpent(col);
       case 'accountDate':
-        const dateStr = idx !== undefined ? computedLevelDates[idx] : '-';
-        if (isEditMode && col.kind === 'purchase' && onPurchaseDateChange) {
-          // Use the Date object from tempPurchaseDates if available
-          const currentDate = tempPurchaseDates[col.id as number];
+        const dateCell = idx !== undefined ? computedLevelDates[idx] : '-';
 
-          return (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-16 h-6 p-0 text-xs hover:bg-accent justify-center"
-                >
-                  <Calendar className="h-3 w-3 mr-1" />
-                  {dateStr === '-' ? 'Pick' : dateStr}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <SimpleCalendar
-                  selectedDate={currentDate}
-                  onDateSelect={(date) => {
-                    onPurchaseDateChange(col.id as number, date);
-                  }}
-                  onClose={() => {}} // Popover handles closing
-                />
-              </PopoverContent>
-            </Popover>
-          );
+        if (isEditMode && onPurchaseDateChange) {
+          const purchaseCol = col.kind === 'purchase' ? col : (col.kind === 'split' && col.event?.kind === 'purchase' ? col.event : undefined);
+          if (purchaseCol) {
+            const currentDate = tempPurchaseDates[purchaseCol.id as number];
+            const dateText = typeof dateCell === 'string' ? dateCell : (dateCell.event ?? dateCell.session);
+
+            return (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-16 h-6 p-0 text-xs hover:bg-accent justify-center"
+                  >
+                    <Calendar className="h-3 w-3 mr-1" />
+                    {dateText === '-' ? 'Pick' : dateText}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <SimpleCalendar
+                    selectedDate={currentDate}
+                    onDateSelect={(date) => {
+                      onPurchaseDateChange(purchaseCol.id as number, date);
+                    }}
+                    onClose={() => {}}
+                  />
+                </PopoverContent>
+              </Popover>
+            );
+          }
         }
-        return dateStr;
+
+        return renderAccountDate(dateCell as TimelineCell);
       default:
         return '-';
     }
   };
 
-  const getColumnSpecificStyle = (col: ColumnData): React.CSSProperties => {
+  const getColumnSpecificStyle = (col: TimelineColumnData): React.CSSProperties => {
     let style: React.CSSProperties;
 
-    if (col.kind === 'level') {
-      style = getColorStyle('level', col.isBonus, undefined, theme);
-    } else {
-      style = getColorStyle('purchase', undefined, col.isRestricted, theme);
-    }
+    const base = col.kind === 'split' ? (col.event ?? col.session) : col;
+    if (base.kind === 'level') style = getColorStyle('level', base.isBonus, undefined, theme);
+    else style = getColorStyle('purchase', undefined, base.isRestricted, theme);
 
     return {
       ...style,
-      opacity: col.synthetic ? 0.6 : 1,
-      fontStyle: col.synthetic ? 'italic' : 'normal'
+      opacity: (base as any).synthetic ? 0.6 : 1,
+      fontStyle: (base as any).synthetic ? 'italic' : 'normal'
     };
   };
 
@@ -158,8 +224,7 @@ export function AccountDataTable({
     opacity: 0.8
   };
 
-  // التحقق من حالة التقدم
-  const isItemCompleted = (col: ColumnData): boolean => {
+  const isSingleCompleted = (col: ColumnData): boolean => {
     if (isEditMode) {
       if (col.kind === 'level') {
         return tempProgress.levels[col.id as keyof typeof tempProgress.levels] ?? false;
@@ -195,8 +260,30 @@ export function AccountDataTable({
     }
   };
 
-  const handleCheckboxChange = (col: ColumnData, checked: boolean | 'indeterminate') => {
+  const getSplitCompletion = (col: SplitColumn) => {
+    const directSessionCompleted = isSingleCompleted(col.session);
+    const eventCompleted = col.event ? isSingleCompleted(col.event as ColumnData) : undefined;
+    const sessionCompleted = directSessionCompleted || !!eventCompleted;
+    return { sessionCompleted, directSessionCompleted, eventCompleted };
+  };
+
+  const getSplitCellStyle = (sessionCompleted: boolean, eventCompleted?: boolean): React.CSSProperties => {
+    const leftBg = sessionCompleted ? colors.completeScheduledStyle : colors.incompleteScheduledStyle;
+    const rightBg = (eventCompleted ?? sessionCompleted) ? colors.completeScheduledStyle : colors.incompleteScheduledStyle;
+    return {
+      backgroundImage:
+        layout === 'vertical'
+          ? `linear-gradient(to right, ${leftBg} 0 50%, ${rightBg} 50% 100%)`
+          : `linear-gradient(to bottom, ${leftBg} 0 50%, ${rightBg} 50% 100%)`,
+      color: theme === 'dark' ? 'rgb(0, 0, 0)' : 'rgb(0, 0, 0)',
+      fontStyle: 'italic',
+      opacity: 0.8
+    };
+  };
+
+  const handleCheckboxChange = (col: TimelineColumnData, checked: boolean | 'indeterminate') => {
     if (onProgressChange && checked !== 'indeterminate') {
+      if (col.kind === 'split') return;
       onProgressChange(col.kind, col.id, checked);
     }
   };
@@ -242,41 +329,95 @@ export function AccountDataTable({
                 <DataTableCell style={combinedStyle}>
                   {renderCellContent(col, 'timeSpent')}
                 </DataTableCell>
-                <DataTableCell style={isItemCompleted(col) ? completeScheduledStyle : incompleteScheduledStyle}>
+                <DataTableCell
+                  style={
+                    col.kind === 'split'
+                      ? getSplitCellStyle(getSplitCompletion(col).sessionCompleted, getSplitCompletion(col).eventCompleted)
+                      : (isSingleCompleted(col) ? completeScheduledStyle : incompleteScheduledStyle)
+                  }
+                >
                   {renderCellContent(col, 'accountDate', idx)}
                 </DataTableCell>
                 {isEditMode && (
                   <DataTableCell style={dataRowStyle}>
-                    <div className="flex flex-col items-center gap-1">
-                      <input
-                        type="checkbox"
-                        checked={isItemCompleted(col)}
-                        onChange={(e) => handleCheckboxChange(col, e.target.checked)}
-                        className="w-4 h-4"
-                      />
-                      
-                      {col.kind === 'purchase' && onPurchaseDateChange && (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!tempPurchaseDates[col.id as number] && "text-muted-foreground"}`}
-                            >
-                               <Calendar className="h-3 w-3 mr-1" />
-                               {tempPurchaseDates[col.id as number] ? format(tempPurchaseDates[col.id as number] as Date, "MMM d") : 'Pick'}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="center">
-                            <SimpleCalendar
-                              selectedDate={tempPurchaseDates[col.id as number] || null}
-                              onDateSelect={(date) => onPurchaseDateChange(col.id as number, date)}
-                              onClose={() => {}}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                    </div>
+                    {col.kind === 'split' ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={getSplitCompletion(col).sessionCompleted}
+                          onChange={(e) => {
+                            if (getSplitCompletion(col).eventCompleted && !e.target.checked) return;
+                            onProgressChange?.('level', col.session.id, e.target.checked);
+                          }}
+                          className="w-4 h-4"
+                        />
+                        {col.event && (
+                          <input
+                            type="checkbox"
+                            checked={getSplitCompletion(col).eventCompleted ?? false}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              onProgressChange?.(col.event!.kind, col.event!.id, checked);
+                              if (checked) onProgressChange?.('level', col.session.id, true);
+                            }}
+                            className="w-4 h-4"
+                          />
+                        )}
+
+                        {col.event?.kind === 'purchase' && onPurchaseDateChange && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!tempPurchaseDates[col.event.id as number] && "text-muted-foreground"}`}
+                              >
+                                <Calendar className="h-3 w-3 mr-1" />
+                                {tempPurchaseDates[col.event.id as number] ? format(tempPurchaseDates[col.event.id as number] as Date, "MMM d") : 'Pick'}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="center">
+                              <SimpleCalendar
+                                selectedDate={tempPurchaseDates[col.event.id as number] || null}
+                                onDateSelect={(date) => onPurchaseDateChange(col.event!.id as number, date)}
+                                onClose={() => {}}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={isSingleCompleted(col)}
+                          onChange={(e) => handleCheckboxChange(col, e.target.checked)}
+                          className="w-4 h-4"
+                        />
+
+                        {col.kind === 'purchase' && onPurchaseDateChange && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!tempPurchaseDates[col.id as number] && "text-muted-foreground"}`}
+                              >
+                                <Calendar className="h-3 w-3 mr-1" />
+                                {tempPurchaseDates[col.id as number] ? format(tempPurchaseDates[col.id as number] as Date, "MMM d") : 'Pick'}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="center">
+                              <SimpleCalendar
+                                selectedDate={tempPurchaseDates[col.id as number] || null}
+                                onDateSelect={(date) => onPurchaseDateChange(col.id as number, date)}
+                                onClose={() => {}}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      </div>
+                    )}
                   </DataTableCell>
                 )}
               </TableRow>
@@ -358,7 +499,11 @@ export function AccountDataTable({
             return (
               <DataTableCell
                 key={`accdate-${col.kind}-${col.id}`}
-                style={isItemCompleted(col) ? completeScheduledStyle : incompleteScheduledStyle}
+                style={
+                  col.kind === 'split'
+                    ? getSplitCellStyle(getSplitCompletion(col).sessionCompleted, getSplitCompletion(col).eventCompleted)
+                    : (isSingleCompleted(col) ? completeScheduledStyle : incompleteScheduledStyle)
+                }
               >
                 {renderCellContent(col, 'accountDate', idx)}
               </DataTableCell>
@@ -372,36 +517,84 @@ export function AccountDataTable({
             {columns.map((col) => {
               return (
                 <DataTableCell key={`edit-${col.kind}-${col.id}`} style={dataRowStyle}>
-                  <div className="flex flex-col items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={isItemCompleted(col)}
-                      onChange={(e) => handleCheckboxChange(col, e.target.checked)}
-                      className="w-4 h-4"
-                    />
-                    
-                    {col.kind === 'purchase' && onPurchaseDateChange && (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!tempPurchaseDates[col.id as number] && "text-muted-foreground"}`}
-                          >
-                             <Calendar className="h-3 w-3 mr-1" />
-                             {tempPurchaseDates[col.id as number] ? format(tempPurchaseDates[col.id as number] as Date, "MMM d") : 'Pick'}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="center">
-                          <SimpleCalendar
-                            selectedDate={tempPurchaseDates[col.id as number] || null}
-                            onDateSelect={(date) => onPurchaseDateChange(col.id as number, date)}
-                            onClose={() => {}}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    )}
-                  </div>
+                  {col.kind === 'split' ? (
+                    <div className="flex flex-col items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={getSplitCompletion(col).sessionCompleted}
+                        onChange={(e) => {
+                          if (getSplitCompletion(col).eventCompleted && !e.target.checked) return;
+                          onProgressChange?.('level', col.session.id, e.target.checked);
+                        }}
+                        className="w-4 h-4"
+                      />
+                      {col.event && (
+                        <input
+                          type="checkbox"
+                          checked={getSplitCompletion(col).eventCompleted ?? false}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            onProgressChange?.(col.event!.kind, col.event!.id, checked);
+                            if (checked) onProgressChange?.('level', col.session.id, true);
+                          }}
+                          className="w-4 h-4"
+                        />
+                      )}
+
+                      {col.event?.kind === 'purchase' && onPurchaseDateChange && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!tempPurchaseDates[col.event.id as number] && "text-muted-foreground"}`}
+                            >
+                              <Calendar className="h-3 w-3 mr-1" />
+                              {tempPurchaseDates[col.event.id as number] ? format(tempPurchaseDates[col.event.id as number] as Date, "MMM d") : 'Pick'}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="center">
+                            <SimpleCalendar
+                              selectedDate={tempPurchaseDates[col.event.id as number] || null}
+                              onDateSelect={(date) => onPurchaseDateChange(col.event!.id as number, date)}
+                              onClose={() => {}}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={isSingleCompleted(col)}
+                        onChange={(e) => handleCheckboxChange(col, e.target.checked)}
+                        className="w-4 h-4"
+                      />
+
+                      {col.kind === 'purchase' && onPurchaseDateChange && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!tempPurchaseDates[col.id as number] && "text-muted-foreground"}`}
+                            >
+                              <Calendar className="h-3 w-3 mr-1" />
+                              {tempPurchaseDates[col.id as number] ? format(tempPurchaseDates[col.id as number] as Date, "MMM d") : 'Pick'}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="center">
+                            <SimpleCalendar
+                              selectedDate={tempPurchaseDates[col.id as number] || null}
+                              onDateSelect={(date) => onPurchaseDateChange(col.id as number, date)}
+                              onClose={() => {}}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    </div>
+                  )}
                 </DataTableCell>
               );
             })}

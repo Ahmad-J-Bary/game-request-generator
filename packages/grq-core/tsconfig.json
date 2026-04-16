@@ -2,6 +2,7 @@
   "extends": "@game-request/config/tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "jsx": "react-jsx"
   },
   "include": ["src"]

@@ -7,7 +7,7 @@ import { Card, CardContent } from '@grq/ui/atoms/card';
 import { Badge } from '@grq/ui/atoms/badge';
 import { cn } from '@grq/ui/lib/utils';
 import { Download, Upload, Edit3, Save, X, CheckSquare, ArrowLeft, ArrowRight, MoreVertical } from 'lucide-react';
-import type { ColumnData } from '@grq/ui/organisms/tables/AccountDataTable';
+import type { TimelineColumnData as ColumnData, ColumnData as ExportColumnData } from '@grq/ui/organisms/tables/AccountDataTable';
 import { LayoutToggle, Layout } from '@grq/ui/molecules/LayoutToggle';
 import { BackButton } from '@grq/ui/molecules/BackButton';
 import { ImportDialog } from '@grq/ui/molecules/ImportDialog';
@@ -28,6 +28,7 @@ import { TauriService } from '@grq/core/services/tauri.service';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
 import { useTheme } from '@grq/ui/contexts/ThemeContext';
 import { AccountDataTable } from '@grq/ui/organisms/tables/AccountDataTable';
+import type { TimelineCell } from '@grq/ui/organisms/tables/AccountDataTable';
 
 type Mode = 'all' | 'event-only';
 
@@ -192,8 +193,17 @@ export default function AccountDetailPage() {
         purchases: {} as { [key: number]: boolean },
       };
       columns.forEach(col => {
+        if (col.kind === 'split') {
+          newTempProgress.levels[col.session.id] = true;
+          if (col.event) {
+            if (col.event.kind === 'level') newTempProgress.levels[col.event.id] = true;
+            else newTempProgress.purchases[col.event.id as number] = true;
+          }
+          return;
+        }
+
         if (col.kind === 'level') newTempProgress.levels[col.id] = true;
-        else if (col.kind === 'purchase') newTempProgress.purchases[col.id] = true;
+        else if (col.kind === 'purchase') newTempProgress.purchases[col.id as number] = true;
       });
       setTempProgress(newTempProgress);
     } else {
@@ -314,7 +324,7 @@ export default function AccountDetailPage() {
 
   const handleCancelEdit = () => setIsEditMode(false);
 
-  const columns = useMemo(() => {
+  const columns: ColumnData[] = (() => {
     const levelCols = levels.map((l) => ({
       kind: 'level' as const,
       id: l.id as number | string,
@@ -362,100 +372,161 @@ export default function AccountDetailPage() {
         };
     });
 
-    const allColsWithMax = [...levelCols, ...purchaseCols] as ColumnData[];
-    const numericOnly = allColsWithMax.filter((c) => typeof c.daysOffset === 'number' && c.daysOffset !== null);
-    
-    numericOnly.sort((a, b) => {
-      const aTime = (a.timeSpent as number) ?? 0;
-      const bTime = (b.timeSpent as number) ?? 0;
-      if (aTime !== bTime) return aTime - bTime;
+    const numericLevels = levelCols.filter(c => typeof c.daysOffset === 'number') as Extract<ColumnData, { kind: 'level' }>[];
 
-      const aOff = (a.daysOffset as number) ?? 0;
-      const bOff = (b.daysOffset as number) ?? 0;
-      if (aOff !== bOff) return aOff - bOff;
+    const sessionLevelsByDay = new Map<number, Extract<ColumnData, { kind: 'level' }>>();
+    numericLevels
+      .filter(l => l.name === '-')
+      .forEach(l => {
+        const d = Number(l.daysOffset);
+        if (!sessionLevelsByDay.has(d)) sessionLevelsByDay.set(d, l);
+      });
 
-      if (a.kind !== b.kind) return a.kind === 'level' ? -1 : 1;
-      return String(a.id).localeCompare(String(b.id));
-    });
+    const realLevelsByDay = new Map<number, Extract<ColumnData, { kind: 'level' }>[]> ();
+    numericLevels
+      .filter(l => l.name !== '-')
+      .forEach(l => {
+        const d = Number(l.daysOffset);
+        const list = realLevelsByDay.get(d) ?? [];
+        list.push(l);
+        realLevelsByDay.set(d, list);
+      });
 
-    if (mode === 'event-only') {
-      const levelsFiltered = allColsWithMax.filter((c) => c.kind === 'level' && c.name !== '-');
-      const purchases = allColsWithMax.filter((c) => c.kind === 'purchase');
-      return [...levelsFiltered, ...purchases];
-    }
+    const sortedRealLevels = [...numericLevels.filter(l => l.name !== '-' && typeof l.daysOffset === 'number')]
+      .sort((a, b) => Number(a.daysOffset) - Number(b.daysOffset));
 
-    const result: ColumnData[] = [];
-    const entriesByDay: Record<number, ColumnData[]> = {};
-    numericOnly.forEach(entry => {
-      if (entry.daysOffset != null) {
-        if (!entriesByDay[entry.daysOffset]) entriesByDay[entry.daysOffset] = [];
-        entriesByDay[entry.daysOffset].push(entry);
-      }
-    });
+    const getSynthSessionForDay = (day: number) => {
+      const existing = sessionLevelsByDay.get(day);
+      if (existing) return existing;
 
-    const minDay = numericOnly.length > 0 ? Math.min(0, numericOnly[0].daysOffset as number) : 0;
-    const maxDay = numericOnly.length > 0 ? numericOnly[numericOnly.length - 1].daysOffset as number : 0;
+      const nextMatch = sortedRealLevels.find(l => Number(l.daysOffset) > day);
+      if (!nextMatch) return null;
 
-    for (let day = minDay; day <= maxDay; day++) {
-      if (entriesByDay[day]) {
-        result.push(...entriesByDay[day]);
+      const realLevels = sortedRealLevels;
+      const firstRealDay = Number(realLevels[0]?.daysOffset ?? 0);
+
+      let synthesizedTime = 0;
+      if (day < firstRealDay) {
+        synthesizedTime = Math.round((day + 1) * ((nextMatch.timeSpent || 0) / (firstRealDay + 1)));
       } else {
-        const nextMatch = numericOnly.find(c => c.kind === 'level' && !c.synthetic && (c.daysOffset as number) > day);
-        if (nextMatch) {
-          let synthesizedTime = 0;
-          const realLevels = numericOnly.filter(e => e.kind === 'level' && !e.synthetic);
-          const firstRealDay = (realLevels[0]?.daysOffset as number) || 0;
-          
-          if (day < firstRealDay) {
-            synthesizedTime = Math.round((day + 1) * ((nextMatch.timeSpent || 0) / (firstRealDay + 1)));
-          } else {
-            const prevLevels = realLevels.filter(e => (e.daysOffset as number) < day);
-            const prevReal = prevLevels[prevLevels.length - 1];
-            if (prevReal) {
-                const ratio = (day - (prevReal.daysOffset as number)) / ((nextMatch.daysOffset as number) - (prevReal.daysOffset as number));
-                synthesizedTime = Math.round((prevReal.timeSpent || 0) + ratio * ((nextMatch.timeSpent || 0) - (prevReal.timeSpent || 0)));
-            } else {
-                synthesizedTime = Math.round((nextMatch.timeSpent || 0) / 2);
-            }
-          }
-
-          result.push({
-            kind: 'level',
-            id: `synth-${nextMatch.token}-${day}`,
-            token: nextMatch.token,
-            name: '-',
-            daysOffset: day,
-            timeSpent: synthesizedTime,
-            isBonus: false,
-            synthetic: true,
-          });
+        const prevLevels = realLevels.filter(l => Number(l.daysOffset) < day);
+        const prevReal = prevLevels[prevLevels.length - 1];
+        if (prevReal) {
+          const ratio = (day - Number(prevReal.daysOffset)) / (Number(nextMatch.daysOffset) - Number(prevReal.daysOffset));
+          synthesizedTime = Math.round((prevReal.timeSpent || 0) + ratio * ((nextMatch.timeSpent || 0) - (prevReal.timeSpent || 0)));
+        } else {
+          synthesizedTime = Math.round((nextMatch.timeSpent || 0) / 2);
         }
       }
+
+      return {
+        kind: 'level' as const,
+        id: `synth-${nextMatch.token}-${day}`,
+        token: nextMatch.token,
+        name: '-',
+        daysOffset: day,
+        timeSpent: synthesizedTime,
+        isBonus: false,
+        synthetic: true,
+      };
+    };
+
+    const minDay = sortedRealLevels.length > 0 ? Math.min(0, Number(sortedRealLevels[0].daysOffset)) : 0;
+    const maxDay = sortedRealLevels.length > 0 ? Number(sortedRealLevels[sortedRealLevels.length - 1].daysOffset) : 0;
+
+    const makeSplit = (day: number, session: Extract<ColumnData, { kind: 'level' }>, event: Extract<ColumnData, { kind: 'level' | 'purchase' }>): ColumnData => ({
+      kind: 'split',
+      id: `split-${day}-${event.kind}-${String(event.id)}`,
+      token: event.token ?? session.token,
+      name: event.name ?? session.name,
+      daysOffset: session.daysOffset,
+      timeSpent: session.timeSpent,
+      isBonus: session.isBonus,
+      synthetic: session.synthetic,
+      session,
+      event
+    });
+
+    const timelineColumns: ColumnData[] = [];
+
+    if (mode === 'all') {
+      for (let day = minDay; day <= maxDay; day++) {
+        const session = getSynthSessionForDay(day);
+        if (!session) continue;
+
+        const dayLevels = realLevelsByDay.get(day) ?? [];
+        if (dayLevels.length > 0) {
+          timelineColumns.push(makeSplit(day, session, dayLevels[0]));
+          dayLevels.slice(1).forEach(l => timelineColumns.push(l));
+        } else {
+          timelineColumns.push(session);
+        }
+      }
+    } else {
+      const levelEvents = levelCols.filter(l => l.kind === 'level' && l.name !== '-') as Extract<ColumnData, { kind: 'level' }>[];
+      levelEvents.forEach(l => {
+        if (typeof l.daysOffset === 'number') {
+          const session = getSynthSessionForDay(Number(l.daysOffset));
+          if (session) {
+            timelineColumns.push(makeSplit(Number(l.daysOffset), session, l));
+            return;
+          }
+        }
+        timelineColumns.push(l);
+      });
     }
 
-    const numericIds = new Set(numericOnly.map((c) => c.id));
-    const nonNumericLevels = allColsWithMax.filter((c) => !numericIds.has(c.id) && c.kind === 'level');
-    const allPurchases = allColsWithMax.filter((c) => c.kind === 'purchase');
-    
-    // We only put levels inside the timeline "result", then append any non-numeric levels, and FINALLY append all purchases.
-    const timelineLevels = result.filter(c => c.kind === 'level');
-    return [...timelineLevels, ...nonNumericLevels, ...allPurchases];
-  }, [levels, purchaseEvents, purchaseProgress, mode, t]);
+    const purchaseColumnsAtEnd: ColumnData[] = [];
+    purchaseCols.forEach((p) => {
+      if (typeof p.daysOffset === 'number') {
+        const session = getSynthSessionForDay(Number(p.daysOffset));
+        if (session) {
+          purchaseColumnsAtEnd.push(makeSplit(Number(p.daysOffset), session, p));
+          return;
+        }
+      }
+      purchaseColumnsAtEnd.push(p);
+    });
+
+    const nonNumericLevels = levelCols.filter(c => typeof c.daysOffset !== 'number') as ColumnData[];
+    const nonNumericLevelSet = new Set(nonNumericLevels.map(l => l.id));
+    const timelineWithoutNonNumericDupes = timelineColumns.filter(c => !(c.kind === 'level' && nonNumericLevelSet.has(c.id)));
+
+    return [...timelineWithoutNonNumericDupes, ...nonNumericLevels, ...purchaseColumnsAtEnd];
+  })();
 
   const computedLevelDates = useMemo(() => {
     const startDateObj = parseDateFlexible(account?.start_date ?? '') || new Date();
-    return columns.map((col) => {
-      if (col.kind === 'level' || col.kind === 'purchase') {
-        if (col.kind === 'purchase' && isEditMode && tempPurchaseDates[col.id as number]) {
-          const tempDate = tempPurchaseDates[col.id as number];
-          return tempDate ? formatDateShort(tempDate) : '-';
+    return columns.map((col): TimelineCell => {
+      if (col.kind === 'split') {
+        const sessionDate = formatDateShort(addDays(startDateObj, Number(col.session.daysOffset || 0)));
+        if (!col.event) return sessionDate;
+
+        if (col.event.kind === 'purchase' && isEditMode && tempPurchaseDates[col.event.id as number]) {
+          const tempDate = tempPurchaseDates[col.event.id as number];
+          return { session: sessionDate, event: tempDate ? formatDateShort(tempDate) : '-' };
         }
-        const dd = addDays(startDateObj, Number(col.daysOffset || 0));
-        return formatDateShort(dd);
+
+        const eventDate = formatDateShort(addDays(startDateObj, Number(col.event.daysOffset || 0)));
+        return { session: sessionDate, event: eventDate };
       }
-      return '-';
+
+      if (col.kind === 'purchase' && isEditMode && tempPurchaseDates[col.id as number]) {
+        const tempDate = tempPurchaseDates[col.id as number];
+        return tempDate ? formatDateShort(tempDate) : '-';
+      }
+
+      const dd = addDays(startDateObj, Number(col.daysOffset || 0));
+      return formatDateShort(dd);
     });
   }, [columns, account?.start_date, isEditMode, tempPurchaseDates]);
+
+  const exportData = useMemo((): ExportColumnData[] => {
+    return columns.flatMap((c) => {
+      if (c.kind !== 'split') return [c];
+      return c.event ? [c.session, c.event] : [c.session];
+    });
+  }, [columns]);
 
   if (!account) {
     return (
@@ -651,7 +722,7 @@ export default function AccountDetailPage() {
             colorSettings={colors}
             theme={theme}
             source="account-detail"
-            data={columns}
+            data={exportData}
             levelsProgress={levelsProgress}
             purchaseProgress={purchaseProgress}
         />

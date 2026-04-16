@@ -18,8 +18,28 @@ import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 
 export type ColumnData =
-  | { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean; isRestricted?: boolean; maxDaysOffset?: number | string | null }
-  | { kind: 'purchase'; id: number | string; token: string; name: string; isRestricted: boolean; daysOffset: number | null; maxDaysOffset: number | string | null; synthetic?: boolean; timeSpent?: number | null; isBonus?: boolean };
+  | LevelColumn
+  | PurchaseColumn;
+
+export type LevelColumn = { kind: 'level'; id: number | string; token: string; name: string; daysOffset: number; timeSpent: number; isBonus: boolean; synthetic?: boolean; isRestricted?: boolean; maxDaysOffset?: number | string | null };
+export type PurchaseColumn = { kind: 'purchase'; id: number | string; token: string; name: string; isRestricted: boolean; daysOffset: number | null; maxDaysOffset: number | string | null; synthetic?: boolean; timeSpent?: number | null; isBonus?: boolean };
+export type SplitColumn = {
+  kind: 'split';
+  id: string;
+  token: string;
+  name: string;
+  daysOffset: number;
+  timeSpent: number;
+  isBonus: boolean;
+  synthetic?: boolean;
+  isRestricted?: boolean;
+  maxDaysOffset?: number | string | null;
+  session: LevelColumn;
+  event?: LevelColumn | PurchaseColumn;
+};
+
+export type TimelineCell = string | { session: string; event?: string };
+export type TimelineColumnData = ColumnData | SplitColumn;
 
 interface Account {
   id: number;
@@ -30,8 +50,8 @@ interface Account {
 
 interface AccountsDataTableProps {
   accounts: Account[];
-  columns: ColumnData[];
-  matrix: string[][];
+  columns: TimelineColumnData[];
+  matrix: TimelineCell[][];
   layout: 'horizontal' | 'vertical';
   levelsProgress?: Record<string, { level_id: number; is_completed: boolean }>;
   purchaseProgress?: Record<string, { purchase_event_id: number; is_completed: boolean }>;
@@ -63,40 +83,93 @@ export function AccountsDataTable({
   const { theme } = useTheme();
   const getColorStyle = useColorStyle();
 
-  const renderCellContent = (col: ColumnData, field: 'token' | 'name' | 'daysOffset' | 'timeSpent' | 'accountDate') => {
+  const getDisplayToken = (col: TimelineColumnData): string => {
+    if (col.kind === 'split') return col.event?.token ?? col.session.token;
+    return col.token;
+  };
+
+  const getDisplayName = (col: TimelineColumnData): string => {
+    if (col.kind === 'split') return col.event?.name ?? col.session.name;
+    return col.name;
+  };
+
+  const getDisplayDaysOffsetText = (col: TimelineColumnData): string | number => {
+    if (col.kind === 'split') {
+      if (col.event?.kind === 'purchase') {
+        const offsetStr = col.event.daysOffset != null ? String(col.event.daysOffset) : '';
+        if (col.event.isRestricted && col.event.maxDaysOffset) return `${offsetStr} (${col.event.maxDaysOffset})`;
+        return offsetStr;
+      }
+      if (col.event?.kind === 'level') return col.event.daysOffset;
+      return col.session.daysOffset;
+    }
+    if (col.kind === 'level') return col.daysOffset;
+    const offsetStr = col.daysOffset != null ? String(col.daysOffset) : '';
+    if (col.isRestricted && col.maxDaysOffset) return `${offsetStr} (${col.maxDaysOffset})`;
+    return offsetStr;
+  };
+
+  const getDisplayTimeSpent = (col: TimelineColumnData): string | number => {
+    if (col.kind === 'split') {
+      if (col.event?.kind === 'purchase') return col.event.timeSpent ?? '-';
+      if (col.event?.kind === 'level') return col.event.timeSpent;
+      return col.session.timeSpent;
+    }
+    return col.kind === 'level' ? col.timeSpent : '-';
+  };
+
+  const renderTimelineCell = (cell: TimelineCell) => {
+    if (typeof cell === 'string') return cell;
+    if (cell.event === undefined || cell.event === cell.session) return cell.session;
+    if (layout === 'vertical') {
+      return (
+        <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+          <span className="text-xs">{cell.session}</span>
+          {cell.event !== undefined && (
+            <>
+              <span className="text-xs opacity-60">/</span>
+              <span className="text-xs">{cell.event}</span>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center leading-tight">
+        <span className="text-xs">{cell.session}</span>
+        {cell.event !== undefined && (
+          <span className="text-xs mt-0.5">{cell.event}</span>
+        )}
+      </div>
+    );
+  };
+
+  const renderCellContent = (col: TimelineColumnData, field: 'token' | 'name' | 'daysOffset' | 'timeSpent' | 'accountDate') => {
     switch (field) {
       case 'token':
-        return col.token;
+        return getDisplayToken(col);
       case 'name':
-        return col.name;
+        return getDisplayName(col);
       case 'daysOffset':
-        if (col.kind === 'level') {
-          return col.daysOffset;
-        }
-        const offsetStr = col.daysOffset != null ? String(col.daysOffset) : '';
-        if (col.isRestricted && col.maxDaysOffset) {
-          return `${offsetStr} (${col.maxDaysOffset})`;
-        }
-        return offsetStr;
+        return getDisplayDaysOffsetText(col);
       case 'timeSpent':
-        return col.kind === 'level' ? col.timeSpent : '-';
+        return getDisplayTimeSpent(col);
       default:
         return '-';
     }
   };
 
-  const getColumnSpecificStyle = (col: ColumnData): React.CSSProperties => {
+  const getColumnSpecificStyle = (col: TimelineColumnData): React.CSSProperties => {
     let style: React.CSSProperties;
-    if (col.kind === 'level') {
-      style = getColorStyle('level', col.isBonus, undefined, theme);
-    } else {
-      style = getColorStyle('purchase', undefined, col.isRestricted, theme);
-    }
+    const base = col.kind === 'split' ? (col.event ?? col.session) : col;
+    if (base.kind === 'level') style = getColorStyle('level', base.isBonus, undefined, theme);
+    else style = getColorStyle('purchase', undefined, base.isRestricted, theme);
 
     return {
       ...style,
-      opacity: col.synthetic ? 0.6 : 1,
-      fontStyle: col.synthetic ? 'italic' : 'normal'
+      opacity: (base as any).synthetic ? 0.6 : 1,
+      fontStyle: (base as any).synthetic ? 'italic' : 'normal'
     };
   };
 
@@ -125,36 +198,58 @@ export function AccountsDataTable({
     opacity: 0.8
   };
 
-  const getDateCellStyle = (accountId: number, col: ColumnData): React.CSSProperties => {
+  const getSplitCellStyle = (sessionCompleted: boolean, eventCompleted?: boolean): React.CSSProperties => {
+    const leftBg = sessionCompleted ? colors.completeScheduledStyle : colors.incompleteScheduledStyle;
+    const rightBg = (eventCompleted ?? sessionCompleted) ? colors.completeScheduledStyle : colors.incompleteScheduledStyle;
+    return {
+      backgroundImage:
+        layout === 'vertical'
+          ? `linear-gradient(to right, ${leftBg} 0 50%, ${rightBg} 50% 100%)`
+          : `linear-gradient(to bottom, ${leftBg} 0 50%, ${rightBg} 50% 100%)`,
+      color: theme === 'dark' ? 'rgb(0, 0, 0)' : 'rgb(0, 0, 0)',
+      fontStyle: 'italic',
+      opacity: 0.8
+    };
+  };
+
+  const getDateCellStyle = (accountId: number, col: TimelineColumnData): React.CSSProperties => {
     // In edit mode, we check tempProgress
     if (isEditMode && tempProgress) {
-      if (col.kind === 'level') {
-        // Use composite key for levels in tempProgress to handle multiple accounts
-        // We need a unique key for each cell in tempProgress: `${accountId}_${col.id}`
-        const cellKey = `${accountId}_${col.id}`;
-        return tempProgress.levels[cellKey] ? completeScheduledStyle : incompleteScheduledStyle;
-      } else {
-        const cellKey = `${accountId}_${col.id}`;
-        // tempProgress.purchases is keyed by event ID? No, needs account context too
-        // The singular page used simple IDs because it was one account.
-        // Here we need account-specific keys.
-        // Wait, tempProgress structure passed from singular page was generic.
-        // We need to adapt tempProgress for matrix.
-        // Let's assume tempProgress uses keys: `${accountId}_${id}` like the progress maps.
-        // But for TypeScript safety, let's cast logic.
-        return (tempProgress.purchases as { [key: string]: boolean })[cellKey] ? completeScheduledStyle : incompleteScheduledStyle;
+      if (col.kind === 'split') {
+        const sessionKey = `${accountId}_${col.session.id}`;
+        let sessionCompleted = !!tempProgress.levels[sessionKey];
+        if (!col.event) return sessionCompleted ? completeScheduledStyle : incompleteScheduledStyle;
+
+        const eventKey = `${accountId}_${col.event.id}`;
+        const eventCompleted = col.event.kind === 'level'
+          ? !!tempProgress.levels[eventKey]
+          : !!(tempProgress.purchases as { [key: string]: boolean })[eventKey];
+        if (eventCompleted) sessionCompleted = true;
+        return getSplitCellStyle(sessionCompleted, eventCompleted);
       }
+
+      const cellKey = `${accountId}_${col.id}`;
+      if (col.kind === 'level') return tempProgress.levels[cellKey] ? completeScheduledStyle : incompleteScheduledStyle;
+      return (tempProgress.purchases as { [key: string]: boolean })[cellKey] ? completeScheduledStyle : incompleteScheduledStyle;
     }
 
-    if (col.kind === 'level') {
-      const progressKey = `${accountId}_${col.id}`;
-      const progress = levelsProgress[progressKey];
-      return progress && progress.is_completed ? completeScheduledStyle : incompleteScheduledStyle;
-    } else {
-      const progressKey = `${accountId}_${col.id}`;
-      const progress = purchaseProgress[progressKey];
-      return progress && progress.is_completed ? completeScheduledStyle : incompleteScheduledStyle;
+    if (col.kind === 'split') {
+      const sessionKey = `${accountId}_${col.session.id}`;
+      const sessionProgress = levelsProgress[sessionKey];
+      let sessionCompleted = !!sessionProgress?.is_completed;
+      if (!col.event) return sessionCompleted ? completeScheduledStyle : incompleteScheduledStyle;
+
+      const eventKey = `${accountId}_${col.event.id}`;
+      const eventCompleted = col.event.kind === 'level'
+        ? !!levelsProgress[eventKey]?.is_completed
+        : !!purchaseProgress[eventKey]?.is_completed;
+      if (eventCompleted) sessionCompleted = true;
+      return getSplitCellStyle(sessionCompleted, eventCompleted);
     }
+
+    const progressKey = `${accountId}_${col.id}`;
+    if (col.kind === 'level') return levelsProgress[progressKey]?.is_completed ? completeScheduledStyle : incompleteScheduledStyle;
+    return purchaseProgress[progressKey]?.is_completed ? completeScheduledStyle : incompleteScheduledStyle;
   };
 
   if (columns.length === 0) {
@@ -168,43 +263,109 @@ export function AccountsDataTable({
 
 
   // Render cell content (Checkbox + Date Picker in Edit Mode, or Text)
-  const renderCell = (acc: Account, col: ColumnData, colIdx: number, accIdx: number) => {
+  const renderCell = (acc: Account, col: TimelineColumnData, colIdx: number, accIdx: number) => {
     if (isEditMode && tempProgress && onProgressChange) {
-      const cellKey = `${acc.id}_${col.id}`;
-      // Logic for levels and purchase events
-      let isCompleted = false;
-      if (col.kind === 'level') {
-          isCompleted = tempProgress.levels[cellKey] ?? levelsProgress[cellKey]?.is_completed ?? false;
-      } else {
-          // Cast to any to access dynamic key if index signature is missing in prop type def, 
-          // or ideally fix the interface.
-          // Interface defined as: purchases: { [key: number]: boolean };
-          // But here we use 'string' key (accId_colId).
-          const purchasesMap = tempProgress.purchases as unknown as { [key: string]: boolean };
-          isCompleted = purchasesMap[cellKey] ?? purchaseProgress[cellKey]?.is_completed ?? false;
-      }
-      
-      const purchaseDateOverride = col.kind === 'purchase' && tempPurchaseDates 
-          ? tempPurchaseDates[acc.id * 100000 + (col.id as number)] 
+      if (col.kind === 'split') {
+        const sessionKey = `${acc.id}_${col.session.id}`;
+        let sessionCompleted = tempProgress.levels[sessionKey] ?? levelsProgress[sessionKey]?.is_completed ?? false;
+
+        const eventKey = col.event ? `${acc.id}_${col.event.id}` : null;
+        const eventCompleted = col.event
+          ? (
+              col.event.kind === 'level'
+                ? (tempProgress.levels[eventKey as string] ?? levelsProgress[eventKey as string]?.is_completed ?? false)
+                : ((tempProgress.purchases as unknown as { [key: string]: boolean })[eventKey as string] ?? purchaseProgress[eventKey as string]?.is_completed ?? false)
+            )
+          : false;
+        if (eventCompleted) sessionCompleted = true;
+
+        const eventPurchaseId = col.event?.kind === 'purchase' ? (col.event.id as number) : null;
+        const purchaseDateOverride = eventPurchaseId != null && tempPurchaseDates
+          ? tempPurchaseDates[acc.id * 100000 + eventPurchaseId]
           : null;
 
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex items-center justify-center w-full h-6">
+              <input
+                type="checkbox"
+                checked={sessionCompleted}
+                onChange={(e) => {
+                  if (eventCompleted && !e.target.checked) return;
+                  onProgressChange?.('level', sessionKey, e.target.checked);
+                }}
+                className="w-4 h-4"
+              />
+            </div>
+
+            {col.event && (
+              <div className="flex items-center justify-center w-full h-6">
+                <input
+                  type="checkbox"
+                  checked={eventCompleted}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    onProgressChange?.(col.event!.kind, eventKey as string, checked);
+                    if (checked) onProgressChange?.('level', sessionKey, true);
+                  }}
+                  className="w-4 h-4"
+                />
+              </div>
+            )}
+
+            {eventPurchaseId != null && tempPurchaseDates && onPurchaseDateChange && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!purchaseDateOverride && "text-muted-foreground"} ${eventCompleted ? 'line-through decoration-gray-500' : ''}`}
+                  >
+                    <CalendarIcon className="h-3 w-3 mr-1" />
+                    {purchaseDateOverride ? format(purchaseDateOverride, "MMM d") : 'Pick'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="center">
+                  <SimpleCalendar
+                    selectedDate={purchaseDateOverride || null}
+                    onDateSelect={(date) => onPurchaseDateChange?.(acc.id * 100000 + eventPurchaseId, date)}
+                    onClose={() => {}}
+                  />
+                </PopoverContent>
+              </Popover>
+            )}
+
+            <div className="text-xs">
+              {renderTimelineCell(matrix[accIdx][colIdx])}
+            </div>
+          </div>
+        );
+      }
+
+      const cellKey = `${acc.id}_${col.id}`;
+      let isCompleted = false;
+      if (col.kind === 'level') {
+        isCompleted = tempProgress.levels[cellKey] ?? levelsProgress[cellKey]?.is_completed ?? false;
+      } else {
+        const purchasesMap = tempProgress.purchases as unknown as { [key: string]: boolean };
+        isCompleted = purchasesMap[cellKey] ?? purchaseProgress[cellKey]?.is_completed ?? false;
+      }
+
+      const purchaseDateOverride = col.kind === 'purchase' && tempPurchaseDates
+        ? tempPurchaseDates[acc.id * 100000 + (col.id as number)]
+        : null;
 
       return (
         <div className="flex flex-col items-center gap-1">
-          {/* Checkbox for Completion - Native Input to match AccountDetail */}
           <div className="flex items-center justify-center w-full h-6">
             <input
               type="checkbox"
               checked={isCompleted}
-              onChange={(e) => {
-                 const newVal = e.target.checked;
-                 onProgressChange?.(col.kind, col.kind === 'level' ? cellKey : cellKey, newVal);
-              }}
+              onChange={(e) => onProgressChange?.(col.kind, cellKey, e.target.checked)}
               className="w-4 h-4"
             />
           </div>
-          
-          {/* Date Picker for Purchase Events Only - Using SimpleCalendar and ghost button */}
+
           {col.kind === 'purchase' && tempPurchaseDates && onPurchaseDateChange && (
             <Popover>
               <PopoverTrigger asChild>
@@ -213,29 +374,28 @@ export function AccountsDataTable({
                   size="sm"
                   className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!purchaseDateOverride && "text-muted-foreground"} ${isCompleted ? 'line-through decoration-gray-500' : ''}`}
                 >
-                   <CalendarIcon className="h-3 w-3 mr-1" />
-                   {purchaseDateOverride ? format(purchaseDateOverride, "MMM d") : 'Pick'}
+                  <CalendarIcon className="h-3 w-3 mr-1" />
+                  {purchaseDateOverride ? format(purchaseDateOverride, "MMM d") : 'Pick'}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="center">
                 <SimpleCalendar
                   selectedDate={purchaseDateOverride || null}
                   onDateSelect={(date) => onPurchaseDateChange?.(acc.id * 100000 + (col.id as number), date)}
-                  onClose={() => {}} // Popover handles closing
+                  onClose={() => {}}
                 />
               </PopoverContent>
             </Popover>
           )}
-          
-          {/* For levels, just show the date text if not purchase */}
+
           {col.kind === 'level' && (
-            <span className={`text-xs ${isCompleted ? 'line-through decoration-gray-500' : ''}`}>{matrix[accIdx][colIdx]}</span>
+            <span className={`text-xs ${isCompleted ? 'line-through decoration-gray-500' : ''}`}>{renderTimelineCell(matrix[accIdx][colIdx])}</span>
           )}
         </div>
       );
     }
 
-    return matrix[accIdx][colIdx];
+    return renderTimelineCell(matrix[accIdx][colIdx]);
   };
 
   if (layout === 'horizontal') {
