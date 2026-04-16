@@ -1,4 +1,5 @@
 // src/components/tables/AccountDataTable.tsx
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Calendar } from 'lucide-react';
 import { format } from 'date-fns';
@@ -66,7 +67,6 @@ export function AccountDataTable({
   onProgressChange,
   onPurchaseDateChange,
   tempPurchaseDates = {},
-  levels = [],
   mode = 'event-only'
 }: AccountDataTableProps) {
   const { t } = useTranslation();
@@ -74,6 +74,15 @@ export function AccountDataTable({
 
   const { theme } = useTheme();
   const getColorStyle = useColorStyle();
+
+  const levelProgressMap = useMemo(
+    () => new Map(levelsProgress.map((progress) => [progress.level_id, progress.is_completed])),
+    [levelsProgress]
+  );
+  const purchaseProgressMap = useMemo(
+    () => new Map(purchaseProgress.map((progress) => [progress.purchase_event_id, progress.is_completed])),
+    [purchaseProgress]
+  );
 
   const getDisplayToken = (col: TimelineColumnData): string => {
     if (col.kind === 'split') return col.event?.token ?? col.session.token;
@@ -234,36 +243,16 @@ export function AccountDataTable({
     }
 
     if (col.kind === 'level') {
-      // For session levels, check if there's a real level at the same position that has progress
-      if (col.synthetic && typeof col.id === 'string' && col.id.startsWith('synth-')) {
-        // Extract days offset from session level ID
-        const parts = col.id.split('-');
-        if (parts.length >= 3) {
-          const daysOffset = parseInt(parts[2]);
-          // Find if there's a real level at this days offset with progress
-          const realLevelWithProgress = levelsProgress.find(p => {
-            // We need to find the level that has this days offset
-            const level = levels.find(l => l.id === p.level_id);
-            return level && level.days_offset === daysOffset;
-          });
-          if (realLevelWithProgress) {
-            return realLevelWithProgress.is_completed;
-          }
-        }
-      }
-
-      const progress = levelsProgress.find(p => p.level_id === col.id);
-      return progress ? progress.is_completed : false;
+      return levelProgressMap.get(Number(col.id)) ?? false;
     } else {
-      const progress = purchaseProgress.find(p => p.purchase_event_id === col.id);
-      return progress ? progress.is_completed : false;
+      return purchaseProgressMap.get(Number(col.id)) ?? false;
     }
   };
 
   const getSplitCompletion = (col: SplitColumn) => {
     const directSessionCompleted = isSingleCompleted(col.session);
     const eventCompleted = col.event ? isSingleCompleted(col.event as ColumnData) : undefined;
-    const sessionCompleted = directSessionCompleted || !!eventCompleted;
+    const sessionCompleted = directSessionCompleted;
     return { sessionCompleted, directSessionCompleted, eventCompleted };
   };
 
@@ -345,10 +334,7 @@ export function AccountDataTable({
                         <input
                           type="checkbox"
                           checked={getSplitCompletion(col).sessionCompleted}
-                          onChange={(e) => {
-                            if (getSplitCompletion(col).eventCompleted && !e.target.checked) return;
-                            onProgressChange?.('level', col.session.id, e.target.checked);
-                          }}
+                          onChange={(e) => onProgressChange?.('level', col.session.id, e.target.checked)}
                           className="w-4 h-4"
                         />
                         {col.event && (
@@ -358,7 +344,6 @@ export function AccountDataTable({
                             onChange={(e) => {
                               const checked = e.target.checked;
                               onProgressChange?.(col.event!.kind, col.event!.id, checked);
-                              if (checked) onProgressChange?.('level', col.session.id, true);
                             }}
                             className="w-4 h-4"
                           />
@@ -522,10 +507,7 @@ export function AccountDataTable({
                       <input
                         type="checkbox"
                         checked={getSplitCompletion(col).sessionCompleted}
-                        onChange={(e) => {
-                          if (getSplitCompletion(col).eventCompleted && !e.target.checked) return;
-                          onProgressChange?.('level', col.session.id, e.target.checked);
-                        }}
+                        onChange={(e) => onProgressChange?.('level', col.session.id, e.target.checked)}
                         className="w-4 h-4"
                       />
                       {col.event && (
@@ -535,7 +517,6 @@ export function AccountDataTable({
                           onChange={(e) => {
                             const checked = e.target.checked;
                             onProgressChange?.(col.event!.kind, col.event!.id, checked);
-                            if (checked) onProgressChange?.('level', col.session.id, true);
                           }}
                           className="w-4 h-4"
                         />

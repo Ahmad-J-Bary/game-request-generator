@@ -54,7 +54,7 @@ export default function DailyTasksPage() {
     // Always generate/refresh tasks to catch new additions
     generateTodaysTasks();
     localStorage.setItem('dailyTasks_lastGenerated', today);
-  }, [games, generateTodaysTasks]); // Re-run when games are loaded
+  }, [games]); // Added generateTodaysTasks to dependencies
 
   return (
     <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6">

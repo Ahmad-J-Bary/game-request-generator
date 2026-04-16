@@ -521,6 +521,7 @@ function BranchSection({
     const { events: purchaseEvents = [] } = usePurchaseEvents(branch.id);
 
     const columns = useMemo(() => {
+        const buildSessionKey = (token: string, day: number) => `${token}::${day}`;
         const levelCols = levels.map((l) => ({
             kind: 'level' as const,
             id: l.id,
@@ -561,9 +562,11 @@ function BranchSection({
         const numericLevels = levelCols.filter(c => typeof c.daysOffset === 'number') as Extract<ColumnData, { kind: 'level' }>[];
 
         const sessionByDay = new Map<number, Extract<ColumnData, { kind: 'level' }>>();
+        const sessionByKey = new Map<string, Extract<ColumnData, { kind: 'level' }>>();
         numericLevels.filter(l => l.name === '-').forEach(l => {
           const d = Number(l.daysOffset);
           if (!sessionByDay.has(d)) sessionByDay.set(d, l);
+          sessionByKey.set(buildSessionKey(l.token, d), l);
         });
 
         const realLevelsByDay = new Map<number, Extract<ColumnData, { kind: 'level' }>[]>();
@@ -574,19 +577,28 @@ function BranchSection({
           realLevelsByDay.set(d, list);
         });
 
-        const getSessionForDay = (day: number) => {
-          const existing = sessionByDay.get(day);
+        const getSessionForKey = (token: string, day: number) => {
+          const existing = sessionByKey.get(buildSessionKey(token, day));
           if (existing) return existing;
+          const relatedRealLevels = numericLevels.filter(l => l.name !== '-' && l.token === token);
+          const fallbackLevel = relatedRealLevels.find(l => Number(l.daysOffset) >= day) ?? relatedRealLevels[relatedRealLevels.length - 1];
           return {
             kind: 'level' as const,
-            id: `synth-${day}`,
-            token: 'synth',
+            id: `synth-${token}-${day}`,
+            token,
             name: '-',
             daysOffset: day,
-            timeSpent: 0,
+            timeSpent: fallbackLevel?.timeSpent || 0,
             isBonus: false,
             synthetic: true
           } as Extract<ColumnData, { kind: 'level' }>;
+        };
+
+        const getStandaloneSessionForDay = (day: number) => {
+          const existing = sessionByDay.get(day);
+          if (existing) return existing;
+          const fallbackLevel = numericLevels.find(l => l.name !== '-' && Number(l.daysOffset) >= day);
+          return fallbackLevel ? getSessionForKey(fallbackLevel.token, day) : null;
         };
 
         const makeSplit = (
@@ -619,14 +631,16 @@ function BranchSection({
           const maxDay = levelDays.length > 0 ? Number(levelDays[levelDays.length - 1].daysOffset) : 0;
 
           for (let day = minDay; day <= maxDay; day++) {
-            const session = getSessionForDay(day);
             const dayLevels = realLevelsByDay.get(day) ?? [];
 
             if (dayLevels.length > 0) {
-              timelineColumns.push(makeSplit(day, session, dayLevels[0]));
-              dayLevels.slice(1).forEach(l => timelineColumns.push(l));
+              dayLevels.forEach(l => {
+                const session = getSessionForKey(l.token, day);
+                timelineColumns.push(makeSplit(day, session, l));
+              });
             } else {
-              timelineColumns.push(session);
+              const session = getStandaloneSessionForDay(day);
+              if (session) timelineColumns.push(session);
             }
           }
         } else {
@@ -634,7 +648,7 @@ function BranchSection({
           levelEvents.forEach(l => {
             if (typeof l.daysOffset === 'number') {
               const day = Number(l.daysOffset);
-              const session = getSessionForDay(day);
+              const session = getSessionForKey(l.token, day);
               timelineColumns.push(makeSplit(day, session, l));
               return;
             }
@@ -646,7 +660,7 @@ function BranchSection({
         peCols.forEach(p => {
           if (typeof p.daysOffset === 'number') {
             const day = Number(p.daysOffset);
-            const session = getSessionForDay(day);
+            const session = getSessionForKey(p.token, day);
             purchaseColumnsAtEnd.push(makeSplit(day, session, p));
             return;
           }

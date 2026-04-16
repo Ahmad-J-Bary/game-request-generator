@@ -49,6 +49,30 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, on
     return Math.max(0, Math.min(100, ((totalWait - remainingTime) / totalWait) * 100));
   }, [isReady, isBlocked, remainingTime, task.requests]);
 
+  const accountTaskMeta = useMemo(() => {
+    const flatReadyTasks = allBatches.flatMap((batch) => batch.tasks);
+    const allDailyTasks = [...flatReadyTasks, ...deferredTasks];
+    const accountTasks = allDailyTasks.filter((dailyTask) => dailyTask.account.id === accountId);
+
+    const makeTaskKey = (dailyTask: typeof task) => {
+      const group = dailyTask.requestGroups?.[0];
+      return [
+        dailyTask.account.id,
+        group?.event_token || dailyTask.requests?.[0]?.event_token || '',
+        group?.time_spent || dailyTask.requests?.[0]?.time_spent || 0,
+        dailyTask.targetDate,
+      ].join('::');
+    };
+
+    const currentTaskKey = makeTaskKey(task);
+    const currentTaskIndex = accountTasks.findIndex((dailyTask) => makeTaskKey(dailyTask) === currentTaskKey);
+
+    return {
+      accountTaskTotal: accountTasks.length,
+      accountTaskIndex: currentTaskIndex >= 0 ? currentTaskIndex + 1 : 1,
+    };
+  }, [accountId, allBatches, deferredTasks, task]);
+
   // Determine status badge
   const getStatusBadge = () => {
     if (isReady) {
@@ -173,33 +197,16 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, on
         <CardContent className="px-3 pb-3 sm:px-4 sm:pb-4">
           <div className="space-y-3">
             {task.requests.map((request, index) => {
-              // Calculate logical index for this account across ALL tasks (Batches + Deferred)
-              const flatReadyTasks = allBatches.flatMap(b => b.tasks);
-              const allDailyTasks = [...flatReadyTasks, ...deferredTasks];
-              
-              const accountTasks = allDailyTasks.filter(t => t.account.id === accountId);
-              const accountTaskTotal = accountTasks.length;
-              
-              // Find the index of the current task within the account's tasks for today
-              const currentTaskToken = task.requests?.[0]?.event_token || task.requestGroups?.[0]?.event_token;
-              const currentTaskLevel = task.requests?.[0]?.level_id || task.requestGroups?.[0]?.requests?.[0]?.level_id;
-              
-              const accountTaskIndex = accountTasks.findIndex(t => {
-                const tToken = t.requests?.[0]?.event_token || t.requestGroups?.[0]?.event_token;
-                const tLevel = t.requests?.[0]?.level_id || t.requestGroups?.[0]?.requests?.[0]?.level_id;
-                return tToken === currentTaskToken && tLevel === currentTaskLevel;
-              }) + 1;
-
               return (
                 <RequestItem
                   key={index}
-                  index={accountTaskIndex}
-                  total={accountTaskTotal}
+                  index={accountTaskMeta.accountTaskIndex}
+                  total={accountTaskMeta.accountTaskTotal}
                   request={request}
                   isCompleted={task.completedTasks.has(index.toString())}
                   isReady={isReady}
                   onResponseUpdate={(res) => onUpdateResponse(task.account.id, index, res)}
-                  onComplete={(res) => onCompleteTask(task.account.id, index, batchIndex, res)}
+                  onComplete={(res) => onCompleteTask(task.account.id, index, batchIndex, task, res)}
                   onCopy={(content, eventToken, timeSpent) =>
                     onCopyRequest(content, eventToken, timeSpent)}
                   lastResponse={task.lastResponses?.[index]}

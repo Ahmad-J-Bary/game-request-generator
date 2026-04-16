@@ -26,7 +26,7 @@ export interface UseDailyTasksReturn {
 
   // Actions
   generateTodaysTasks: () => Promise<void>;
-  completeTask: (accountId: number, requestIndex: number, batchIndex: number) => Promise<void>;
+  completeTask: (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask, response?: RepeaterResponse) => Promise<void>;
   copyToClipboard: (content: string, eventToken?: string, timeSpent?: number) => void;
   updateTaskResponse: (accountId: number, requestIndex: number, response: RepeaterResponse) => void;
 
@@ -287,18 +287,20 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   }, [games, accountCompletionRecords, accountStartStates]);
 
   // Complete a task using the TaskCompletionHandler utility
-  const completeTask = useCallback(async (accountId: number, requestIndex: number, batchIndex: number, response?: RepeaterResponse) => {
+  const completeTask = useCallback(async (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask, response?: RepeaterResponse) => {
     try {
       const completionHandler = new TaskCompletionHandler({
         batches,
         setBatches,
+        deferredTasks,
+        setDeferredTasks,
         games,
         accountCompletionRecords,
         setAccountCompletionRecords,
         setAccountTaskAssignments,
       });
 
-      const result = await completionHandler.completeTask(accountId, requestIndex, batchIndex, response);
+      const result = await completionHandler.completeTask(accountId, requestIndex, batchIndex, task, response);
       
       if (result && result.success && result.message) {
         NotificationService.success(result.message);
@@ -317,7 +319,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       const errorMessage = error.message || 'Error completing task';
       NotificationService.error(errorMessage);
     }
-  }, [batches, games, accountCompletionRecords]);
+  }, [batches, deferredTasks, games, accountCompletionRecords]);
 
   const updateTaskResponse = useCallback((accountId: number, requestIndex: number, response: RepeaterResponse) => {
     setBatches(prev => prev.map(batch => ({

@@ -69,15 +69,6 @@ export class TaskGenerator {
       return branchDataCache[branchId];
     };
 
-    // Helper to check if a request group is completed
-    const isGroupCompleted = (accId: number, eventToken: string, timeSpent: number): boolean => {
-      return this.options.completedTasks.some(ct => 
-        ct.accountId === accId && 
-        ct.eventToken === eventToken && 
-        ct.timeSpent === timeSpent
-      );
-    };
-
     // 3. Process states in order
     for (const stateName of processingOrder) {
       const stateAccounts = stateGroups[stateName];
@@ -87,22 +78,73 @@ export class TaskGenerator {
         try {
           const branchId = account.branch_id || 0;
           const { levels: gameLevels, purchases: gamePurchaseEvents } = await getBranchData(branchId);
-          const response = await TauriService.getDailyRequests(account.id, today);
+          const gameLevelByToken = new Map(gameLevels.map((level) => [level.event_token, level]));
+          const gameLevelById = new Map(gameLevels.map((level) => [level.id, level]));
+          const purchaseByToken = new Map(gamePurchaseEvents.map((purchase) => [purchase.event_token, purchase]));
+          const [response, accountLevelProgress, accountPurchaseProgress] = await Promise.all([
+            TauriService.getDailyRequests(account.id, today),
+            TauriService.getAccountLevelProgress(account.id),
+            TauriService.getAccountPurchaseEventProgress(account.id)
+          ]);
+          const completedLevelIds = new Set(
+            accountLevelProgress.filter(progress => progress.is_completed).map(progress => progress.level_id)
+          );
+          const completedPurchaseIds = new Set(
+            accountPurchaseProgress
+              .filter(progress => progress.is_completed)
+              .map(progress => progress.purchase_event_id)
+          );
+          const sessionLevelIdByKey = new Map(
+            gameLevels
+              .filter(level => level.level_name === '-')
+              .map(level => [`${(level.event_token || '').split('_day')[0]}::${level.days_offset}`, level.id])
+          );
+
+          const isRequestCompleted = (request: DailyRequestsResponse['requests'][number]): boolean => {
+            const requestType = request.request_type as string;
+
+            if (requestType === 'Purchase Event') {
+              const purchase = purchaseByToken.get(request.event_token || '');
+              return purchase ? completedPurchaseIds.has(purchase.id) : false;
+            }
+
+            if (requestType === 'Purchase Session') {
+              const purchase = purchaseByToken.get(request.event_token || '');
+              if (!purchase) return false;
+              const sessionKey = `${request.event_token || ''}::${purchase.days_offset ?? 0}`;
+              const sessionLevelId = sessionLevelIdByKey.get(sessionKey);
+              return sessionLevelId ? completedLevelIds.has(sessionLevelId) : false;
+            }
+
+            if (requestType === 'Level Session') {
+              const sourceLevel = request.level_id != null ? gameLevelById.get(request.level_id) : undefined;
+              if (!sourceLevel) return false;
+              const sessionKey = `${(sourceLevel.event_token || '').split('_day')[0]}::${sourceLevel.days_offset ?? 0}`;
+              const sessionLevelId = sessionLevelIdByKey.get(sessionKey);
+              return sessionLevelId ? completedLevelIds.has(sessionLevelId) : false;
+            }
+
+            if (requestType === 'Level Event' || requestType === 'Session Only') {
+              return request.level_id != null ? completedLevelIds.has(request.level_id) : false;
+            }
+
+            return false;
+          };
           
           const validRequests: any[] = [];
           const tempRequests: any[] = [];
           
           for (const req of response.requests) {
-            const matchingLevel = gameLevels.find(l => l.event_token === req.event_token);
-            const matchingPurchase = gamePurchaseEvents.find(p => p.event_token === req.event_token);
+            const matchingLevel = gameLevelByToken.get(req.event_token);
+            const matchingPurchase = purchaseByToken.get(req.event_token);
             if (matchingLevel || matchingPurchase) {
               tempRequests.push(req);
             }
           }
 
           for (const req of tempRequests) {
-            const matchingLevel = gameLevels.find(l => l.event_token === req.event_token);
-            const matchingPurchase = gamePurchaseEvents.find(p => p.event_token === req.event_token);
+            const matchingLevel = gameLevelByToken.get(req.event_token);
+            const matchingPurchase = purchaseByToken.get(req.event_token);
 
             if (matchingLevel) {
               req.level_name = matchingLevel.level_name;
@@ -163,16 +205,25 @@ export class TaskGenerator {
               }));
             }
 
-            // Find all pending groups
-            const pendingGroups = requestGroups.filter(g => !isGroupCompleted(account.id, g.event_token, g.time_spent));
+            // Keep partially completed groups visible. A group only disappears when all its requests are completed.
+            const pendingGroups = requestGroups.filter(group =>
+              group.requests.some(request => !isRequestCompleted(request))
+            );
 
             pendingGroups.forEach((group, index) => {
+              const completedTasks = new Set<string>();
+              group.requests.forEach((request, requestIndex) => {
+                if (isRequestCompleted(request)) {
+                  completedTasks.add(requestIndex.toString());
+                }
+              });
+
               const task: DailyTask = {
                 account,
                 requests: group.requests,
                 requestGroups: [group],
                 targetDate: response.target_date,
-                completedTasks: new Set(),
+                completedTasks,
               };
 
               // Only the first pending group can be "Ready"

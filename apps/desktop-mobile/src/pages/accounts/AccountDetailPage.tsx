@@ -325,6 +325,7 @@ export default function AccountDetailPage() {
   const handleCancelEdit = () => setIsEditMode(false);
 
   const columns: ColumnData[] = (() => {
+    const buildSessionKey = (token: string, day: number) => `${token}::${day}`;
     const levelCols = levels.map((l) => ({
       kind: 'level' as const,
       id: l.id as number | string,
@@ -375,11 +376,13 @@ export default function AccountDetailPage() {
     const numericLevels = levelCols.filter(c => typeof c.daysOffset === 'number') as Extract<ColumnData, { kind: 'level' }>[];
 
     const sessionLevelsByDay = new Map<number, Extract<ColumnData, { kind: 'level' }>>();
+    const sessionLevelsByKey = new Map<string, Extract<ColumnData, { kind: 'level' }>>();
     numericLevels
       .filter(l => l.name === '-')
       .forEach(l => {
         const d = Number(l.daysOffset);
         if (!sessionLevelsByDay.has(d)) sessionLevelsByDay.set(d, l);
+        sessionLevelsByKey.set(buildSessionKey(l.token, d), l);
       });
 
     const realLevelsByDay = new Map<number, Extract<ColumnData, { kind: 'level' }>[]> ();
@@ -395,20 +398,21 @@ export default function AccountDetailPage() {
     const sortedRealLevels = [...numericLevels.filter(l => l.name !== '-' && typeof l.daysOffset === 'number')]
       .sort((a, b) => Number(a.daysOffset) - Number(b.daysOffset));
 
-    const getSynthSessionForDay = (day: number) => {
-      const existing = sessionLevelsByDay.get(day);
+    const getSynthSessionForKey = (token: string, day: number) => {
+      const existing = sessionLevelsByKey.get(buildSessionKey(token, day));
       if (existing) return existing;
 
-      const nextMatch = sortedRealLevels.find(l => Number(l.daysOffset) > day);
-      if (!nextMatch) return null;
+      const relatedRealLevels = sortedRealLevels.filter(l => l.token === token);
+      const searchLevels = relatedRealLevels.length > 0 ? relatedRealLevels : sortedRealLevels;
+      const nextMatch = searchLevels.find(l => Number(l.daysOffset) > day);
 
-      const realLevels = sortedRealLevels;
+      const realLevels = searchLevels;
       const firstRealDay = Number(realLevels[0]?.daysOffset ?? 0);
 
       let synthesizedTime = 0;
-      if (day < firstRealDay) {
+      if (nextMatch && day < firstRealDay) {
         synthesizedTime = Math.round((day + 1) * ((nextMatch.timeSpent || 0) / (firstRealDay + 1)));
-      } else {
+      } else if (nextMatch) {
         const prevLevels = realLevels.filter(l => Number(l.daysOffset) < day);
         const prevReal = prevLevels[prevLevels.length - 1];
         if (prevReal) {
@@ -417,18 +421,29 @@ export default function AccountDetailPage() {
         } else {
           synthesizedTime = Math.round((nextMatch.timeSpent || 0) / 2);
         }
+      } else {
+        const prevReal = realLevels.filter(l => Number(l.daysOffset) <= day).slice(-1)[0];
+        synthesizedTime = prevReal?.timeSpent || 0;
       }
 
       return {
         kind: 'level' as const,
-        id: `synth-${nextMatch.token}-${day}`,
-        token: nextMatch.token,
+        id: `synth-${token}-${day}`,
+        token,
         name: '-',
         daysOffset: day,
         timeSpent: synthesizedTime,
         isBonus: false,
         synthetic: true,
       };
+    };
+
+    const getStandaloneSessionForDay = (day: number) => {
+      const existing = sessionLevelsByDay.get(day);
+      if (existing) return existing;
+      const nextMatch = sortedRealLevels.find(l => Number(l.daysOffset) >= day);
+      if (!nextMatch) return null;
+      return getSynthSessionForKey(nextMatch.token, day);
     };
 
     const minDay = sortedRealLevels.length > 0 ? Math.min(0, Number(sortedRealLevels[0].daysOffset)) : 0;
@@ -451,22 +466,23 @@ export default function AccountDetailPage() {
 
     if (mode === 'all') {
       for (let day = minDay; day <= maxDay; day++) {
-        const session = getSynthSessionForDay(day);
-        if (!session) continue;
-
         const dayLevels = realLevelsByDay.get(day) ?? [];
         if (dayLevels.length > 0) {
-          timelineColumns.push(makeSplit(day, session, dayLevels[0]));
-          dayLevels.slice(1).forEach(l => timelineColumns.push(l));
+          dayLevels.forEach(l => {
+            const session = getSynthSessionForKey(l.token, day);
+            if (session) timelineColumns.push(makeSplit(day, session, l));
+            else timelineColumns.push(l);
+          });
         } else {
-          timelineColumns.push(session);
+          const session = getStandaloneSessionForDay(day);
+          if (session) timelineColumns.push(session);
         }
       }
     } else {
       const levelEvents = levelCols.filter(l => l.kind === 'level' && l.name !== '-') as Extract<ColumnData, { kind: 'level' }>[];
       levelEvents.forEach(l => {
         if (typeof l.daysOffset === 'number') {
-          const session = getSynthSessionForDay(Number(l.daysOffset));
+          const session = getSynthSessionForKey(l.token, Number(l.daysOffset));
           if (session) {
             timelineColumns.push(makeSplit(Number(l.daysOffset), session, l));
             return;
@@ -479,7 +495,7 @@ export default function AccountDetailPage() {
     const purchaseColumnsAtEnd: ColumnData[] = [];
     purchaseCols.forEach((p) => {
       if (typeof p.daysOffset === 'number') {
-        const session = getSynthSessionForDay(Number(p.daysOffset));
+        const session = getSynthSessionForKey(p.token, Number(p.daysOffset));
         if (session) {
           purchaseColumnsAtEnd.push(makeSplit(Number(p.daysOffset), session, p));
           return;

@@ -9,6 +9,8 @@ import { asyncStorageService } from '@grq/core/services/storage.service';
 export interface TaskCompletionOptions {
   batches: GameBatch[];
   setBatches: React.Dispatch<React.SetStateAction<GameBatch[]>>;
+  deferredTasks: DailyTask[];
+  setDeferredTasks: React.Dispatch<React.SetStateAction<DailyTask[]>>;
   games: any[];
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
   setAccountCompletionRecords: React.Dispatch<React.SetStateAction<{ [accountId: number]: AccountCompletionRecord }>>;
@@ -22,34 +24,149 @@ export class TaskCompletionHandler {
     this.options = options;
   }
 
-  async completeTask(accountId: number, requestIndex: number, batchIndex: number, response?: RepeaterResponse): Promise<ApiResponse> {
+  async completeTask(accountId: number, requestIndex: number, batchIndex: number, taskRef: DailyTask, response?: RepeaterResponse): Promise<ApiResponse> {
     try {
-      // Find the task across all batches
+      const deriveFinalType = (req: any): any => {
+        const currentType = (req.request_type as string);
+
+        if (currentType === 'Session Only' || currentType === 'Level Session' ||
+            currentType === 'Level Event' || currentType === 'Purchase Session' ||
+            currentType === 'Purchase Event') {
+          return currentType;
+        }
+
+        if (currentType.includes('Purchase')) {
+          return currentType.includes('Session') ? 'Purchase Session' : 'Purchase Event';
+        }
+
+        if (currentType.includes('Event')) {
+          return 'Level Event';
+        }
+
+        return 'Session Only';
+      };
+
+      const matchesTask = (task: DailyTask): boolean => {
+        const currentGroup = task.requestGroups?.[0];
+        const targetGroup = taskRef.requestGroups?.[0];
+        return (
+          task.account.id === accountId &&
+          task.targetDate === taskRef.targetDate &&
+          currentGroup?.event_token === targetGroup?.event_token &&
+          currentGroup?.time_spent === targetGroup?.time_spent &&
+          task.requests.length === taskRef.requests.length
+        );
+      };
+
+      const updateTaskCollection = (tasks: DailyTask[]): DailyTask[] =>
+        tasks.map(task => {
+          if (!matchesTask(task)) return task;
+
+          const newCompletedTasks = new Set(task.completedTasks);
+          newCompletedTasks.add(requestIndex.toString());
+
+          const newLastResponses = { ...(task.lastResponses || {}) };
+          if (response) {
+            newLastResponses[requestIndex] = response;
+          }
+
+          return { ...task, completedTasks: newCompletedTasks, lastResponses: newLastResponses };
+        });
+
+      // Find the matching task in batches or deferred tasks
       let foundTask: DailyTask | null = null;
       let foundBatch: GameBatch | null = null;
-      for (const batch of this.options.batches) {
-        foundTask = batch.tasks.find(t => t.account.id === accountId) || null;
-        if (foundTask) {
+      let foundInDeferred = false;
+
+      if (batchIndex >= 0) {
+        const batch = this.options.batches.find(b => b.batchIndex === batchIndex) || null;
+        foundTask = batch?.tasks.find(matchesTask) || null;
+        if (foundTask && batch) {
           foundBatch = batch;
-          break;
         }
+      }
+
+      if (!foundTask) {
+        for (const batch of this.options.batches) {
+          foundTask = batch.tasks.find(matchesTask) || null;
+          if (foundTask) {
+            foundBatch = batch;
+            break;
+          }
+        }
+      }
+
+      if (!foundTask) {
+        foundTask = this.options.deferredTasks.find(matchesTask) || null;
+        foundInDeferred = !!foundTask;
       }
 
       if (!foundTask) return { success: false, error: 'Task not found' };
 
       const request = foundTask.requests[requestIndex];
+      const finalRequestType = deriveFinalType(request);
+      const isPurchaseEvent = finalRequestType === 'Purchase Event';
+      const isPurchaseSession = finalRequestType === 'Purchase Session';
+      const isLevelSession = finalRequestType === 'Level Session';
+      const usesSyntheticSessionLevel = isPurchaseSession || isLevelSession;
 
-      // Handle purchase events differently (they don't have level_id)
-      // Purchase events have event_token set and level_id as null
-      const isPurchaseEvent = request.event_token && request.event_token.trim() !== '' && request.level_id == null;
+      const resolveSessionLevelId = async (): Promise<number> => {
+        const account = await TauriService.getAccountById(accountId);
+        if (!account) throw new Error('Account not found');
+        if (!account.branch_id) throw new Error('Account has no branch associated with it');
 
-      if (!request.level_id && !isPurchaseEvent) {
-        console.error('Task completion error: request missing level_id and not identified as purchase event', {
+        const gameLevels = await TauriService.getGameLevels(account.branch_id);
+        let baseToken = (request.event_token || '').split('_day')[0];
+        let daysOffset = 0;
+        let timeSpent = request.time_spent || 0;
+
+        if (request.level_id) {
+          const sourceLevel = gameLevels.find(level => level.id === request.level_id);
+          if (sourceLevel) {
+            baseToken = (sourceLevel.event_token || baseToken).split('_day')[0];
+            daysOffset = typeof sourceLevel.days_offset === 'number' ? sourceLevel.days_offset : 0;
+            timeSpent = sourceLevel.time_spent || timeSpent;
+          }
+        } else if (request.event_token) {
+          const purchaseEvents = await TauriService.getGamePurchaseEvents(account.branch_id);
+          const purchaseEvent = purchaseEvents.find(event => event.event_token === request.event_token);
+          if (purchaseEvent) {
+            daysOffset = typeof purchaseEvent.days_offset === 'number' ? purchaseEvent.days_offset : 0;
+          }
+        }
+
+        if (!baseToken) {
+          throw new Error('Session token could not be resolved');
+        }
+
+        const sessionEventToken = `${baseToken}_day${daysOffset}`;
+        const existingSessionLevel = gameLevels.find(level =>
+          level.level_name === '-' &&
+          level.event_token === sessionEventToken &&
+          level.days_offset === daysOffset
+        );
+
+        if (existingSessionLevel) {
+          return existingSessionLevel.id;
+        }
+
+        return TauriService.addLevel({
+          game_id: account.game_id,
+          branch_id: account.branch_id,
+          level_name: '-',
+          event_token: sessionEventToken,
+          days_offset: daysOffset,
+          time_spent: timeSpent,
+          is_bonus: false,
+        });
+      };
+
+      if (!request.level_id && !isPurchaseEvent && !isPurchaseSession) {
+        console.error('Task completion error: request missing level_id and not identified as supported request type', {
           requestType: request.request_type,
           eventToken: request.event_token,
           levelId: request.level_id,
-          hasEventToken: !!request.event_token,
-          eventTokenLength: request.event_token ? request.event_token.length : 0
+          finalRequestType
         });
         throw new Error('Task completion error');
       }
@@ -115,15 +232,11 @@ export class TaskCompletionHandler {
           account_id: accountId,
           purchase_event_id: purchaseEvent.purchase_event_id,
           is_completed: true,
+          time_spent: request.time_spent,
+          target_date: foundTask.targetDate,
         };
 
         result = await TauriService.updatePurchaseEventProgress(updateRequest);
-
-        const deriveType = (req: any): any => {
-           const raw = (req.request_type as string).toLowerCase();
-           return raw.includes('session') ? 'Purchase Session' : 'Purchase Event';
-        };
-        const finalRequestType = deriveType(request);
 
         // Record completed purchase event
         const completedTask: CompletedDailyTask = {
@@ -150,58 +263,22 @@ export class TaskCompletionHandler {
         completedList.push(completedTask);
         await asyncStorageService.set(completedKey, completedList);
 
-
         // Dispatch event to update sidebar
         window.dispatchEvent(new CustomEvent('daily-task-completed'));
-
-        // Update task completion status
-        const updatedBatches = this.options.batches.map(batch => ({
-          ...batch,
-          tasks: batch.tasks.map(task => {
-            if (task.account.id === accountId) {
-              const newCompletedTasks = new Set(task.completedTasks);
-              newCompletedTasks.add(requestIndex.toString());
-              
-              // Merge the response if provided
-              const newLastResponses = { ...(task.lastResponses || {}) };
-              if (response) {
-                newLastResponses[requestIndex] = response;
-              }
-              
-              return { ...task, completedTasks: newCompletedTasks, lastResponses: newLastResponses };
-            }
-            return task;
-          })
-        }));
-
-        this.options.setBatches(updatedBatches);
-
-        // Record the completion of this purchase event task for timing
-        this.options.setAccountCompletionRecords(prev => ({
-          ...prev,
-          [accountId]: {
-            accountId,
-            timeSpent: request.time_spent || 0,
-            completionTime: Date.now(),
-            levelId: 0, // Using 0 as levelId for purchase events to satisfy types
-            eventToken: request.event_token!,
-          }
-        }));
-
-        // Dispatch progress-updated event
-        window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
-
-        return result; // Return the result from TauriService
       } else {
-        // Handle level event completion
-        // Ensure progress record exists, then update it
-        if (!request.level_id) {
+        let targetLevelId = request.level_id;
+
+        if (usesSyntheticSessionLevel) {
+          targetLevelId = await resolveSessionLevelId();
+        }
+
+        if (!targetLevelId) {
           throw new Error('Level ID is required for level event completion');
         }
 
         const createRequest = {
           account_id: accountId,
-          level_id: request.level_id,
+          level_id: targetLevelId,
         };
 
         try {
@@ -213,8 +290,10 @@ export class TaskCompletionHandler {
         // Now update the progress
         const updateRequest = {
           account_id: accountId,
-          level_id: request.level_id,
+          level_id: targetLevelId,
           is_completed: true,
+          time_spent: request.time_spent,
+          target_date: foundTask.targetDate,
         };
 
         result = await ApiService.updateLevelProgress(updateRequest);
@@ -227,34 +306,8 @@ export class TaskCompletionHandler {
       if (success) {
         const now = Date.now();
 
-        const deriveFinalType = (req: any): any => {
-          const currentType = (req.request_type as string);
-
-          // If the type is already properly set from task generator, use it
-          if (currentType === 'Session Only' || currentType === 'Level Session' ||
-              currentType === 'Level Event' || currentType === 'Purchase Session' ||
-              currentType === 'Purchase Event') {
-            return currentType;
-          }
-
-          // Fallback logic for older or incorrectly set types
-          if (currentType.includes('Purchase')) {
-            return currentType.includes('Session') ? 'Purchase Session' : 'Purchase Event';
-          }
-
-          if (currentType.includes('Event')) {
-            return 'Level Event';
-          }
-
-          // For session types that aren't properly set, we can't determine without context
-          // Default to Session Only as it's the safer assumption
-          return 'Session Only';
-        };
-
-        const finalRequestType = deriveFinalType(request);
-
         // Create individual completion records for all level events
-        if (!isPurchaseEvent && request.level_id) {
+        if (!isPurchaseEvent) {
           const levelCompletedTask: CompletedDailyTask = {
             id: `${accountId}_level_${request.level_id}_${finalRequestType.replace(/\s+/g, '_')}_${now}`,
             accountId,
@@ -286,25 +339,20 @@ export class TaskCompletionHandler {
         // Update task completion status
         const updatedBatches = this.options.batches.map(batch => ({
           ...batch,
-          tasks: batch.tasks.map(task => {
-            if (task.account.id === accountId) {
-              const newCompletedTasks = new Set(task.completedTasks);
-              newCompletedTasks.add(requestIndex.toString());
-              
-              // Merge the response if provided
-              const newLastResponses = { ...(task.lastResponses || {}) };
-              if (response) {
-                newLastResponses[requestIndex] = response;
-              }
-              
-              return { ...task, completedTasks: newCompletedTasks, lastResponses: newLastResponses };
-            }
-            return task;
-          })
+          tasks: updateTaskCollection(batch.tasks)
         }));
+        const updatedDeferredTasks = updateTaskCollection(this.options.deferredTasks);
 
         // Check if this completes a Session+Event pair (both requests in the group)
         if (foundTask && foundTask.requestGroups) {
+          const updatedTask = foundInDeferred
+            ? (updatedDeferredTasks.find(matchesTask) || null)
+            : (
+                foundBatch
+                  ? (updatedBatches.find(b => b.batchIndex === foundBatch!.batchIndex)?.tasks.find(matchesTask) || null)
+                  : (updatedBatches.flatMap(batch => batch.tasks).find(matchesTask) || null)
+              );
+
           // Find which group this request belongs to
           for (const group of foundTask.requestGroups) {
             const groupIndices = group.requests.map((_, idx) =>
@@ -312,19 +360,14 @@ export class TaskCompletionHandler {
             );
 
             // Check if all requests in this group are now completed
-            const allGroupCompleted = groupIndices.every(idx =>
-              updatedBatches
-                .find(b => b.batchIndex === foundBatch!.batchIndex)
-                ?.tasks.find(t => t.account.id === accountId)
-                ?.completedTasks.has(idx.toString())
-            );
+            const allGroupCompleted = groupIndices.every(idx => updatedTask?.completedTasks.has(idx.toString()));
 
             if (allGroupCompleted && groupIndices.includes(requestIndex)) {
               const completionRecord: AccountCompletionRecord = {
                 accountId,
                 timeSpent: group.time_spent,
                 completionTime: now,
-                levelId: request.level_id!,
+                levelId: request.level_id ?? 0,
                 eventToken: group.event_token,
               };
 
@@ -341,6 +384,7 @@ export class TaskCompletionHandler {
 
               const completedDate = new Date().toISOString().split('T')[0];
               this.options.setBatches(updatedBatches);
+              this.options.setDeferredTasks(updatedDeferredTasks);
 
               // Update AsyncStorage with updated batches
               const serializedBatches = updatedBatches.map(batch => ({
@@ -350,8 +394,14 @@ export class TaskCompletionHandler {
                   completedTasks: Array.from(task.completedTasks)
                 }))
               }));
+              const serializedDeferredTasks = updatedDeferredTasks.map(task => ({
+                ...task,
+                completedTasks: Array.from(task.completedTasks)
+              }));
+
               await asyncStorageService.set(`dailyTasks_batches_${completedDate}`, {
                 batches: serializedBatches,
+                deferredTasks: serializedDeferredTasks,
                 accountScheduledTime: {} // This would need to be passed in or managed differently
               });
 
@@ -371,12 +421,13 @@ export class TaskCompletionHandler {
             accountId,
             timeSpent: request.time_spent || 0,
             completionTime: now,
-            levelId: request.level_id!,
+            levelId: request.level_id ?? 0,
             eventToken: request.event_token || '',
           }
         }));
 
         this.options.setBatches(updatedBatches);
+        this.options.setDeferredTasks(updatedDeferredTasks);
 
         // Dispatch progress-updated event to refresh other components
         window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));

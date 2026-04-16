@@ -1,4 +1,5 @@
 // src/components/tables/AccountsDataTable.tsx
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Table,
@@ -82,6 +83,7 @@ export function AccountsDataTable({
   const { colors } = useSettings();
   const { theme } = useTheme();
   const getColorStyle = useColorStyle();
+  const purchasesProgressMap = tempProgress?.purchases as { [key: string]: boolean } | undefined;
 
   const getDisplayToken = (col: TimelineColumnData): string => {
     if (col.kind === 'split') return col.event?.token ?? col.session.token;
@@ -212,19 +214,50 @@ export function AccountsDataTable({
     };
   };
 
+  const splitStateCache = useMemo(() => {
+    const cache = new Map<string, { sessionCompleted: boolean; eventCompleted: boolean }>();
+
+    accounts.forEach((account) => {
+      columns.forEach((column) => {
+        if (column.kind !== 'split') return;
+
+        const sessionKey = `${account.id}_${column.session.id}`;
+        const sessionCompleted = isEditMode && tempProgress
+          ? !!tempProgress.levels[sessionKey]
+          : !!levelsProgress[sessionKey]?.is_completed;
+
+        const eventKey = column.event ? `${account.id}_${column.event.id}` : null;
+        const eventCompleted = column.event && eventKey
+          ? (
+              column.event.kind === 'level'
+                ? (
+                    isEditMode && tempProgress
+                      ? !!tempProgress.levels[eventKey]
+                      : !!levelsProgress[eventKey]?.is_completed
+                  )
+                : (
+                    isEditMode && purchasesProgressMap
+                      ? !!purchasesProgressMap[eventKey]
+                      : !!purchaseProgress[eventKey]?.is_completed
+                  )
+            )
+          : false;
+
+        cache.set(`${account.id}::${column.id}`, { sessionCompleted, eventCompleted });
+      });
+    });
+
+    return cache;
+  }, [accounts, columns, isEditMode, levelsProgress, purchaseProgress, purchasesProgressMap, tempProgress]);
+
   const getDateCellStyle = (accountId: number, col: TimelineColumnData): React.CSSProperties => {
     // In edit mode, we check tempProgress
     if (isEditMode && tempProgress) {
       if (col.kind === 'split') {
-        const sessionKey = `${accountId}_${col.session.id}`;
-        let sessionCompleted = !!tempProgress.levels[sessionKey];
+        const splitState = splitStateCache.get(`${accountId}::${col.id}`);
+        const sessionCompleted = splitState?.sessionCompleted ?? false;
         if (!col.event) return sessionCompleted ? completeScheduledStyle : incompleteScheduledStyle;
-
-        const eventKey = `${accountId}_${col.event.id}`;
-        const eventCompleted = col.event.kind === 'level'
-          ? !!tempProgress.levels[eventKey]
-          : !!(tempProgress.purchases as { [key: string]: boolean })[eventKey];
-        if (eventCompleted) sessionCompleted = true;
+        const eventCompleted = splitState?.eventCompleted ?? false;
         return getSplitCellStyle(sessionCompleted, eventCompleted);
       }
 
@@ -234,16 +267,10 @@ export function AccountsDataTable({
     }
 
     if (col.kind === 'split') {
-      const sessionKey = `${accountId}_${col.session.id}`;
-      const sessionProgress = levelsProgress[sessionKey];
-      let sessionCompleted = !!sessionProgress?.is_completed;
+      const splitState = splitStateCache.get(`${accountId}::${col.id}`);
+      const sessionCompleted = splitState?.sessionCompleted ?? false;
       if (!col.event) return sessionCompleted ? completeScheduledStyle : incompleteScheduledStyle;
-
-      const eventKey = `${accountId}_${col.event.id}`;
-      const eventCompleted = col.event.kind === 'level'
-        ? !!levelsProgress[eventKey]?.is_completed
-        : !!purchaseProgress[eventKey]?.is_completed;
-      if (eventCompleted) sessionCompleted = true;
+      const eventCompleted = splitState?.eventCompleted ?? false;
       return getSplitCellStyle(sessionCompleted, eventCompleted);
     }
 
@@ -267,17 +294,10 @@ export function AccountsDataTable({
     if (isEditMode && tempProgress && onProgressChange) {
       if (col.kind === 'split') {
         const sessionKey = `${acc.id}_${col.session.id}`;
-        let sessionCompleted = tempProgress.levels[sessionKey] ?? levelsProgress[sessionKey]?.is_completed ?? false;
-
         const eventKey = col.event ? `${acc.id}_${col.event.id}` : null;
-        const eventCompleted = col.event
-          ? (
-              col.event.kind === 'level'
-                ? (tempProgress.levels[eventKey as string] ?? levelsProgress[eventKey as string]?.is_completed ?? false)
-                : ((tempProgress.purchases as unknown as { [key: string]: boolean })[eventKey as string] ?? purchaseProgress[eventKey as string]?.is_completed ?? false)
-            )
-          : false;
-        if (eventCompleted) sessionCompleted = true;
+        const splitState = splitStateCache.get(`${acc.id}::${col.id}`);
+        const sessionCompleted = splitState?.sessionCompleted ?? false;
+        const eventCompleted = splitState?.eventCompleted ?? false;
 
         const eventPurchaseId = col.event?.kind === 'purchase' ? (col.event.id as number) : null;
         const purchaseDateOverride = eventPurchaseId != null && tempPurchaseDates
@@ -290,10 +310,7 @@ export function AccountsDataTable({
               <input
                 type="checkbox"
                 checked={sessionCompleted}
-                onChange={(e) => {
-                  if (eventCompleted && !e.target.checked) return;
-                  onProgressChange?.('level', sessionKey, e.target.checked);
-                }}
+                onChange={(e) => onProgressChange?.('level', sessionKey, e.target.checked)}
                 className="w-4 h-4"
               />
             </div>
@@ -306,7 +323,6 @@ export function AccountsDataTable({
                   onChange={(e) => {
                     const checked = e.target.checked;
                     onProgressChange?.(col.event!.kind, eventKey as string, checked);
-                    if (checked) onProgressChange?.('level', sessionKey, true);
                   }}
                   className="w-4 h-4"
                 />

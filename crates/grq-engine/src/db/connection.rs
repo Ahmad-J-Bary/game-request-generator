@@ -122,6 +122,8 @@ impl Database {
                 account_id INTEGER NOT NULL,
                 level_id INTEGER NOT NULL,
                 is_completed INTEGER NOT NULL DEFAULT 0,
+                time_spent INTEGER NOT NULL DEFAULT 0,
+                target_date TEXT,
                 completed_at TIMESTAMP,
                 PRIMARY KEY (account_id, level_id),
                 FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
@@ -147,6 +149,7 @@ impl Database {
                 is_completed INTEGER NOT NULL DEFAULT 0,
                 days_offset INTEGER NOT NULL DEFAULT 0,
                 time_spent INTEGER NOT NULL DEFAULT 0,
+                target_date TEXT,
                 completed_at TIMESTAMP,
                 PRIMARY KEY (account_id, purchase_event_id),
                 FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
@@ -207,6 +210,15 @@ impl Database {
         }
         if !column_exists("purchase_events", "branch_id")? {
             tx.execute("ALTER TABLE purchase_events ADD COLUMN branch_id INTEGER", [])?;
+        }
+        if !column_exists("account_level_progress", "time_spent")? {
+            tx.execute("ALTER TABLE account_level_progress ADD COLUMN time_spent INTEGER NOT NULL DEFAULT 0", [])?;
+        }
+        if !column_exists("account_level_progress", "target_date")? {
+            tx.execute("ALTER TABLE account_level_progress ADD COLUMN target_date TEXT", [])?;
+        }
+        if !column_exists("account_purchase_event_progress", "target_date")? {
+            tx.execute("ALTER TABLE account_purchase_event_progress ADD COLUMN target_date TEXT", [])?;
         }
 
         // 3. Structural migration for UNIQUE constraints (Table Recreation)

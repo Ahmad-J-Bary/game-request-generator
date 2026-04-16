@@ -18,10 +18,16 @@ impl ProgressService {
         request: CreateAccountLevelProgressRequest,
     ) -> Result<(), String> {
         conn.execute(
-            "INSERT INTO account_level_progress (account_id, level_id, is_completed)
-             VALUES (?1, ?2, 0)
-             ON CONFLICT(account_id, level_id) DO NOTHING",
-            params![request.account_id, request.level_id],
+            "INSERT INTO account_level_progress (account_id, level_id, is_completed, time_spent, target_date)
+             VALUES (?1, ?2, 0, ?3, ?4)
+             ON CONFLICT(account_id, level_id) 
+             DO UPDATE SET time_spent = COALESCE(NULLIF(?3, 0), time_spent), target_date = COALESCE(?4, target_date)",
+            params![
+                request.account_id,
+                request.level_id,
+                request.time_spent.unwrap_or(0),
+                request.target_date
+            ],
         )
         .map_err(|e| format!("Failed to create level progress: {}", e))?;
 
@@ -59,11 +65,13 @@ impl ProgressService {
 
         conn.execute(
             "UPDATE account_level_progress 
-             SET is_completed = ?1, completed_at = ?2
-             WHERE account_id = ?3 AND level_id = ?4",
+             SET is_completed = ?1, completed_at = ?2, time_spent = COALESCE(?3, time_spent), target_date = COALESCE(?4, target_date)
+             WHERE account_id = ?5 AND level_id = ?6",
             params![
                 if request.is_completed { 1 } else { 0 },
                 completed_at,
+                request.time_spent,
+                request.target_date,
                 request.account_id,
                 request.level_id
             ],
@@ -80,7 +88,7 @@ impl ProgressService {
     ) -> Result<Vec<AccountLevelProgress>, String> {
         let mut stmt = conn
             .prepare(
-                "SELECT account_id, level_id, is_completed, completed_at
+                "SELECT account_id, level_id, is_completed, time_spent, target_date, completed_at
                  FROM account_level_progress WHERE account_id = ?1",
             )
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
@@ -91,7 +99,9 @@ impl ProgressService {
                     account_id: row.get(0)?,
                     level_id: row.get(1)?,
                     is_completed: row.get::<_, i32>(2)? != 0,
-                    completed_at: row.get(3).ok(),
+                    time_spent: row.get(3)?,
+                    target_date: row.get(4).ok(),
+                    completed_at: row.get(5).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query level progress: {}", e))?;
@@ -113,15 +123,16 @@ impl ProgressService {
     ) -> Result<(), String> {
         conn.execute(
             "INSERT INTO account_purchase_event_progress 
-             (account_id, purchase_event_id, is_completed, days_offset, time_spent)
-             VALUES (?1, ?2, 0, ?3, ?4)
+             (account_id, purchase_event_id, is_completed, days_offset, time_spent, target_date)
+             VALUES (?1, ?2, 0, ?3, ?4, ?5)
              ON CONFLICT(account_id, purchase_event_id) 
-             DO UPDATE SET days_offset = ?3, time_spent = ?4",
+             DO UPDATE SET days_offset = ?3, time_spent = ?4, target_date = COALESCE(?5, target_date)",
             params![
                 request.account_id,
                 request.purchase_event_id,
                 request.days_offset,
-                request.time_spent
+                request.time_spent,
+                request.target_date
             ],
         )
         .map_err(|e| format!("Failed to create/update purchase event progress: {}", e))?;
@@ -177,6 +188,11 @@ impl ProgressService {
             values.push(Box::new(time_spent));
         }
 
+        if let Some(target_date) = request.target_date {
+            updates.push("target_date = ?");
+            values.push(Box::new(target_date));
+        }
+
         if updates.is_empty() {
             return Ok(false);
         }
@@ -203,7 +219,7 @@ impl ProgressService {
     ) -> Result<Vec<AccountPurchaseEventProgress>, String> {
         let mut stmt = conn
             .prepare(
-                "SELECT account_id, purchase_event_id, is_completed, days_offset, time_spent, completed_at
+                "SELECT account_id, purchase_event_id, is_completed, days_offset, time_spent, target_date, completed_at
                  FROM account_purchase_event_progress WHERE account_id = ?1",
             )
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
@@ -216,7 +232,8 @@ impl ProgressService {
                     is_completed: row.get::<_, i32>(2)? != 0,
                     days_offset: row.get(3)?,
                     time_spent: row.get(4)?,
-                    completed_at: row.get(5).ok(),
+                    target_date: row.get(5).ok(),
+                    completed_at: row.get(6).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query purchase event progress: {}", e))?;
