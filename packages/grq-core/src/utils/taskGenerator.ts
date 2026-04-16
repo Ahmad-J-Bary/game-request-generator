@@ -177,6 +177,16 @@ export class TaskGenerator {
               );
               if (existingGroup) {
                 existingGroup.requests.push(request);
+                // Sort requests within the group: Session first, then Event
+                existingGroup.requests.sort((a, b) => {
+                  const typeA = (a.request_type || '').toString().toLowerCase();
+                  const typeB = (b.request_type || '').toString().toLowerCase();
+                  const isSessionA = typeA.includes('session');
+                  const isSessionB = typeB.includes('session');
+                  if (isSessionA && !isSessionB) return -1;
+                  if (!isSessionA && isSessionB) return 1;
+                  return 0;
+                });
               } else {
                 requestGroups.push({
                   event_token: eventToken,

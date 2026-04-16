@@ -125,29 +125,8 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
         setCompletedTasks(savedCompleted);
       }
       
-      // Load batches
-      const savedBatches = await asyncStorageService.get(`dailyTasks_batches_${today}`) as any;
-      if (savedBatches && savedBatches.batches && mounted) {
-          // Re-hydrate Sets
-          const hydratedBatches = savedBatches.batches.map((batch: any) => ({
-              ...batch,
-              tasks: batch.tasks.map((t: any) => ({
-                  ...t,
-                  completedTasks: new Set(t.completedTasks || [])
-              }))
-          }));
-          setBatches(hydratedBatches);
-          if (savedBatches.accountScheduledTime) {
-              setAccountScheduledTime(savedBatches.accountScheduledTime);
-          }
-          if (savedBatches.deferredTasks && mounted) {
-              const hydratedDeferred = savedBatches.deferredTasks.map((t: any) => ({
-                  ...t,
-                  completedTasks: new Set(t.completedTasks || [])
-              }));
-              setDeferredTasks(hydratedDeferred);
-          }
-      }
+      // We no longer load batches from storage to ensure fresh random numbers on every entry.
+      // The generateTodaysTasks() call in DailyTasksPage will handle fetching fresh data.
 
       if (mounted) setLoading(false);
     } catch (error) {
@@ -204,23 +183,8 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       if (loading) return;
 
       try {
-        const today = new Date().toISOString().split('T')[0];
-        const serializedBatches = batches.map(batch => ({
-          ...batch,
-          tasks: batch.tasks.map(task => ({
-            ...task,
-            completedTasks: Array.from(task.completedTasks)
-          }))
-        }));
-
-        const serializedDeferred = deferredTasks.map(task => ({
-          ...task,
-          completedTasks: Array.from(task.completedTasks)
-        }));
-
-        await asyncStorageService.set(`dailyTasks_batches_${today}`, {
-          batches: serializedBatches,
-          deferredTasks: serializedDeferred,
+        // We only save accountScheduledTime now. Batches and DeferredTasks are generated fresh on every mount.
+        await asyncStorageService.set(`dailyTasks_scheduledTime`, {
           accountScheduledTime
         });
       } catch (error) {
@@ -229,7 +193,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
     };
 
     saveTasksState();
-  }, [batches, deferredTasks, accountScheduledTime, loading]);
+  }, [accountScheduledTime, loading]);
 
   // Generate today's tasks using the TaskGenerator utility
   const generateTodaysTasks = useCallback(async () => {
@@ -245,38 +209,16 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
         completedTasks,
       });
 
-      const { batches, deferredTasks: generatedDeferred, accountScheduledTime } = await taskGenerator.generateTodaysTasks();
+      const { batches: generatedBatches, deferredTasks: generatedDeferred, accountScheduledTime: generatedScheduledTime } = await taskGenerator.generateTodaysTasks();
 
-      setBatches(batches);
+      setBatches(generatedBatches);
       setDeferredTasks(generatedDeferred);
-      setAccountScheduledTime(accountScheduledTime);
+      setAccountScheduledTime(generatedScheduledTime);
 
-      // Save to AsyncStorage for persistence
-      const today = new Date().toISOString().split('T')[0];
-      const serializedBatches = batches.map(batch => ({
-        ...batch,
-        tasks: batch.tasks.map(task => ({
-          ...task,
-          completedTasks: Array.from(task.completedTasks)
-        }))
-      }));
-
-      const serializedDeferred = generatedDeferred.map(task => ({
-        ...task,
-        completedTasks: Array.from(task.completedTasks)
-      }));
-
-      await asyncStorageService.set(`dailyTasks_batches_${today}`, {
-        batches: serializedBatches,
-        deferredTasks: serializedDeferred,
-        accountScheduledTime
-      });
-
-      if (batches.length > 0) {
-        // Use a standard t() call if available, otherwise just use the key for now 
-        // to be fixed when we ensure useTranslation is available here.
-        // Actually, this hook doesn't have useTranslation. I should add it.
-        NotificationService.success(t('dailyTasks.generateTasksSuccess', { count: batches.length }));
+      // We no longer save batches to AsyncStorage here.
+      
+      if (generatedBatches.length > 0) {
+        NotificationService.success(t('dailyTasks.generateTasksSuccess', { count: generatedBatches.length }));
       }
     } catch (error) {
       NotificationService.error(t('dailyTasks.generateTasksError'));

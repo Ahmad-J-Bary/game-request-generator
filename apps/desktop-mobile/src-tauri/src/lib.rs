@@ -32,6 +32,7 @@ use grq_engine::db::config::ConfigService;
 use grq_engine::services::repeater_service::{RepeaterResponse, RepeaterService};
 use grq_engine::services::telegram_service::TelegramService;
 use grq_engine::db::key_value::KeyValueService;
+use rusqlite::params;
 
 // === حالة التطبيق ===
 struct AppState {
@@ -1001,12 +1002,6 @@ fn get_daily_requests(
         .map(|p| (p.level_id, p))
         .collect();
 
-    let completed_level_ids: std::collections::HashSet<i64> = level_progress
-        .iter()
-        .filter(|p| p.is_completed)
-        .map(|p| p.level_id)
-        .collect();
-
     let mut all_levels = levels.clone();
     let numeric_levels: Vec<&Level> = levels.iter().collect();
     if !numeric_levels.is_empty() {
@@ -1099,14 +1094,31 @@ fn get_daily_requests(
         
         // 1. Determine if anything in this group is completed and get locked time
         let mut locked_time: Option<i64> = None;
+        let mut group_fully_completed = true;
         for l in group_levels {
             if let Some(prog) = level_progress_map.get(&l.id) {
                 if prog.is_completed && prog.target_date == Some(target_date.clone()) {
                     locked_time = Some(prog.time_spent as i64);
-                    break;
+                } else {
+                    group_fully_completed = false;
                 }
+            } else {
+                group_fully_completed = false;
             }
         }
+        
+        // Also check if this exact group (token + date) was completed today in the NEW tracking table
+        if locked_time.is_none() {
+            locked_time = conn.query_row(
+                "SELECT time_spent FROM completed_daily_tasks 
+                 WHERE account_id = ?1 AND event_token = ?2 AND completion_date = ?3 LIMIT 1",
+                params![account_id, clean_event_token, target_date],
+                |row| row.get(0),
+            ).ok();
+        }
+        
+        // If the whole group is completed, skip it
+        if group_fully_completed { continue; }
         
         // 2. Pre-calculate time for this whole group
         let time_spent = if let Some(t) = locked_time {
@@ -1142,12 +1154,19 @@ fn get_daily_requests(
         let mut has_real_level = false;
         let mut has_synthetic_level = false;
         
-        for l in group_levels {
+        // Sort levels within the group: Session (-) then Event (actual names)
+        let mut sorted_group_levels = group_levels.clone();
+        sorted_group_levels.sort_by(|a, b| {
+            if a.level_name == "-" && b.level_name != "-" { std::cmp::Ordering::Less }
+            else if a.level_name != "-" && b.level_name == "-" { std::cmp::Ordering::Greater }
+            else { std::cmp::Ordering::Equal }
+        });
+
+        for l in sorted_group_levels {
             if l.level_name == "-" { has_synthetic_level = true; }
             else { has_real_level = true; }
             
-            // Skip if this specific level ID is already completed
-            if completed_level_ids.contains(&l.id) { continue; }
+            // We no longer skip completed individual levels here to keep the group intact in the UI
             
             let mut base_request_content = template.clone();
             base_request_content = base_request_content.replace("{event_token}", &clean_event_token);

@@ -14,7 +14,7 @@ impl Database {
     /// افتح أو أنشئ ملف قاعدة البيانات داخل app data directory
     pub fn new(app: &AppHandle) -> Result<Self, String> {
         use super::config::ConfigService;
-        let config = ConfigService::load(app);
+        let config = ConfigService::load_for_db_init(app);
 
         let db_path = if let Some(custom_path) = config.db_path {
             PathBuf::from(custom_path)
@@ -161,8 +161,32 @@ impl Database {
                 value TEXT NOT NULL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS completed_daily_tasks (
+                id TEXT PRIMARY KEY,
+                account_id INTEGER NOT NULL,
+                account_name TEXT NOT NULL,
+                game_id INTEGER NOT NULL,
+                game_name TEXT NOT NULL,
+                event_token TEXT NOT NULL,
+                time_spent INTEGER NOT NULL,
+                completion_time INTEGER NOT NULL,
+                completion_date TEXT NOT NULL,
+                level_id INTEGER,
+                level_name TEXT,
+                request_type TEXT NOT NULL,
+                is_purchase INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+                FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+            );
             "
         )?;
+
+        // Create indexes for completed tasks
+        tx.execute_batch("
+            CREATE INDEX IF NOT EXISTS idx_completed_tasks_account ON completed_daily_tasks(account_id);
+            CREATE INDEX IF NOT EXISTS idx_completed_tasks_date ON completed_daily_tasks(completion_date);
+        ")?;
 
         // Helper to check column existence within transaction
         let column_exists = |table: &str, column: &str| -> SqlResult<bool> {

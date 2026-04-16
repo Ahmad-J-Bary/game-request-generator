@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri::Manager;
 
+use crate::db::key_value::KeyValueService;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct AppConfig {
@@ -77,6 +79,8 @@ impl Default for AppConfig {
 pub struct ConfigService;
 
 impl ConfigService {
+    const CONFIG_DB_KEY: &'static str = "app_config_json";
+
     fn get_config_path(app: &AppHandle) -> PathBuf {
         let mut path = app
             .path()
@@ -89,19 +93,50 @@ impl ConfigService {
     }
 
     pub fn load(app: &AppHandle) -> AppConfig {
+        Self::load_internal(app, true)
+    }
+
+    /// Special load for database initialization to avoid recursion
+    pub fn load_for_db_init(app: &AppHandle) -> AppConfig {
+        Self::load_internal(app, false)
+    }
+
+    fn load_internal(app: &AppHandle, use_db: bool) -> AppConfig {
+        // 1. Try to load from Database first if allowed
+        if use_db {
+            if let Ok(Some(db_config_str)) = KeyValueService::get_value(app, Self::CONFIG_DB_KEY) {
+                if let Ok(config) = serde_json::from_str::<AppConfig>(&db_config_str) {
+                    return config;
+                }
+            }
+        }
+
+        // 2. Fallback to file (Migration/First run after update or DB init)
         let config_path = Self::get_config_path(app);
         if config_path.exists() {
-            let content = fs::read_to_string(config_path).unwrap_or_default();
-            serde_json::from_str(&content).unwrap_or_default()
-        } else {
-            AppConfig::default()
+            let content = fs::read_to_string(&config_path).unwrap_or_default();
+            if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
+                // Only save to DB if we are in a normal load (not DB init)
+                if use_db {
+                    let _ = Self::save(app, &config);
+                }
+                return config;
+            }
         }
+
+        AppConfig::default()
     }
 
     pub fn save(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
-        let config_path = Self::get_config_path(app);
         let content = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
+        
+        // 1. Save to Database (Main storage)
+        KeyValueService::set_value(app, Self::CONFIG_DB_KEY, &content)?;
+
+        // 2. Also save to file (For redundancy/fallback)
+        let config_path = Self::get_config_path(app);
         fs::write(config_path, content).map_err(|e| e.to_string())?;
+        
         Ok(())
     }
 }

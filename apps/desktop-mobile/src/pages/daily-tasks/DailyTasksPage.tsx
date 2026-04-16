@@ -49,12 +49,10 @@ export default function DailyTasksPage() {
   // Generate today's tasks on mount and when games change
   useEffect(() => {
     if (games.length === 0) return;
-
-    const today = new Date().toISOString().split('T')[0];
-    // Always generate/refresh tasks to catch new additions
+    
+    // Always generate/refresh tasks on mount to get fresh random numbers
     generateTodaysTasks();
-    localStorage.setItem('dailyTasks_lastGenerated', today);
-  }, [games]); // Added generateTodaysTasks to dependencies
+  }, [games]);
 
   return (
     <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6">
@@ -84,11 +82,12 @@ export default function DailyTasksPage() {
             <AnimatePresence mode="popLayout" initial={false}>
               {readyBatches.map((batch, idx) => (
                 <motion.div
-                  key={`ready-batch-${batch.batchIndex}`}
+                  key={`ready-batch-${batch.batchIndex}-${batch.tasks[0]?.account?.id || 'unknown'}`}
                   layout
                   transition={{ layout: { duration: 0.2, ease: "easeOut" } }}
                 >
                   <BatchDisplay
+                    key={`display-batch-${batch.batchIndex}-${batch.tasks[0]?.account?.id || 'unknown'}`}
                     batch={batch}
                     allBatches={batches}
                     accountCompletionRecords={accountCompletionRecords}
@@ -122,9 +121,9 @@ export default function DailyTasksPage() {
                 </div>
                 
                 <div className="space-y-6">
-                  {pageDeferredTasks.map(({ task, batchIndex }) => (
+                  {pageDeferredTasks.map(({ task, batchIndex }, idx) => (
                     <motion.div
-                      key={`deferred-${task.account.id}-${batchIndex}`}
+                      key={`deferred-${task.account?.id || 'no-acc'}-${task.targetDate}-${batchIndex}-${idx}`}
                       layout
                     >
                       <TaskItem
