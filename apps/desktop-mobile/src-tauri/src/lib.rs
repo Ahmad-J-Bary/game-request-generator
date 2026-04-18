@@ -30,9 +30,9 @@ use grq_engine::services::progress_service::ProgressService;
 use grq_engine::services::purchase_event_service::PurchaseEventService;
 
 use grq_engine::db::config::ConfigService;
+use grq_engine::db::key_value::KeyValueService;
 use grq_engine::services::repeater_service::{RepeaterResponse, RepeaterService};
 use grq_engine::services::telegram_service::TelegramService;
-use grq_engine::db::key_value::KeyValueService;
 use rusqlite::params;
 
 // === حالة التطبيق ===
@@ -260,7 +260,7 @@ async fn set_telegram_config(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
     let telegram_enabled = enabled && bot_token.is_some() && chat_id.is_some();
-    
+
     // Reset offset if tracking a completely new chat or bot to ensure we don't skip unread queues
     if config.telegram_chat_id != chat_id || config.telegram_bot_token != bot_token {
         config.telegram_last_offset = None;
@@ -270,7 +270,7 @@ async fn set_telegram_config(
     config.telegram_chat_id = chat_id;
     config.telegram_enabled = telegram_enabled;
     config.telegram_auto_send = telegram_enabled && auto_send;
-    
+
     ConfigService::save(&app, &config)
 }
 
@@ -1097,10 +1097,8 @@ fn get_daily_requests(
         .get_account_level_progress(conn, account_id)
         .map_err(|_| "Failed to get level progress".to_string())?;
 
-    let level_progress_map: std::collections::HashMap<i64, &AccountLevelProgress> = level_progress
-        .iter()
-        .map(|p| (p.level_id, p))
-        .collect();
+    let level_progress_map: std::collections::HashMap<i64, &AccountLevelProgress> =
+        level_progress.iter().map(|p| (p.level_id, p)).collect();
 
     let mut all_levels = levels.clone();
     let numeric_levels: Vec<&Level> = levels.iter().collect();
@@ -1169,10 +1167,19 @@ fn get_daily_requests(
     }
 
     // Group all levels (real and synthetic) by (base_token, day)
-    let mut levels_by_group: std::collections::HashMap<(String, i32), Vec<Level>> = std::collections::HashMap::new();
+    let mut levels_by_group: std::collections::HashMap<(String, i32), Vec<Level>> =
+        std::collections::HashMap::new();
     for l in &all_levels {
-        let base_token = l.event_token.split("_day").next().unwrap_or(&l.event_token).to_string();
-        levels_by_group.entry((base_token, l.days_offset)).or_default().push(l.clone());
+        let base_token = l
+            .event_token
+            .split("_day")
+            .next()
+            .unwrap_or(&l.event_token)
+            .to_string();
+        levels_by_group
+            .entry((base_token, l.days_offset))
+            .or_default()
+            .push(l.clone());
     }
 
     let mut requests = Vec::new();
@@ -1180,18 +1187,27 @@ fn get_daily_requests(
 
     // Process only the groups that have levels for the current day
     let mut processed_groups = std::collections::HashSet::new();
-    
+
     for level in &all_levels {
-        if level.days_offset as i64 != days_passed { continue; }
-        
-        let clean_event_token = level.event_token.split("_day").next().unwrap_or(&level.event_token).to_string();
+        if level.days_offset as i64 != days_passed {
+            continue;
+        }
+
+        let clean_event_token = level
+            .event_token
+            .split("_day")
+            .next()
+            .unwrap_or(&level.event_token)
+            .to_string();
         let group_key = (clean_event_token.clone(), level.days_offset);
-        
-        if processed_groups.contains(&group_key) { continue; }
+
+        if processed_groups.contains(&group_key) {
+            continue;
+        }
         processed_groups.insert(group_key.clone());
-        
+
         let group_levels = levels_by_group.get(&group_key).unwrap();
-        
+
         // 1. Determine if anything in this group is completed and get locked time
         let mut locked_time: Option<i64> = None;
         let mut group_fully_completed = true;
@@ -1206,20 +1222,24 @@ fn get_daily_requests(
                 group_fully_completed = false;
             }
         }
-        
+
         // Also check if this exact group (token + date) was completed today in the NEW tracking table
         if locked_time.is_none() {
-            locked_time = conn.query_row(
-                "SELECT time_spent FROM completed_daily_tasks 
+            locked_time = conn
+                .query_row(
+                    "SELECT time_spent FROM completed_daily_tasks
                  WHERE account_id = ?1 AND event_token = ?2 AND completion_date = ?3 LIMIT 1",
-                params![account_id, clean_event_token, target_date],
-                |row| row.get(0),
-            ).ok();
+                    params![account_id, clean_event_token, target_date],
+                    |row| row.get(0),
+                )
+                .ok();
         }
-        
+
         // If the whole group is completed, skip it
-        if group_fully_completed { continue; }
-        
+        if group_fully_completed {
+            continue;
+        }
+
         // 2. Pre-calculate time for this whole group
         let time_spent = if let Some(t) = locked_time {
             t
@@ -1235,7 +1255,7 @@ fn get_daily_requests(
             };
             (base_time as i64 * 1000) + jitter as i64
         };
-        
+
         // 3. Helper for processing content length
         let process_content_length = |content: String| -> String {
             if !content.contains("Content-Length:") && content.contains("\n\n") {
@@ -1253,28 +1273,39 @@ fn get_daily_requests(
         // 4. Generate requests for this group
         let mut has_real_level = false;
         let mut has_synthetic_level = false;
-        
+
         // Sort levels within the group: Session (-) then Event (actual names)
         let mut sorted_group_levels = group_levels.clone();
         sorted_group_levels.sort_by(|a, b| {
-            if a.level_name == "-" && b.level_name != "-" { std::cmp::Ordering::Less }
-            else if a.level_name != "-" && b.level_name == "-" { std::cmp::Ordering::Greater }
-            else { std::cmp::Ordering::Equal }
+            if a.level_name == "-" && b.level_name != "-" {
+                std::cmp::Ordering::Less
+            } else if a.level_name != "-" && b.level_name == "-" {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            }
         });
 
         for l in sorted_group_levels {
-            if l.level_name == "-" { has_synthetic_level = true; }
-            else { has_real_level = true; }
-            
+            if l.level_name == "-" {
+                has_synthetic_level = true;
+            } else {
+                has_real_level = true;
+            }
+
             // We no longer skip completed individual levels here to keep the group intact in the UI
-            
+
             let mut base_request_content = template.clone();
-            base_request_content = base_request_content.replace("{event_token}", &clean_event_token);
-            base_request_content = base_request_content.replace("{time_spent}", &time_spent.to_string());
+            base_request_content =
+                base_request_content.replace("{event_token}", &clean_event_token);
+            base_request_content =
+                base_request_content.replace("{time_spent}", &time_spent.to_string());
             base_request_content = base_request_content.replace("{account_name}", &account.name);
-            base_request_content = base_request_content.replace("{game_id}", &account.game_id.to_string());
+            base_request_content =
+                base_request_content.replace("{game_id}", &account.game_id.to_string());
             base_request_content = base_request_content.replace("{level_name}", &l.level_name);
-            base_request_content = base_request_content.replace("{days_offset}", &l.days_offset.to_string());
+            base_request_content =
+                base_request_content.replace("{days_offset}", &l.days_offset.to_string());
 
             if l.level_name == "-" {
                 // Generate ONLY Session
@@ -1289,7 +1320,9 @@ fn get_daily_requests(
                 }));
             } else {
                 // Generate ONLY Event
-                let event_content = process_content_length(base_request_content.replace("POST /session", "POST /event"));
+                let event_content = process_content_length(
+                    base_request_content.replace("POST /session", "POST /event"),
+                );
                 requests.push(serde_json::json!({
                     "request_type": "event",
                     "content": event_content,
@@ -1300,17 +1333,21 @@ fn get_daily_requests(
                 }));
             }
         }
-        
+
         // 5. If day has real levels but no synthetic session level exists yet, add a virtual session
         if has_real_level && !has_synthetic_level {
             let mut base_request_content = template.clone();
-            base_request_content = base_request_content.replace("{event_token}", &clean_event_token);
-            base_request_content = base_request_content.replace("{time_spent}", &time_spent.to_string());
+            base_request_content =
+                base_request_content.replace("{event_token}", &clean_event_token);
+            base_request_content =
+                base_request_content.replace("{time_spent}", &time_spent.to_string());
             base_request_content = base_request_content.replace("{account_name}", &account.name);
-            base_request_content = base_request_content.replace("{game_id}", &account.game_id.to_string());
+            base_request_content =
+                base_request_content.replace("{game_id}", &account.game_id.to_string());
             base_request_content = base_request_content.replace("{level_name}", "-");
-            base_request_content = base_request_content.replace("{days_offset}", &days_passed.to_string());
-            
+            base_request_content =
+                base_request_content.replace("{days_offset}", &days_passed.to_string());
+
             let session_content = process_content_length(base_request_content);
             requests.push(serde_json::json!({
                 "request_type": "session",
@@ -1353,53 +1390,89 @@ fn get_daily_requests(
                     } else {
                         let mut sorted_levels = levels.clone();
                         sorted_levels.sort_by_key(|l| l.days_offset);
-                        let total_time: i32 = sorted_levels.iter()
-                            .filter(|l| l.days_offset == event_day_offset || l.days_offset > event_day_offset)
+                        let total_time: i32 = sorted_levels
+                            .iter()
+                            .filter(|l| {
+                                l.days_offset == event_day_offset
+                                    || l.days_offset > event_day_offset
+                            })
                             .take(2)
                             .map(|l| l.time_spent)
                             .sum();
-                        let count = sorted_levels.iter()
-                            .filter(|l| l.days_offset == event_day_offset || l.days_offset > event_day_offset)
+                        let count = sorted_levels
+                            .iter()
+                            .filter(|l| {
+                                l.days_offset == event_day_offset
+                                    || l.days_offset > event_day_offset
+                            })
                             .take(2)
                             .count();
-                        
-                        let base_time = if count > 0 { (total_time as f64 / count as f64).round() as i32 } else { 243 };
-                        
+
+                        let base_time = if count > 0 {
+                            (total_time as f64 / count as f64).round() as i32
+                        } else {
+                            243
+                        };
+
                         use rand::Rng;
                         let mut rng = rand::thread_rng();
-                        let jitter = if base_time < 25 { rng.gen_range(-100..=500) } else { rng.gen_range(-750..=1500) };
+                        let jitter = if base_time < 25 {
+                            rng.gen_range(-100..=500)
+                        } else {
+                            rng.gen_range(-750..=1500)
+                        };
                         (base_time as i64 * 1000) + jitter as i64
                     }
                 } else {
                     // Generate new
                     let mut sorted_levels = levels.clone();
                     sorted_levels.sort_by_key(|l| l.days_offset);
-                    let total_time: i32 = sorted_levels.iter()
-                        .filter(|l| l.days_offset == event_day_offset || l.days_offset > event_day_offset)
+                    let total_time: i32 = sorted_levels
+                        .iter()
+                        .filter(|l| {
+                            l.days_offset == event_day_offset || l.days_offset > event_day_offset
+                        })
                         .take(2)
                         .map(|l| l.time_spent)
                         .sum();
-                    let count = sorted_levels.iter()
-                        .filter(|l| l.days_offset == event_day_offset || l.days_offset > event_day_offset)
+                    let count = sorted_levels
+                        .iter()
+                        .filter(|l| {
+                            l.days_offset == event_day_offset || l.days_offset > event_day_offset
+                        })
                         .take(2)
                         .count();
-                    
-                    let base_time = if count > 0 { (total_time as f64 / count as f64).round() as i32 } else { 243 };
-                    
+
+                    let base_time = if count > 0 {
+                        (total_time as f64 / count as f64).round() as i32
+                    } else {
+                        243
+                    };
+
                     use rand::Rng;
                     let mut rng = rand::thread_rng();
-                    let jitter = if base_time < 25 { rng.gen_range(-100..=500) } else { rng.gen_range(-750..=1500) };
+                    let jitter = if base_time < 25 {
+                        rng.gen_range(-100..=500)
+                    } else {
+                        rng.gen_range(-750..=1500)
+                    };
                     (base_time as i64 * 1000) + jitter as i64
                 };
 
                 let clean_event_token = &event.event_token;
                 let mut purchase_base_content = template.clone();
-                purchase_base_content = purchase_base_content.replace("{event_token}", clean_event_token);
-                purchase_base_content = purchase_base_content.replace("{time_spent}", &time_spent.to_string());
-                purchase_base_content = purchase_base_content.replace("{account_name}", &account.name);
-                purchase_base_content = purchase_base_content.replace("{game_id}", &account.game_id.to_string());
-                purchase_base_content = purchase_base_content.replace("{level_name}", &event.event_token);
-                purchase_base_content = purchase_base_content.replace("{days_offset}", &event_day_offset.to_string());
+                purchase_base_content =
+                    purchase_base_content.replace("{event_token}", clean_event_token);
+                purchase_base_content =
+                    purchase_base_content.replace("{time_spent}", &time_spent.to_string());
+                purchase_base_content =
+                    purchase_base_content.replace("{account_name}", &account.name);
+                purchase_base_content =
+                    purchase_base_content.replace("{game_id}", &account.game_id.to_string());
+                purchase_base_content =
+                    purchase_base_content.replace("{level_name}", &event.event_token);
+                purchase_base_content =
+                    purchase_base_content.replace("{days_offset}", &event_day_offset.to_string());
 
                 let process_content_length = |content: String| -> String {
                     if !content.contains("Content-Length:") && content.contains("\n\n") {
@@ -1414,7 +1487,8 @@ fn get_daily_requests(
                     content
                 };
 
-                let purchase_session_content = process_content_length(purchase_base_content.clone());
+                let purchase_session_content =
+                    process_content_length(purchase_base_content.clone());
 
                 requests.push(serde_json::json!({
                     "request_type": "session",
@@ -1425,7 +1499,9 @@ fn get_daily_requests(
                     "timestamp": target_date
                 }));
 
-                let purchase_event_content = process_content_length(purchase_base_content.replace("POST /session", "POST /event"));
+                let purchase_event_content = process_content_length(
+                    purchase_base_content.replace("POST /session", "POST /event"),
+                );
 
                 requests.push(serde_json::json!({
                     "request_type": "event",
@@ -1541,6 +1617,16 @@ fn delete_store_value(app: tauri::AppHandle, key: String) -> Result<(), String> 
     KeyValueService::delete_value(&app, &key)
 }
 
+#[tauri::command]
+fn get_config_version(app: tauri::AppHandle) -> Result<Option<i64>, String> {
+    ConfigService::get_config_version(&app)
+}
+
+#[tauri::command]
+fn run_legacy_config_cleanup_once(app: tauri::AppHandle) -> Result<(), String> {
+    ConfigService::cleanup_legacy_config_once(&app)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1620,6 +1706,8 @@ pub fn run() {
             get_store_value,
             set_store_value,
             delete_store_value,
+            get_config_version,
+            run_legacy_config_cleanup_once,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
