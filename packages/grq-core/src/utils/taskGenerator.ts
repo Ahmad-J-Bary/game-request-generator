@@ -23,10 +23,36 @@ export interface TaskGenerationOptions {
 }
 
 export class TaskGenerator {
+  private static readonly BRANCH_CACHE_TTL_MS = 5 * 60 * 1000;
+  private static readonly branchDataCache = new Map<number, {
+    expiresAt: number;
+    promise: Promise<{ levels: any[]; purchases: any[] }>;
+  }>();
   private options: TaskGenerationOptions;
 
   constructor(options: TaskGenerationOptions) {
     this.options = options;
+  }
+
+  private getBranchData(branchId: number) {
+    const now = Date.now();
+    const cached = TaskGenerator.branchDataCache.get(branchId);
+
+    if (cached && cached.expiresAt > now) {
+      return cached.promise;
+    }
+
+    const promise = Promise.all([
+      TauriService.getGameLevels(branchId),
+      TauriService.getGamePurchaseEvents(branchId)
+    ]).then(([levels, purchases]) => ({ levels, purchases }));
+
+    TaskGenerator.branchDataCache.set(branchId, {
+      expiresAt: now + TaskGenerator.BRANCH_CACHE_TTL_MS,
+      promise,
+    });
+
+    return promise;
   }
 
   async generateTodaysTasks(): Promise<{ batches: GameBatch[], deferredTasks: DailyTask[], accountScheduledTime: { [accountId: number]: number[] } }> {
@@ -55,19 +81,8 @@ export class TaskGenerator {
     const globalDeferredTasks: DailyTask[] = [];
     let batchIndex = 0;
     const scheduledTimes: { [accountId: number]: number[] } = {};
-
-    // 2. Prepare branch data cache
-    const branchDataCache: { [branchId: number]: { levels: any[], purchases: any[] } } = {};
-    const getBranchData = async (branchId: number) => {
-      if (!branchDataCache[branchId]) {
-        const [levels, purchases] = await Promise.all([
-          TauriService.getGameLevels(branchId),
-          TauriService.getGamePurchaseEvents(branchId)
-        ]);
-        branchDataCache[branchId] = { levels, purchases };
-      }
-      return branchDataCache[branchId];
-    };
+    const pendingStartStates: { [accountId: number]: AccountStartState } = {};
+    const pendingAssignments: { [accountId: number]: AccountTaskAssignment[] } = {};
 
     // 3. Process states in order
     for (const stateName of processingOrder) {
@@ -77,7 +92,7 @@ export class TaskGenerator {
       for (const account of stateAccounts) {
         try {
           const branchId = account.branch_id || 0;
-          const { levels: gameLevels, purchases: gamePurchaseEvents } = await getBranchData(branchId);
+          const { levels: gameLevels, purchases: gamePurchaseEvents } = await this.getBranchData(branchId);
           const gameLevelByToken = new Map(gameLevels.map((level) => [level.event_token, level]));
           const gameLevelById = new Map(gameLevels.map((level) => [level.id, level]));
           const purchaseByToken = new Map(gamePurchaseEvents.map((purchase) => [purchase.event_token, purchase]));
@@ -204,15 +219,12 @@ export class TaskGenerator {
 
             if (firstEvent) {
               const firstAllowedAt = calculateFirstRequestAllowedTime(account, firstEvent.time_spent);
-              this.options.setAccountStartStates(prev => ({
-                ...prev,
-                [account.id]: {
-                  accountId: account.id,
-                  startTime: `${account.start_date} ${account.start_time}`,
-                  firstRequestAllowedAt: firstAllowedAt,
-                  isInitialized: true,
-                }
-              }));
+              pendingStartStates[account.id] = {
+                accountId: account.id,
+                startTime: `${account.start_date} ${account.start_time}`,
+                firstRequestAllowedAt: firstAllowedAt,
+                isInitialized: true,
+              };
             }
 
             // Keep partially completed groups visible. A group only disappears when all its requests are completed.
@@ -302,15 +314,15 @@ export class TaskGenerator {
 
               // Record assignment (optional, for tracking)
               const group = task.requestGroups![0];
-              this.options.setAccountTaskAssignments(prev => ({
-                ...prev,
-                [task.account.id]: [...(prev[task.account.id] || []), {
-                  accountId: task.account.id,
-                  assignedTime: Date.now(),
-                  eventToken: group.event_token,
-                  timeSpent: group.time_spent,
-                }]
-              }));
+              if (!pendingAssignments[task.account.id]) {
+                pendingAssignments[task.account.id] = [];
+              }
+              pendingAssignments[task.account.id].push({
+                accountId: task.account.id,
+                assignedTime: Date.now(),
+                eventToken: group.event_token,
+                timeSpent: group.time_spent,
+              });
             }
           }
 
@@ -322,6 +334,29 @@ export class TaskGenerator {
           }
         }
       }
+    }
+
+    if (Object.keys(pendingStartStates).length > 0) {
+      this.options.setAccountStartStates(prev => ({
+        ...prev,
+        ...pendingStartStates,
+      }));
+    }
+
+    if (Object.keys(pendingAssignments).length > 0) {
+      this.options.setAccountTaskAssignments(prev => {
+        const next = { ...prev };
+
+        Object.entries(pendingAssignments).forEach(([accountId, assignments]) => {
+          const parsedAccountId = Number(accountId);
+          next[parsedAccountId] = [
+            ...(prev[parsedAccountId] || []),
+            ...assignments,
+          ];
+        });
+
+        return next;
+      });
     }
 
     return { batches: allBatches, deferredTasks: globalDeferredTasks, accountScheduledTime: scheduledTimes };

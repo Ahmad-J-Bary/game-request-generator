@@ -73,6 +73,16 @@ function formatDateShort(date: Date | null): string {
   return `${day}-${mon}`;
 }
 
+function parseSyntheticLevelId(rawId: string): { token: string; day: number } | null {
+  const match = rawId.match(/^synth-(.+)-(-?\d+)$/);
+  if (!match) return null;
+
+  const day = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(day)) return null;
+
+  return { token: match[1], day };
+}
+
 export default function AccountDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
@@ -216,13 +226,22 @@ export default function AccountDetailPage() {
       for (const [levelId, isCompleted] of Object.entries(tempProgress.levels)) {
         let actualLevelId = levelId;
         if (levelId.startsWith('synth-')) {
-          const syntheticLevel = columns.find(col => col.kind === 'level' && col.id === levelId);
+          const syntheticLevel =
+            columns.find(col => col.kind === 'level' && col.id === levelId) ||
+            columns
+              .filter((col): col is Extract<typeof columns[number], { kind: 'split' }> => col.kind === 'split')
+              .map(col => col.session)
+              .find(session => session.id === levelId);
+
           if (syntheticLevel) {
+            const syntheticMeta = parseSyntheticLevelId(levelId);
+            if (!syntheticMeta) continue;
+
             const newLevel = {
               branch_id: account!.branch_id!,
               level_name: syntheticLevel.name,
-              event_token: `${syntheticLevel.token}_day${syntheticLevel.daysOffset}`,
-              days_offset: syntheticLevel.daysOffset as number,
+              event_token: `${syntheticMeta.token}_day${syntheticMeta.day}`,
+              days_offset: syntheticMeta.day,
               time_spent: syntheticLevel.timeSpent || 0,
               is_bonus: syntheticLevel.kind === 'level' ? syntheticLevel.isBonus : false
             };

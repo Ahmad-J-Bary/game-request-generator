@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::Url;
 use std::str::FromStr;
 use crate::db::config::AppConfig;
 
@@ -30,14 +31,46 @@ impl RepeaterService {
         let path = method_url.next().unwrap_or("/");
         
         let mut req_headers = HeaderMap::new();
-        let mut host = String::new();
+        let mut host = if path.starts_with("http://") || path.starts_with("https://") {
+            Url::parse(path)
+                .ok()
+                .and_then(|url| url.host_str().map(|host| {
+                    if let Some(port) = url.port() {
+                        format!("{}:{}", host, port)
+                    } else {
+                        host.to_string()
+                    }
+                }))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
         
         for line in lines {
+            let trimmed = line.trim();
+
+            if let Some(authority) = trimmed.strip_prefix(":authority:") {
+                if host.is_empty() {
+                    host = authority.trim().to_string();
+                }
+                continue;
+            }
+
             if let Some((k, v)) = line.split_once(':') {
                 let k = k.trim();
                 let v = v.trim();
                 if k.eq_ignore_ascii_case("host") {
                     host = v.to_string();
+                } else if host.is_empty() && (k.eq_ignore_ascii_case("origin") || k.eq_ignore_ascii_case("referer")) {
+                    if let Ok(url) = Url::parse(v) {
+                        if let Some(url_host) = url.host_str() {
+                            host = if let Some(port) = url.port() {
+                                format!("{}:{}", url_host, port)
+                            } else {
+                                url_host.to_string()
+                            };
+                        }
+                    }
                 }
                 if let Ok(name) = HeaderName::from_str(k) {
                     if let Ok(value) = HeaderValue::from_str(v) {
@@ -48,7 +81,7 @@ impl RepeaterService {
         }
 
         if host.is_empty() {
-            return Err("Missing Host header in the request text. E.g., 'Host: api.example.com'".to_string());
+            return Err("Missing Host header in the request text. Add 'Host: api.example.com' or include a full URL / Origin header so the target server can be resolved.".to_string());
         }
 
         let scheme = if host.ends_with(":80") { "http" } else { "https" };

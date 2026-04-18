@@ -53,6 +53,10 @@ impl Database {
         &self.connection
     }
 
+    pub fn get_connection_mut(&mut self) -> &mut Connection {
+        &mut self.connection
+    }
+
     /// وظيفة داخلية لإنشاء جداول المشروع
     fn create_tables(&self) -> SqlResult<()> {
         // Disable foreign keys temporarily during structural migrations

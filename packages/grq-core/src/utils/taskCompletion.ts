@@ -108,7 +108,8 @@ export class TaskCompletionHandler {
       const isPurchaseEvent = finalRequestType === 'Purchase Event';
       const isPurchaseSession = finalRequestType === 'Purchase Session';
       const isLevelSession = finalRequestType === 'Level Session';
-      const usesSyntheticSessionLevel = isPurchaseSession || isLevelSession;
+      const isSessionOnly = finalRequestType === 'Session Only';
+      const usesSyntheticSessionLevel = isPurchaseSession || isLevelSession || isSessionOnly;
 
       const resolveSessionLevelId = async (): Promise<number> => {
         const account = await TauriService.getAccountById(accountId);
@@ -127,11 +128,19 @@ export class TaskCompletionHandler {
             daysOffset = typeof sourceLevel.days_offset === 'number' ? sourceLevel.days_offset : 0;
             timeSpent = sourceLevel.time_spent || timeSpent;
           }
-        } else if (request.event_token) {
+        } else if (isPurchaseSession && request.event_token) {
           const purchaseEvents = await TauriService.getGamePurchaseEvents(account.branch_id);
           const purchaseEvent = purchaseEvents.find(event => event.event_token === request.event_token);
           if (purchaseEvent) {
             daysOffset = typeof purchaseEvent.days_offset === 'number' ? purchaseEvent.days_offset : 0;
+          }
+        } else if (isSessionOnly) {
+          const accountStartDate = new Date(account.start_date);
+          const targetDate = new Date(foundTask.targetDate);
+
+          if (!Number.isNaN(accountStartDate.getTime()) && !Number.isNaN(targetDate.getTime())) {
+            const timeDiff = targetDate.getTime() - accountStartDate.getTime();
+            daysOffset = Math.round(timeDiff / (1000 * 60 * 60 * 24));
           }
         }
 
@@ -161,7 +170,7 @@ export class TaskCompletionHandler {
         });
       };
 
-      if (!request.level_id && !isPurchaseEvent && !isPurchaseSession) {
+      if (!request.level_id && !isPurchaseEvent && !usesSyntheticSessionLevel) {
         console.error('Task completion error: request missing level_id and not identified as supported request type', {
           requestType: request.request_type,
           eventToken: request.event_token,
@@ -172,6 +181,7 @@ export class TaskCompletionHandler {
       }
 
       let result: ApiResponse;
+      let resolvedLevelId = request.level_id ?? undefined;
 
       if (isPurchaseEvent) {
         // Handle purchase event completion
@@ -276,6 +286,8 @@ export class TaskCompletionHandler {
           throw new Error('Level ID is required for level event completion');
         }
 
+        resolvedLevelId = targetLevelId;
+
         const createRequest = {
           account_id: accountId,
           level_id: targetLevelId,
@@ -309,7 +321,7 @@ export class TaskCompletionHandler {
         // Create individual completion records for all level events
         if (!isPurchaseEvent) {
           const levelCompletedTask: CompletedDailyTask = {
-            id: `${accountId}_level_${request.level_id}_${finalRequestType.replace(/\s+/g, '_')}_${now}`,
+            id: `${accountId}_level_${resolvedLevelId}_${finalRequestType.replace(/\s+/g, '_')}_${now}`,
             accountId,
             accountName: foundTask!.account.name,
             gameId: foundTask!.account.game_id,
@@ -318,7 +330,7 @@ export class TaskCompletionHandler {
             timeSpent: request.time_spent || 0,
             completionTime: now,
             completionDate: new Date().toISOString().split('T')[0],
-            levelId: request.level_id,
+            levelId: resolvedLevelId,
             levelName: (request.level_name?.trim() || '') || '-',
             requestType: finalRequestType,
             isPurchase: false,
@@ -367,7 +379,7 @@ export class TaskCompletionHandler {
                 accountId,
                 timeSpent: group.time_spent,
                 completionTime: now,
-                levelId: request.level_id ?? 0,
+                levelId: resolvedLevelId ?? 0,
                 eventToken: group.event_token,
               };
 
@@ -421,7 +433,7 @@ export class TaskCompletionHandler {
             accountId,
             timeSpent: request.time_spent || 0,
             completionTime: now,
-            levelId: request.level_id ?? 0,
+            levelId: resolvedLevelId ?? 0,
             eventToken: request.event_token || '',
           }
         }));

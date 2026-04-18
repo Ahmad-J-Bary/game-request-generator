@@ -6,6 +6,7 @@ use tauri::Manager;
 
 use chrono::Datelike;
 use grq_engine::db::Database;
+use serde::Deserialize;
 
 use grq_engine::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
 use grq_engine::models::game::{
@@ -37,6 +38,33 @@ use rusqlite::params;
 // === حالة التطبيق ===
 struct AppState {
     db: Mutex<Database>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct BulkLevelProgressUpdate {
+    account_id: i64,
+    level_id: i64,
+    is_completed: bool,
+    time_spent: Option<i32>,
+    target_date: Option<String>,
+    bypass_cooldown: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct BulkPurchaseEventProgressUpdate {
+    account_id: i64,
+    purchase_event_id: i64,
+    is_completed: bool,
+    days_offset: i32,
+    time_spent: i32,
+    target_date: Option<String>,
+    bypass_cooldown: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+struct BulkProgressUpdateRequest {
+    level_updates: Vec<BulkLevelProgressUpdate>,
+    purchase_updates: Vec<BulkPurchaseEventProgressUpdate>,
 }
 
 fn spawn_proxy_reminder_worker(app: tauri::AppHandle) {
@@ -843,6 +871,78 @@ fn create_level_progress(
 }
 
 #[tauri::command]
+fn save_bulk_progress_updates(
+    state: tauri::State<AppState>,
+    request: BulkProgressUpdateRequest,
+) -> Result<(), String> {
+    if request.level_updates.is_empty() && request.purchase_updates.is_empty() {
+        return Ok(());
+    }
+
+    let mut db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection_mut();
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Failed to start progress transaction: {}", e))?;
+    let service = ProgressService::new();
+
+    for level_update in request.level_updates {
+        service.create_or_update_level_progress(
+            &tx,
+            CreateAccountLevelProgressRequest {
+                account_id: level_update.account_id,
+                level_id: level_update.level_id,
+                time_spent: level_update.time_spent,
+                target_date: level_update.target_date.clone(),
+            },
+        )?;
+
+        service.update_level_progress(
+            &tx,
+            UpdateAccountLevelProgressRequest {
+                account_id: level_update.account_id,
+                level_id: level_update.level_id,
+                is_completed: level_update.is_completed,
+                time_spent: level_update.time_spent,
+                target_date: level_update.target_date,
+                bypass_cooldown: level_update.bypass_cooldown,
+            },
+        )?;
+    }
+
+    for purchase_update in request.purchase_updates {
+        service.create_or_update_purchase_event_progress(
+            &tx,
+            CreateAccountPurchaseEventProgressRequest {
+                account_id: purchase_update.account_id,
+                purchase_event_id: purchase_update.purchase_event_id,
+                days_offset: purchase_update.days_offset,
+                time_spent: purchase_update.time_spent,
+                target_date: purchase_update.target_date.clone(),
+            },
+        )?;
+
+        service.update_purchase_event_progress(
+            &tx,
+            UpdateAccountPurchaseEventProgressRequest {
+                account_id: purchase_update.account_id,
+                purchase_event_id: purchase_update.purchase_event_id,
+                is_completed: Some(purchase_update.is_completed),
+                days_offset: Some(purchase_update.days_offset),
+                time_spent: Some(purchase_update.time_spent),
+                target_date: purchase_update.target_date,
+                bypass_cooldown: purchase_update.bypass_cooldown,
+            },
+        )?;
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit progress transaction: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
 fn update_level_progress(
     app: tauri::AppHandle,
     state: tauri::State<AppState>,
@@ -1483,6 +1583,7 @@ pub fn run() {
             update_purchase_event,
             delete_purchase_event,
             create_level_progress,
+            save_bulk_progress_updates,
             update_level_progress,
             get_account_level_progress,
             create_purchase_event_progress,

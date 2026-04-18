@@ -85,8 +85,12 @@ export const RequestItem = React.memo(({ request, isCompleted, isReady, lastResp
                 toast.error(responseMessage || t('dailyTasks.requestStatusError', { status: res.status, text: res.status_text }));
             }
         } catch (error: any) {
+            const errorMessage =
+                typeof error === 'string'
+                    ? error
+                    : error?.message || String(error);
             console.error('Failed to send request:', error);
-            toast.error(t('dailyTasks.repeaterError', { error }));
+            toast.error(t('dailyTasks.repeaterError', { error: errorMessage }));
         } finally {
             setIsSending(false);
         }

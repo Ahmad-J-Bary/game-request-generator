@@ -17,6 +17,7 @@ interface BatchDisplayProps {
   deferredTasks?: DailyTask[];
   showProxyNotice?: boolean;
   isLastBatch?: boolean;
+  enableVirtualization?: boolean;
 }
 
 export const BatchDisplay = React.memo(({
@@ -32,6 +33,7 @@ export const BatchDisplay = React.memo(({
   deferredTasks = [],
   showProxyNotice = false,
   isLastBatch = false,
+  enableVirtualization = false,
 }: BatchDisplayProps) => {
   return (
     <div key={`ready-batch-${batch.batchIndex}`}>
@@ -54,6 +56,7 @@ export const BatchDisplay = React.memo(({
         onCopyRequest={onCopyRequest}
         completedTasks={completedTasks}
         deferredTasks={deferredTasks}
+        enableVirtualization={enableVirtualization}
       />
 
       {/* Separator and proxy change notice */}

@@ -27,6 +27,7 @@ import type {
   AccountPurchaseEventProgress,
   CreateAccountPurchaseEventProgressRequest,
   UpdateAccountPurchaseEventProgressRequest,
+  BulkProgressUpdateRequest,
   TelegramImportPreview,
   TelegramConfig
 } from '@grq/api-bindings';
@@ -189,6 +190,10 @@ static async deletePurchaseEvent(id: number): Promise<boolean> {
 
   static async updatePurchaseEventProgress(request: UpdateAccountPurchaseEventProgressRequest): Promise<boolean> {
     return await invoke<boolean>('update_purchase_event_progress', { request });
+  }
+
+  static async saveBulkProgressUpdates(request: BulkProgressUpdateRequest): Promise<void> {
+    return await invoke<void>('save_bulk_progress_updates', { request });
   }
 
   static async getAccountPurchaseEventProgress(accountId: number): Promise<AccountPurchaseEventProgress[]> {

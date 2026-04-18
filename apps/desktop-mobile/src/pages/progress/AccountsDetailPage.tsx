@@ -29,7 +29,12 @@ import { Badge } from '@grq/ui/atoms/badge';
 import type { PurchaseEvent, Account, GameBranch, Game } from '@grq/api-bindings';
 import type { TimelineColumnData as ColumnData, TimelineCell } from '@grq/ui/organisms/tables/AccountsDataTable';
 import type { ColorSettings } from '@grq/ui/contexts/SettingsContext';
-import type { AccountLevelProgress, AccountPurchaseEventProgress } from '@grq/api-bindings/types/progress.types';
+import type {
+  AccountLevelProgress,
+  AccountPurchaseEventProgress,
+  BulkLevelProgressUpdate,
+  BulkPurchaseEventProgressUpdate
+} from '@grq/api-bindings/types/progress.types';
 import type { TFunction } from 'i18next';
 
 type Mode = 'all' | 'event-only';
@@ -50,6 +55,28 @@ function formatDateShort(date: Date | null): string {
   if (!date) return '-';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${date.getDate()}-${months[date.getMonth()]}`;
+}
+
+function parseProgressKey(key: string): { accountId: number; rawId: string } | null {
+  const separatorIndex = key.indexOf('_');
+  if (separatorIndex <= 0) return null;
+
+  const accountId = Number.parseInt(key.slice(0, separatorIndex), 10);
+  const rawId = key.slice(separatorIndex + 1);
+
+  if (!Number.isFinite(accountId) || !rawId) return null;
+
+  return { accountId, rawId };
+}
+
+function parseSyntheticLevelId(rawId: string): { token: string; day: number } | null {
+  const match = rawId.match(/^synth-(.+)-(-?\d+)$/);
+  if (!match) return null;
+
+  const day = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(day)) return null;
+
+  return { token: match[1], day };
 }
 
 export default function AccountsDetailPage() {
@@ -169,6 +196,41 @@ function AccountsDetailContent({
   });
   const [tempPurchaseDates, setTempPurchaseDates] = useState<Record<number, Date | null>>({});
 
+  const ensureSyntheticLevel = async (account: Account, rawId: string): Promise<number | null> => {
+    const syntheticMeta = parseSyntheticLevelId(rawId);
+    if (!syntheticMeta || !account.branch_id) return null;
+
+    const branchLevels = await TauriService.getGameLevels(account.branch_id);
+    const eventToken = `${syntheticMeta.token}_day${syntheticMeta.day}`;
+    const existingLevel = branchLevels.find(level =>
+      level.level_name === '-' &&
+      level.event_token === eventToken &&
+      level.days_offset === syntheticMeta.day
+    );
+
+    if (existingLevel) {
+      return existingLevel.id;
+    }
+
+    const relatedRealLevels = branchLevels
+      .filter(level => level.level_name !== '-' && (level.event_token || '').split('_day')[0] === syntheticMeta.token)
+      .sort((a, b) => a.days_offset - b.days_offset);
+
+    const fallbackLevel =
+      relatedRealLevels.find(level => level.days_offset >= syntheticMeta.day) ??
+      relatedRealLevels[relatedRealLevels.length - 1];
+
+    return TauriService.addLevel({
+      game_id: account.game_id,
+      branch_id: account.branch_id,
+      level_name: '-',
+      event_token: eventToken,
+      days_offset: syntheticMeta.day,
+      time_spent: fallbackLevel?.time_spent || 0,
+      is_bonus: false,
+    });
+  };
+
   const handleEditToggle = () => {
     if (!isEditMode) {
       const levelProg: Record<string, boolean> = {};
@@ -224,7 +286,8 @@ function AccountsDetailContent({
   };
 
   const handleSaveProgress = async () => {
-      const updatePromises: Promise<unknown>[] = [];
+      const levelUpdates: BulkLevelProgressUpdate[] = [];
+      const purchaseUpdates: BulkPurchaseEventProgressUpdate[] = [];
 
       const purchaseKeys = new Set(Object.keys(tempProgress.purchases));
       Object.keys(tempPurchaseDates).forEach(k => {
@@ -260,66 +323,71 @@ function AccountsDetailContent({
         }
         
         if (existing) {
-             updatePromises.push(TauriService.updatePurchaseEventProgress({
+             purchaseUpdates.push({
                 account_id: accId,
                 purchase_event_id: peId,
                 is_completed: isCompleted,
                 days_offset: daysOffset,
                 time_spent: calculatedTimeSpent,
                 bypass_cooldown: true
-             }));
+             });
         } else if (isCompleted || selectedDate) {
-             updatePromises.push((async () => {
-                 await TauriService.createPurchaseEventProgress({
-                    account_id: accId,
-                    purchase_event_id: peId,
-                    days_offset: daysOffset,
-                    time_spent: calculatedTimeSpent
-                 });
-                 if (isCompleted) {
-                    await TauriService.updatePurchaseEventProgress({
-                         account_id: accId,
-                         purchase_event_id: peId,
-                         is_completed: true,
-                         bypass_cooldown: true
-                    });
-                 }
-             })());
+             purchaseUpdates.push({
+                account_id: accId,
+                purchase_event_id: peId,
+                is_completed: isCompleted,
+                days_offset: daysOffset,
+                time_spent: calculatedTimeSpent,
+                bypass_cooldown: true
+             });
         }
       }
       
       for (const key of Object.keys(tempProgress.levels)) {
-         const [accIdStr, lvlIdStr] = key.split('_');
-         const accId = parseInt(accIdStr);
-         const lvlId = parseInt(lvlIdStr);
+         const parsedKey = parseProgressKey(key);
+         if (!parsedKey) continue;
+
+         const accId = parsedKey.accountId;
+         const account = accounts.find((a) => a.id === accId);
+         if (!account) continue;
+
+         let lvlId: number | null = Number.parseInt(parsedKey.rawId, 10);
+         if (!Number.isFinite(lvlId)) {
+            lvlId = await ensureSyntheticLevel(account, parsedKey.rawId);
+         }
+
+         if (!lvlId || !Number.isFinite(lvlId)) continue;
          const isCompleted = tempProgress.levels[key];
          const existing = levelsProgress[key];
          
          if (existing) {
             if (existing.is_completed !== isCompleted) {
-                updatePromises.push(TauriService.updateLevelProgress({
+                levelUpdates.push({
                     account_id: accId,
                     level_id: lvlId,
                     is_completed: isCompleted,
                     bypass_cooldown: true
-                }));
+                });
             }
          } else if (isCompleted) {
-            updatePromises.push((async () => {
-                await TauriService.createLevelProgress({ account_id: accId, level_id: lvlId });
-                await TauriService.updateLevelProgress({ 
-                    account_id: accId, 
-                    level_id: lvlId, 
-                    is_completed: true,
-                    bypass_cooldown: true
-                });
-            })());
+            levelUpdates.push({
+                account_id: accId,
+                level_id: lvlId,
+                is_completed: true,
+                bypass_cooldown: true
+            });
          }
       }
 
-      await Promise.all(updatePromises);
+      if (levelUpdates.length > 0 || purchaseUpdates.length > 0) {
+        await TauriService.saveBulkProgressUpdates({
+          level_updates: levelUpdates,
+          purchase_updates: purchaseUpdates,
+        });
+      }
+
       setIsEditMode(false);
-      window.location.reload(); 
+      window.dispatchEvent(new CustomEvent('progress-updated'));
   };
 
     return (

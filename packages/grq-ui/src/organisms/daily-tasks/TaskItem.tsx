@@ -9,6 +9,50 @@ import { TaskItemProps } from '@grq/api-bindings/types/daily-tasks.types';
 import { useTimer } from '@grq/core/hooks/useTimer';
 import { cn } from '@grq/ui/lib/utils';
 
+interface TaskRequestListProps {
+  task: TaskItemProps['task'];
+  batchIndex: number;
+  isReady: boolean;
+  accountTaskIndex: number;
+  accountTaskTotal: number;
+  onUpdateResponse: TaskItemProps['onUpdateResponse'];
+  onCompleteTask: TaskItemProps['onCompleteTask'];
+  onCopyRequest: TaskItemProps['onCopyRequest'];
+}
+
+const TaskRequestList = React.memo(({
+  task,
+  batchIndex,
+  isReady,
+  accountTaskIndex,
+  accountTaskTotal,
+  onUpdateResponse,
+  onCompleteTask,
+  onCopyRequest,
+}: TaskRequestListProps) => {
+  return (
+    <div className="space-y-3">
+      {task.requests.map((request, index) => {
+        return (
+          <RequestItem
+            key={index}
+            index={accountTaskIndex}
+            total={accountTaskTotal}
+            request={request}
+            isCompleted={task.completedTasks.has(index.toString())}
+            isReady={isReady}
+            onResponseUpdate={(res) => onUpdateResponse(task.account.id, index, res)}
+            onComplete={(res) => onCompleteTask(task.account.id, index, batchIndex, task, res)}
+            onCopy={(content, eventToken, timeSpent) =>
+              onCopyRequest(content, eventToken, timeSpent)}
+            lastResponse={task.lastResponses?.[index]}
+          />
+        );
+      })}
+    </div>
+  );
+});
+
 export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks, deferredTasks = [] }: TaskItemProps) => {
   const { t } = useTranslation();
   const currentTime = useTimer(1000);
@@ -195,25 +239,16 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, on
           </div>
         </CardHeader>
         <CardContent className="px-3 pb-3 sm:px-4 sm:pb-4">
-          <div className="space-y-3">
-            {task.requests.map((request, index) => {
-              return (
-                <RequestItem
-                  key={index}
-                  index={accountTaskMeta.accountTaskIndex}
-                  total={accountTaskMeta.accountTaskTotal}
-                  request={request}
-                  isCompleted={task.completedTasks.has(index.toString())}
-                  isReady={isReady}
-                  onResponseUpdate={(res) => onUpdateResponse(task.account.id, index, res)}
-                  onComplete={(res) => onCompleteTask(task.account.id, index, batchIndex, task, res)}
-                  onCopy={(content, eventToken, timeSpent) =>
-                    onCopyRequest(content, eventToken, timeSpent)}
-                  lastResponse={task.lastResponses?.[index]}
-                />
-              );
-            })}
-          </div>
+          <TaskRequestList
+            task={task}
+            batchIndex={batchIndex}
+            isReady={isReady}
+            accountTaskIndex={accountTaskMeta.accountTaskIndex}
+            accountTaskTotal={accountTaskMeta.accountTaskTotal}
+            onUpdateResponse={onUpdateResponse}
+            onCompleteTask={onCompleteTask}
+            onCopyRequest={onCopyRequest}
+          />
         </CardContent>
       </Card>
     </motion.div>

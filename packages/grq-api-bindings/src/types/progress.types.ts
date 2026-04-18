@@ -52,3 +52,27 @@ export interface UpdateAccountPurchaseEventProgressRequest {
   target_date?: string;
   bypass_cooldown?: boolean;
 }
+
+export interface BulkLevelProgressUpdate {
+  account_id: number;
+  level_id: number;
+  is_completed: boolean;
+  time_spent?: number;
+  target_date?: string;
+  bypass_cooldown?: boolean;
+}
+
+export interface BulkPurchaseEventProgressUpdate {
+  account_id: number;
+  purchase_event_id: number;
+  is_completed: boolean;
+  days_offset: number;
+  time_spent: number;
+  target_date?: string;
+  bypass_cooldown?: boolean;
+}
+
+export interface BulkProgressUpdateRequest {
+  level_updates: BulkLevelProgressUpdate[];
+  purchase_updates: BulkPurchaseEventProgressUpdate[];
+}

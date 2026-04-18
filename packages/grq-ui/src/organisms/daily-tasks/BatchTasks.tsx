@@ -1,6 +1,7 @@
 // src/components/daily-tasks/BatchTasks.tsx
 import React from 'react';
 import { TaskItem } from './TaskItem';
+import { VirtualizedTaskList } from './VirtualizedTaskList';
 import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, RepeaterResponse } from '@grq/api-bindings/types/daily-tasks.types';
 
 interface BatchTasksProps {
@@ -14,6 +15,7 @@ interface BatchTasksProps {
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   completedTasks: any[];
   deferredTasks?: DailyTask[];
+  enableVirtualization?: boolean;
 }
 
 export const BatchTasks = React.memo(({
@@ -27,14 +29,18 @@ export const BatchTasks = React.memo(({
   onCopyRequest,
   completedTasks,
   deferredTasks = [],
+  enableVirtualization = false,
 }: BatchTasksProps) => {
-  const { readyBatches: _r, pageDeferredTasks: _p } = { readyBatches: [], pageDeferredTasks: [] }; // placeholder if needed, or just remove
-  
   return (
-    <div className="space-y-6">
-      {batch.tasks.map((task, idx) => {
+    <VirtualizedTaskList
+      items={batch.tasks}
+      enabled={enableVirtualization}
+      className="space-y-6"
+      itemClassName={enableVirtualization ? 'pb-6' : undefined}
+      getItemKey={(task, idx) => `${task.account.id}-${batch.batchIndex}-${idx}`}
+      renderItem={(task) => {
         return (
-          <div key={`${task.account.id}-${batch.batchIndex}-${idx}`}>
+          <div key={`${task.account.id}-${batch.batchIndex}`}>
             <TaskItem
               task={task}
               onCompleteTask={onCompleteTask}
@@ -50,7 +56,7 @@ export const BatchTasks = React.memo(({
             />
           </div>
         );
-      })}
-    </div>
+      }}
+    />
   );
 });
