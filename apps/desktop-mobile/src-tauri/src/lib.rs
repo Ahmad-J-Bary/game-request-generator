@@ -6,7 +6,7 @@ use tauri::Manager;
 
 use chrono::Datelike;
 use grq_engine::db::Database;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use grq_engine::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
 use grq_engine::models::game::{
@@ -38,6 +38,121 @@ use rusqlite::params;
 // === حالة التطبيق ===
 struct AppState {
     db: Mutex<Database>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct ExitMaintenancePlan {
+    should_backup_db: bool,
+    should_send_hall_of_fame: bool,
+    created_at: Option<String>,
+}
+
+fn now_local_string() -> String {
+    chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+fn get_exit_maintenance_plan(
+    app: &tauri::AppHandle,
+) -> Result<Option<ExitMaintenancePlan>, String> {
+    let raw = KeyValueService::get_value(app, "exit_maintenance_plan")?;
+    match raw {
+        Some(json) => {
+            let parsed = serde_json::from_str::<ExitMaintenancePlan>(&json)
+                .map_err(|e| format!("Failed to parse exit maintenance plan: {}", e))?;
+            Ok(Some(parsed))
+        }
+        None => Ok(None),
+    }
+}
+
+fn set_exit_maintenance_plan(
+    app: &tauri::AppHandle,
+    plan: &ExitMaintenancePlan,
+) -> Result<(), String> {
+    let json = serde_json::to_string(plan)
+        .map_err(|e| format!("Failed to serialize exit maintenance plan: {}", e))?;
+    KeyValueService::set_value(app, "exit_maintenance_plan", &json)
+}
+
+fn clear_exit_maintenance_plan(app: &tauri::AppHandle) -> Result<(), String> {
+    KeyValueService::delete_value(app, "exit_maintenance_plan")
+}
+
+async fn send_and_clear_hall_of_fame_impl(
+    app: &tauri::AppHandle,
+) -> Result<(usize, usize), String> {
+    let completed_accounts: Vec<CompletedAccount> = {
+        let db = Database::new(app)?;
+        let conn = db.get_connection();
+        let service = AccountService::new();
+        service.get_completed_accounts(conn)?
+    };
+
+    if completed_accounts.is_empty() {
+        return Ok((0, 0));
+    }
+
+    // 1) Send first. Any send failure aborts and prevents deletion.
+    for account in &completed_accounts {
+        let message = format!("{}", account.name);
+        TelegramService::send_message(app, &message).await?;
+    }
+
+    // 2) Delete only after all sends succeed (transactional delete).
+    let mut db = Database::new(app)?;
+    let conn = db.get_connection_mut();
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+    for account in &completed_accounts {
+        tx.execute("DELETE FROM accounts WHERE id = ?1", params![account.id])
+            .map_err(|e| format!("Failed to delete account {}: {}", account.id, e))?;
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit Hall of Fame cleanup: {}", e))?;
+
+    Ok((completed_accounts.len(), completed_accounts.len()))
+}
+
+async fn run_deferred_exit_maintenance(app: tauri::AppHandle) -> Result<(), String> {
+    let Some(plan) = get_exit_maintenance_plan(&app)? else {
+        return Ok(());
+    };
+
+    // Enforce requested order:
+    // 1) Hall of Fame send+delete
+    // 2) Backup DB
+    if plan.should_send_hall_of_fame {
+        let _ = send_and_clear_hall_of_fame_impl(&app).await?;
+    }
+
+    if plan.should_backup_db {
+        TelegramService::backup_db(&app).await?;
+    }
+
+    clear_exit_maintenance_plan(&app)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn finalize_app_exit(app: tauri::AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+fn run_exit_maintenance_in_background_and_quit(
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = run_deferred_exit_maintenance(app_handle.clone()).await;
+        app_handle.exit(0);
+    });
+    Ok(())
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -286,6 +401,42 @@ async fn test_telegram_connection(
 #[tauri::command]
 async fn send_to_telegram(app: tauri::AppHandle, message: String) -> Result<(), String> {
     TelegramService::send_message(&app, &message).await
+}
+
+#[tauri::command]
+fn schedule_exit_maintenance(
+    app: tauri::AppHandle,
+    should_backup_db: bool,
+    should_send_hall_of_fame: bool,
+) -> Result<(), String> {
+    let plan = ExitMaintenancePlan {
+        should_backup_db,
+        should_send_hall_of_fame,
+        created_at: Some(now_local_string()),
+    };
+    set_exit_maintenance_plan(&app, &plan)
+}
+
+#[tauri::command]
+async fn send_and_clear_hall_of_fame(
+    app: tauri::AppHandle,
+    _state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let (sent, deleted) = send_and_clear_hall_of_fame_impl(&app).await?;
+
+    if sent == 0 {
+        return Ok(serde_json::json!({
+            "sent": 0,
+            "deleted": 0,
+            "message": "No completed Hall of Fame accounts to process."
+        }));
+    }
+
+    Ok(serde_json::json!({
+        "sent": sent,
+        "deleted": deleted,
+        "message": "Completed accounts sent to Telegram and removed successfully."
+    }))
 }
 
 #[tauri::command]
@@ -1638,6 +1789,16 @@ pub fn run() {
             db.init()?;
             app.manage(AppState { db: Mutex::new(db) });
 
+            // Run deferred exit maintenance from previous close request (best effort).
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(err) = run_deferred_exit_maintenance(app_handle).await {
+                        eprintln!("Deferred exit maintenance failed: {}", err);
+                    }
+                });
+            }
+
             // Start the proxy expiry reminder worker
             spawn_proxy_reminder_worker(app.handle().clone());
 
@@ -1685,6 +1846,10 @@ pub fn run() {
             set_telegram_config,
             test_telegram_connection,
             send_to_telegram,
+            send_and_clear_hall_of_fame,
+            schedule_exit_maintenance,
+            finalize_app_exit,
+            run_exit_maintenance_in_background_and_quit,
             get_game_branches,
             add_branch,
             update_branch,

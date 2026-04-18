@@ -112,7 +112,9 @@
     "account": "الحساب",
     "pickDate": "اختر تاريخاً",
     "pickTime": "اختر وقتاً",
-    "country": "الدولة"
+    "country": "الدولة",
+    "rangeFillOn": "ملء النطاق: مفعل",
+    "rangeFillOff": "ملء النطاق: غير مفعل"
   },
   "levels": {
     "title": "المستويات",

@@ -112,7 +112,9 @@
     "account": "Account",
     "pickDate": "Pick a date",
     "pickTime": "Pick a time",
-    "country": "Country"
+    "country": "Country",
+    "rangeFillOn": "Range Fill: On",
+    "rangeFillOff": "Range Fill: Off"
   },
   "levels": {
     "title": "Levels",
