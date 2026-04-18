@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useRef } from "react";
+
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { confirm } from "@tauri-apps/plugin-dialog";
+
 import { Toaster } from "@grq/ui/atoms/sonner";
 import { TooltipProvider } from "@grq/ui/atoms/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -49,19 +49,8 @@ function AppContent() {
   const isHandlingCloseRef = useRef(false);
   const allowCloseRef = useRef(false);
 
-  const [hasRealDataChanges, setHasRealDataChanges] = useState(false);
-
   useEffect(() => {
     const win = getCurrentWindow();
-
-    const markDirty = () => {
-      setHasRealDataChanges(true);
-    };
-    window.addEventListener("data-changed", markDirty);
-    window.addEventListener("progress-updated", markDirty);
-    window.addEventListener("levels-updated", markDirty);
-    window.addEventListener("purchase-events-updated", markDirty);
-    window.addEventListener("games-updated", markDirty);
 
     const unlistenPromise = win.onCloseRequested(async (event) => {
       if (allowCloseRef.current) return;
@@ -75,38 +64,17 @@ function AppContent() {
       isHandlingCloseRef.current = true;
 
       try {
-        let shouldSendHallOfFame = false;
-        const completed = await TauriService.getCompletedAccounts();
-
-        if (completed.length > 0) {
-          shouldSendHallOfFame = await confirm(
-            "هل تريد ارسال حسابات الألعاب المكتملة إلى تيليغرام؟",
-            { title: "Hall of Fame", okLabel: "نعم", cancelLabel: "لا" },
-          );
-        }
-
-        const backupAnswer = await confirm(
-          "هل تريد رفع الداتا بيز بشكل احتياطي إلى تيليغرام؟",
-          { title: "Backup before exit", okLabel: "نعم", cancelLabel: "لا" },
-        );
-
-        await invoke("schedule_exit_maintenance", {
-          shouldBackupDb: backupAnswer,
-          shouldSendHallOfFame,
-        });
-
-        // Reset dirty marker because we've already decided what to do for this close cycle.
-        setHasRealDataChanges(false);
-
+        // Automatic mode:
+        // If DB changed in this app session, backup will run in background before quit.
+        // If unchanged, app exits immediately.
         allowCloseRef.current = true;
-        await invoke("run_exit_maintenance_in_background_and_quit");
+        await TauriService.runBackupIfChangedInBackgroundAndQuit();
       } catch (error) {
         console.error("Close flow failed:", error);
-        // Robust fallback: if anything fails in the JS close flow, request backend hard-exit.
-        // This prevents the app from getting stuck in a non-responsive close state.
+        // Final fallback: force close from backend to avoid hanging.
         try {
           allowCloseRef.current = true;
-          await invoke("finalize_app_exit");
+          await TauriService.finalizeExitMaintenanceAndQuit();
         } catch (fallbackError) {
           console.error("Fallback close failed:", fallbackError);
         }
@@ -116,20 +84,12 @@ function AppContent() {
     });
 
     return () => {
-      window.removeEventListener("data-changed", markDirty);
-      window.removeEventListener("progress-updated", markDirty);
-      window.removeEventListener("levels-updated", markDirty);
-      window.removeEventListener("purchase-events-updated", markDirty);
-      window.removeEventListener("games-updated", markDirty);
       unlistenPromise.then((unlisten) => unlisten()).catch(() => {});
     };
   }, []);
 
   return (
     <>
-      {hasRealDataChanges && (
-        <span className="hidden" data-close-flow-indicator="dirty-session" />
-      )}
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <LanguageProvider>

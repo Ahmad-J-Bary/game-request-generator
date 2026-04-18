@@ -325,7 +325,7 @@ export function AccountDataTable({
     const eventCompleted = col.event
       ? isSingleCompleted(col.event as ColumnData)
       : undefined;
-    const sessionCompleted = directSessionCompleted;
+    const sessionCompleted = directSessionCompleted || !!eventCompleted;
     return { sessionCompleted, directSessionCompleted, eventCompleted };
   };
 

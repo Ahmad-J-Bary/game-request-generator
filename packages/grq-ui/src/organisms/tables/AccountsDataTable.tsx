@@ -277,7 +277,7 @@ export function AccountsDataTable({
         if (column.kind !== "split") return;
 
         const sessionKey = `${account.id}_${column.session.id}`;
-        const sessionCompleted =
+        const directSessionCompleted =
           isEditMode && tempProgress
             ? !!tempProgress.levels[sessionKey]
             : !!levelsProgress[sessionKey]?.is_completed;
@@ -295,6 +295,8 @@ export function AccountsDataTable({
                 ? !!purchasesProgressMap[eventKey]
                 : !!purchaseProgress[eventKey]?.is_completed
             : false;
+
+        const sessionCompleted = directSessionCompleted || eventCompleted;
 
         cache.set(`${account.id}::${column.id}`, {
           sessionCompleted,

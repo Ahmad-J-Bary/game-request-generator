@@ -60,18 +60,18 @@ impl Database {
     /// وظيفة داخلية لإنشاء جداول المشروع
     fn create_tables(&self) -> SqlResult<()> {
         // Disable foreign keys temporarily during structural migrations
-        self.connection.execute_batch("PRAGMA foreign_keys = OFF;")?;
+        self.connection
+            .execute_batch("PRAGMA foreign_keys = OFF;")?;
 
         let result = self.perform_migrations();
 
         // Re-enable foreign keys
         self.connection.execute_batch("PRAGMA foreign_keys = ON;")?;
-        
+
         result
     }
 
     fn perform_migrations(&self) -> SqlResult<()> {
-        
         // Start a transaction for all initialization and migrations
         // Using unchecked_transaction because we might be doing complex DDL
         let tx = self.connection.unchecked_transaction()?;
@@ -183,7 +183,7 @@ impl Database {
                 FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
                 FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
             );
-            "
+            ",
         )?;
 
         // Create indexes for completed tasks
@@ -207,22 +207,37 @@ impl Database {
 
         // 2. Incremental column migrations
         if !column_exists("purchase_events", "game_id")? {
-            tx.execute("ALTER TABLE purchase_events ADD COLUMN game_id INTEGER NOT NULL DEFAULT 0", [])?;
+            tx.execute(
+                "ALTER TABLE purchase_events ADD COLUMN game_id INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
         }
         if !column_exists("purchase_events", "is_restricted")? {
-            tx.execute("ALTER TABLE purchase_events ADD COLUMN is_restricted INTEGER NOT NULL DEFAULT 0", [])?;
+            tx.execute(
+                "ALTER TABLE purchase_events ADD COLUMN is_restricted INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
         }
         if !column_exists("purchase_events", "max_days_offset")? {
-            tx.execute("ALTER TABLE purchase_events ADD COLUMN max_days_offset INTEGER", [])?;
+            tx.execute(
+                "ALTER TABLE purchase_events ADD COLUMN max_days_offset INTEGER",
+                [],
+            )?;
         }
         if !column_exists("purchase_events", "days_offset")? {
-            tx.execute("ALTER TABLE purchase_events ADD COLUMN days_offset INTEGER", [])?;
+            tx.execute(
+                "ALTER TABLE purchase_events ADD COLUMN days_offset INTEGER",
+                [],
+            )?;
         }
         if !column_exists("purchase_events", "created_at")? {
             tx.execute("ALTER TABLE purchase_events ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP", [])?;
         }
         if !column_exists("levels", "is_bonus")? {
-            tx.execute("ALTER TABLE levels ADD COLUMN is_bonus INTEGER NOT NULL DEFAULT 0", [])?;
+            tx.execute(
+                "ALTER TABLE levels ADD COLUMN is_bonus INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
         }
         if !column_exists("accounts", "package_id")? {
             tx.execute("ALTER TABLE accounts ADD COLUMN package_id INTEGER", [])?;
@@ -237,16 +252,25 @@ impl Database {
             tx.execute("ALTER TABLE levels ADD COLUMN branch_id INTEGER", [])?;
         }
         if !column_exists("purchase_events", "branch_id")? {
-            tx.execute("ALTER TABLE purchase_events ADD COLUMN branch_id INTEGER", [])?;
+            tx.execute(
+                "ALTER TABLE purchase_events ADD COLUMN branch_id INTEGER",
+                [],
+            )?;
         }
         if !column_exists("account_level_progress", "time_spent")? {
             tx.execute("ALTER TABLE account_level_progress ADD COLUMN time_spent INTEGER NOT NULL DEFAULT 0", [])?;
         }
         if !column_exists("account_level_progress", "target_date")? {
-            tx.execute("ALTER TABLE account_level_progress ADD COLUMN target_date TEXT", [])?;
+            tx.execute(
+                "ALTER TABLE account_level_progress ADD COLUMN target_date TEXT",
+                [],
+            )?;
         }
         if !column_exists("account_purchase_event_progress", "target_date")? {
-            tx.execute("ALTER TABLE account_purchase_event_progress ADD COLUMN target_date TEXT", [])?;
+            tx.execute(
+                "ALTER TABLE account_purchase_event_progress ADD COLUMN target_date TEXT",
+                [],
+            )?;
         }
 
         // 3. Structural migration for UNIQUE constraints (Table Recreation)
@@ -321,11 +345,11 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_account_level_progress_level ON account_level_progress(level_id);
             CREATE INDEX IF NOT EXISTS idx_account_purchase_progress_account ON account_purchase_event_progress(account_id);
             CREATE INDEX IF NOT EXISTS idx_account_purchase_progress_event ON account_purchase_event_progress(purchase_event_id);
-            
+
             -- Ensure any remaining old style unique index is gone
             DROP INDEX IF EXISTS idx_levels_unique;
             DROP INDEX IF EXISTS idx_purchase_events_unique;
-            
+
             -- Create formal unique indexes if not already handled by table recreation
             CREATE UNIQUE INDEX IF NOT EXISTS idx_levels_unique_v2 ON levels(game_id, branch_id, event_token, days_offset);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_events_unique_v2 ON purchase_events(game_id, branch_id, event_token);
@@ -334,7 +358,8 @@ impl Database {
         // 5. Data Migration: Default Branches
         let game_ids: Vec<i64> = {
             let mut stmt = tx.prepare("SELECT id FROM games")?;
-            let ids = stmt.query_map([], |row| row.get(0))?
+            let ids = stmt
+                .query_map([], |row| row.get(0))?
                 .collect::<SqlResult<Vec<i64>>>()?;
             ids
         };
@@ -353,16 +378,24 @@ impl Database {
                 )?;
                 let branch_id = tx.last_insert_rowid();
 
-                tx.execute("UPDATE accounts SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL", params![branch_id, game_id])?;
-                tx.execute("UPDATE levels SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL", params![branch_id, game_id])?;
+                tx.execute(
+                    "UPDATE accounts SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL",
+                    params![branch_id, game_id],
+                )?;
+                tx.execute(
+                    "UPDATE levels SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL",
+                    params![branch_id, game_id],
+                )?;
                 tx.execute("UPDATE purchase_events SET branch_id = ?1 WHERE game_id = ?2 AND branch_id IS NULL", params![branch_id, game_id])?;
             }
         }
 
         // 6. Data Migration: Account Packages
         let accounts: Vec<(i64, i64)> = {
-            let mut stmt = tx.prepare("SELECT id, game_id FROM accounts WHERE package_id IS NULL")?;
-            let accs = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            let mut stmt =
+                tx.prepare("SELECT id, game_id FROM accounts WHERE package_id IS NULL")?;
+            let accs = stmt
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
                 .collect::<SqlResult<Vec<_>>>()?;
             accs
         };
@@ -384,6 +417,47 @@ impl Database {
                 )?;
             }
         }
+
+        // 7. Data Migration: Legacy compatibility for split Session + Event progress
+        // If an event level is completed but its paired session level ('-') for same branch/day/token is not,
+        // auto-complete the session progress so old DB snapshots remain consistent in newer versions.
+        tx.execute_batch("
+            INSERT INTO account_level_progress (account_id, level_id, is_completed, time_spent, target_date, completed_at)
+            SELECT
+                alp.account_id,
+                ls.id AS session_level_id,
+                1,
+                COALESCE(alp.time_spent, 0),
+                alp.target_date,
+                COALESCE(alp.completed_at, CURRENT_TIMESTAMP)
+            FROM account_level_progress alp
+            JOIN levels le ON le.id = alp.level_id
+            JOIN levels ls
+              ON ls.branch_id = le.branch_id
+             AND ls.days_offset = le.days_offset
+             AND ls.level_name = '-'
+             AND ls.id != le.id
+             AND (
+                CASE
+                    WHEN instr(ls.event_token, '_day') > 0 THEN substr(ls.event_token, 1, instr(ls.event_token, '_day') - 1)
+                    ELSE ls.event_token
+                END
+             ) = (
+                CASE
+                    WHEN instr(le.event_token, '_day') > 0 THEN substr(le.event_token, 1, instr(le.event_token, '_day') - 1)
+                    ELSE le.event_token
+                END
+             )
+            WHERE alp.is_completed = 1
+              AND le.level_name != '-'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM account_level_progress s
+                  WHERE s.account_id = alp.account_id
+                    AND s.level_id = ls.id
+                    AND s.is_completed = 1
+              );
+        ")?;
 
         tx.commit()?;
         Ok(())

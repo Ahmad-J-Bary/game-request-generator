@@ -309,8 +309,12 @@ export class TauriService {
     });
   }
 
+  static async runBackupIfChangedInBackgroundAndQuit(): Promise<void> {
+    return await invoke<void>("run_backup_if_changed_in_background_and_quit");
+  }
+
   static async finalizeExitMaintenanceAndQuit(): Promise<void> {
-    return await invoke<void>("finalize_exit_maintenance_and_quit");
+    return await invoke<void>("finalize_app_exit");
   }
 }
 

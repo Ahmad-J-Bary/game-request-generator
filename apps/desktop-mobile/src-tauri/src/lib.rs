@@ -38,6 +38,7 @@ use rusqlite::params;
 // === حالة التطبيق ===
 struct AppState {
     db: Mutex<Database>,
+    db_backup_last_mtime: Mutex<Option<i64>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -50,6 +51,56 @@ struct ExitMaintenancePlan {
 
 fn now_local_string() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+fn resolve_internal_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let config = ConfigService::load(app);
+    if let Some(path) = config.db_path {
+        Ok(std::path::PathBuf::from(path))
+    } else {
+        let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        Ok(data_dir.join("database.sqlite"))
+    }
+}
+
+fn current_db_mtime_unix(app: &tauri::AppHandle) -> Result<Option<i64>, String> {
+    let path = resolve_internal_db_path(app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let metadata =
+        std::fs::metadata(&path).map_err(|e| format!("Failed to read DB metadata: {}", e))?;
+    let modified = metadata
+        .modified()
+        .map_err(|e| format!("Failed to read DB modified time: {}", e))?;
+    let duration = modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("Failed to convert DB modified time: {}", e))?;
+    Ok(Some(duration.as_secs() as i64))
+}
+
+fn db_changed_since_last_backup(
+    app: &tauri::AppHandle,
+    state: &tauri::State<'_, AppState>,
+) -> Result<bool, String> {
+    let current = current_db_mtime_unix(app)?;
+    let last = state.db_backup_last_mtime.lock().unwrap();
+    match (current, *last) {
+        (Some(c), Some(l)) => Ok(c > l),
+        (Some(_), None) => Ok(true),
+        (None, _) => Ok(false),
+    }
+}
+
+fn mark_backup_mtime(
+    app: &tauri::AppHandle,
+    state: &tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let current = current_db_mtime_unix(app)?;
+    let mut last = state.db_backup_last_mtime.lock().unwrap();
+    *last = current;
+    Ok(())
 }
 
 fn get_exit_maintenance_plan(
@@ -144,14 +195,36 @@ fn finalize_app_exit(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn run_exit_maintenance_in_background_and_quit(
-    app: tauri::AppHandle,
-) -> Result<(), String> {
+fn run_exit_maintenance_in_background_and_quit(app: tauri::AppHandle) -> Result<(), String> {
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         let _ = run_deferred_exit_maintenance(app_handle.clone()).await;
         app_handle.exit(0);
     });
+    Ok(())
+}
+
+#[tauri::command]
+fn run_backup_if_changed_in_background_and_quit(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let app_handle = app.clone();
+
+    let should_backup = db_changed_since_last_backup(&app_handle, &state)?;
+    if !should_backup {
+        app_handle.exit(0);
+        return Ok(());
+    }
+
+    tauri::async_runtime::spawn(async move {
+        if TelegramService::backup_db(&app_handle).await.is_ok() {
+            let app_state = app_handle.state::<AppState>();
+            let _ = mark_backup_mtime(&app_handle, &app_state);
+        }
+        app_handle.exit(0);
+    });
+
     Ok(())
 }
 
@@ -1787,14 +1860,23 @@ pub fn run() {
             let handle = app.handle();
             let db = Database::new(&handle)?;
             db.init()?;
-            app.manage(AppState { db: Mutex::new(db) });
+
+            let initial_mtime = current_db_mtime_unix(&handle).ok().flatten();
+            app.manage(AppState {
+                db: Mutex::new(db),
+                db_backup_last_mtime: Mutex::new(initial_mtime),
+            });
 
             // Run deferred exit maintenance from previous close request (best effort).
             {
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(err) = run_deferred_exit_maintenance(app_handle).await {
-                        eprintln!("Deferred exit maintenance failed: {}", err);
+                    if run_deferred_exit_maintenance(app_handle.clone())
+                        .await
+                        .is_ok()
+                    {
+                        let app_state = app_handle.state::<AppState>();
+                        let _ = mark_backup_mtime(&app_handle, &app_state);
                     }
                 });
             }
@@ -1850,6 +1932,7 @@ pub fn run() {
             schedule_exit_maintenance,
             finalize_app_exit,
             run_exit_maintenance_in_background_and_quit,
+            run_backup_if_changed_in_background_and_quit,
             get_game_branches,
             add_branch,
             update_branch,
