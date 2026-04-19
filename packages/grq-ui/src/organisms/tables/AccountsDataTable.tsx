@@ -15,7 +15,7 @@ import { DataTableCell } from "./DataTableCell";
 import { Popover, PopoverContent, PopoverTrigger } from "@grq/ui/atoms/popover";
 import { SimpleCalendar } from "@grq/ui/atoms/simple-calendar";
 import { Button } from "@grq/ui/atoms/button";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Eye, Edit3 } from "lucide-react";
 import { format } from "date-fns";
 
 export type ColumnData = LevelColumn | PurchaseColumn;
@@ -93,6 +93,8 @@ interface AccountsDataTableProps {
   rangeFillMode?: boolean;
   tempPurchaseDates?: { [key: number]: Date | null };
   onPurchaseDateChange?: (purchaseId: number, date: Date | null) => void;
+  onAccountClick?: (account: Account) => void;
+  onAccountEdit?: (account: Account) => void;
 }
 
 export function AccountsDataTable({
@@ -108,6 +110,8 @@ export function AccountsDataTable({
   rangeFillMode = false,
   tempPurchaseDates,
   onPurchaseDateChange,
+  onAccountClick,
+  onAccountEdit,
 }: AccountsDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
@@ -721,7 +725,37 @@ export function AccountsDataTable({
       <TableBody>
         {accounts.map((acc, accIdx) => (
           <TableRow key={acc.id}>
-            <TableCell style={dataRowStyle}>{acc.name}</TableCell>
+            <TableCell style={dataRowStyle}>
+              <div className="flex items-center gap-2">
+                <span className="font-medium">{acc.name}</span>
+                {(onAccountClick || onAccountEdit) && (
+                  <div className="flex items-center gap-1 ml-1">
+                    {onAccountClick && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onAccountClick(acc)}
+                        className="h-6 w-6 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                        title={t("accounts.viewDetails", "View Details")}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {onAccountEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onAccountEdit(acc)}
+                        className="h-6 w-6 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                        title={t("accounts.editAccount", "Edit Account")}
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </TableCell>
             <TableCell style={dataRowStyle}>
               {formatDateShort(acc.start_date)}
             </TableCell>

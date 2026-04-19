@@ -1,6 +1,7 @@
 // src/pages/progress/AccountsDetailPage.tsx
 
 import { useMemo, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@grq/ui/atoms/card";
 import { LayoutToggle, Layout } from "@grq/ui/molecules/LayoutToggle";
@@ -974,8 +975,17 @@ function BranchSection({
   onExport,
   rangeFillMode,
 }: BranchSectionProps) {
+  const navigate = useNavigate();
   const { levels = [] } = useLevels(branch.id);
   const { events: purchaseEvents = [] } = usePurchaseEvents(branch.id);
+
+  const handleAccountClick = (account: Account) => {
+    navigate(`/accounts/${account.id}`, { state: { account } });
+  };
+
+  const handleAccountEdit = (account: Account) => {
+    navigate(`/accounts/edit/${account.id}`, { state: { account } });
+  };
 
   const columns = useMemo(() => {
     const buildSessionKey = (token: string, day: number) => `${token}::${day}`;
@@ -1284,6 +1294,8 @@ function BranchSection({
             }
             tempPurchaseDates={tempPurchaseDates}
             onPurchaseDateChange={onPurchaseDateChange}
+            onAccountClick={handleAccountClick}
+            onAccountEdit={handleAccountEdit}
           />
         </CardContent>
       </Card>
