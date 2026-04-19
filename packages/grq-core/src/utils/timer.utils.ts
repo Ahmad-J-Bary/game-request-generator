@@ -19,7 +19,7 @@ export interface TimerState {
  */
 export const calculateTimerState = (
   task: DailyTask,
-  _batchIndex: number,
+  _batchIndex: number | string,
   allBatches: GameBatch[],
   currentTime: number,
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },

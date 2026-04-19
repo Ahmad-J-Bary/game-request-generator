@@ -2,7 +2,7 @@
 import { useTranslation } from 'react-i18next';
 
 interface BatchHeaderProps {
-  batchIndex: number;
+  batchIndex: number | string;
   taskCount: number;
   isReady?: boolean;
 }
@@ -14,10 +14,14 @@ export const BatchHeader: React.FC<BatchHeaderProps> = ({
 }) => {
   const { t } = useTranslation();
 
+  const displayBatch = typeof batchIndex === 'number' 
+    ? batchIndex + 1 
+    : batchIndex;
+
   return (
     <div className="mb-4">
       <h3 className="text-lg font-semibold text-primary">
-        {t('dailyTasks.batchLabel', { batch: batchIndex + 1 })}
+        {t('dailyTasks.batchLabel', { batch: displayBatch })}
       </h3>
       <p className="text-sm text-muted-foreground">
         {taskCount} {taskCount === 1 ? t('dailyTasks.accountLabel') : t('dailyTasks.accountsLabel')}

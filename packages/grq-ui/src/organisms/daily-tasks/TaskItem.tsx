@@ -11,7 +11,7 @@ import { cn } from '@grq/ui/lib/utils';
 
 interface TaskRequestListProps {
   task: TaskItemProps['task'];
-  batchIndex: number;
+  batchIndex: number | string;
   isReady: boolean;
   accountTaskIndex: number;
   accountTaskTotal: number;

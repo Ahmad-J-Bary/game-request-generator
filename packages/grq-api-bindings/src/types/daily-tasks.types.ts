@@ -79,7 +79,7 @@ export interface GameBatch {
 
 export interface TaskItemProps {
     task: DailyTask;
-    onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask, response?: RepeaterResponse) => void;
+    onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number | string, task: DailyTask, response?: RepeaterResponse) => void;
     onUpdateResponse: (accountId: number, requestIndex: number, response: RepeaterResponse) => void;
     onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
     accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
