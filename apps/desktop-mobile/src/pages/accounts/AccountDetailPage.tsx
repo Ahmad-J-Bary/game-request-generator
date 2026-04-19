@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   ArrowRight,
   MoreVertical,
+  User,
 } from "lucide-react";
 import type {
   TimelineColumnData as ColumnData,
@@ -129,8 +130,9 @@ export default function AccountDetailPage() {
   const { theme } = useTheme();
 
   const state =
-    (location.state as { account?: Account; levels?: Level[] }) || {};
+    (location.state as { account?: Account; levels?: Level[]; selectedGameId?: number }) || {};
   const stateAccount: Account | undefined = state.account;
+  const selectedGameId = state.selectedGameId;
 
   const [fetchedAccount, setFetchedAccount] = useState<Account | null>(null);
 
@@ -853,7 +855,7 @@ export default function AccountDetailPage() {
     return (
       <div className="w-full px-1 sm:px-2 py-4">
         <div className="mb-4">
-          <BackButton />
+          <BackButton to={selectedGameId ? `/accounts?gameId=${selectedGameId}` : undefined} />
         </div>
         <Card>
           <CardContent className="p-6 text-center">
@@ -1143,21 +1145,35 @@ export default function AccountDetailPage() {
                   </Button>
                 </>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleEditToggle}
-                  className="flex items-center gap-2 h-9"
-                >
-                  <Edit3 className="h-4 w-4" />
-                  <span className="hidden xs:inline">
-                    {t("common.edit", "Edit")}
-                  </span>
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleEditToggle}
+                    className="flex items-center gap-2 h-9"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    <span className="hidden xs:inline">
+                      {t("common.edit", "Edit")}
+                    </span>
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => navigate(`/accounts/edit/${account?.id}`, { state: { account, selectedGameId } })}
+                    className="flex items-center gap-2 h-9"
+                    title={t("accounts.editAccountInfo", "Edit Account Info")}
+                  >
+                    <User className="h-4 w-4" />
+                    <span className="hidden xs:inline">
+                      {t("accounts.editAccount", "Edit Account")}
+                    </span>
+                  </Button>
+                </>
               )}
             </div>
 
-            <BackButton />
+            <BackButton to={selectedGameId ? `/accounts?gameId=${selectedGameId}` : undefined} />
           </div>
         </div>
         <section className="space-y-0.5 animate-in fade-in slide-in-from-bottom-4 duration-500">

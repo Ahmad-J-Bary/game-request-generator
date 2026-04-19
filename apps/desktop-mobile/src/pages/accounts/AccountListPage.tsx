@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAccounts } from '@grq/core/hooks/useAccounts';
 import { formatTimeAMPM } from '@grq/core/services/excel/excel-date-utils';
 import { Button } from '@grq/ui/atoms/button';
@@ -31,10 +31,24 @@ export default function AccountListPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Read gameId from URL query params, fallback to location.state for backward compatibility
   const locationState = location.state as { selectedGameId?: number } | null;
-  const [selectedGameId, setSelectedGameId] = useState<number | undefined>(
-    locationState?.selectedGameId
+  const urlGameId = searchParams.get('gameId');
+  const [selectedGameId, setSelectedGameIdState] = useState<number | undefined>(
+    urlGameId ? parseInt(urlGameId, 10) : locationState?.selectedGameId
   );
+  
+  // Update URL when game is selected
+  const setSelectedGameId = (gameId: number | undefined) => {
+    setSelectedGameIdState(gameId);
+    if (gameId) {
+      setSearchParams({ gameId: gameId.toString() });
+    } else {
+      setSearchParams({});
+    }
+  };
   const { accounts, loading, deleteAccount } = useAccounts(selectedGameId);
   const [showDelete, setShowDelete] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
@@ -42,7 +56,7 @@ export default function AccountListPage() {
   const [showExportDialog, setShowExportDialog] = useState(false);
 
   const handleEditNavigate = (account: Account) => {
-    navigate(`/accounts/edit/${account.id}`, { state: { account } });
+    navigate(`/accounts/edit/${account.id}`, { state: { account, selectedGameId } });
   };
 
   const handleAddNavigate = () => {
@@ -52,7 +66,7 @@ export default function AccountListPage() {
   };
 
   const handleViewNavigate = (account: Account) => {
-    navigate(`/accounts/${account.id}`, { state: { account } });
+    navigate(`/accounts/${account.id}`, { state: { account, selectedGameId } });
   };
 
   const confirmDelete = (account: Account) => {

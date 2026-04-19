@@ -322,7 +322,9 @@ export default function AccountFormPage() {
   const gameId = searchParams.get('gameId') ? parseInt(searchParams.get('gameId')!, 10) : undefined;
   const { accounts, addAccount, updateAccount } = useAccounts();
 
-  const stateAccount = (location.state as { account?: import('@grq/api-bindings').Account } | null)?.account;
+  const locationState = location.state as { account?: import('@grq/api-bindings').Account; selectedGameId?: number } | null;
+  const stateAccount = locationState?.account;
+  const selectedGameId = locationState?.selectedGameId;
   const isEditMode = location.pathname.includes('/edit/');
   const accountId = id ? parseInt(id, 10) : undefined;
   const account = isEditMode && accountId ? (stateAccount || accounts.find(a => a.id === accountId)) : undefined;
@@ -466,7 +468,12 @@ export default function AccountFormPage() {
         await addAccount(request);
       }
       window.dispatchEvent(new CustomEvent('data-changed'));
-      navigate('/accounts');
+      // Navigate back to accounts list with selected game preserved
+      if (selectedGameId) {
+        navigate(`/accounts?gameId=${selectedGameId}`);
+      } else {
+        navigate(-1);
+      }
     } catch (error) {
       console.error('Failed to save account:', error);
       NotificationService.error(t('errors.saveFailed'));
@@ -603,7 +610,13 @@ export default function AccountFormPage() {
               <Button type="submit" disabled={loading}>
                 {loading ? t('common.loading') : t('common.save')}
               </Button>
-              <Button type="button" variant="outline" onClick={() => navigate('/accounts')}>
+              <Button type="button" variant="outline" onClick={() => {
+                if (selectedGameId) {
+                  navigate(`/accounts?gameId=${selectedGameId}`);
+                } else {
+                  navigate(-1);
+                }
+              }}>
                 {t('common.cancel')}
               </Button>
             </div>

@@ -608,7 +608,7 @@ export default function GameDetailPage({ gameId: propGameId, forcedLayout }: { g
       {!isEditMode && (
         <div className="flex flex-wrap gap-4 mt-6">
           <Button
-            onClick={() => navigate(`/accounts/new?gameId=${gameId}`)}
+            onClick={() => navigate(`/accounts/new?gameId=${gameId}`, { state: { from: location.pathname } })}
             className="flex items-center gap-2"
           >
             <Plus className="h-4 w-4" />

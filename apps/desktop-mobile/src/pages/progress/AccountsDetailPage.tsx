@@ -1,7 +1,7 @@
 // src/pages/progress/AccountsDetailPage.tsx
 
 import { useMemo, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@grq/ui/atoms/card";
 import { LayoutToggle, Layout } from "@grq/ui/molecules/LayoutToggle";
@@ -123,8 +123,25 @@ export default function AccountsDetailPage() {
   const { t } = useTranslation();
   const { colors } = useSettings();
   const { theme } = useTheme();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [layout, setLayout] = useState<Layout>("vertical");
-  const [selectedGameId, setSelectedGameId] = useState<number | undefined>();
+  
+  // Read gameId from URL query params
+  const urlGameId = searchParams.get('gameId');
+  const [selectedGameId, setSelectedGameIdState] = useState<number | undefined>(
+    urlGameId ? parseInt(urlGameId, 10) : undefined
+  );
+  
+  // Update URL when game is selected
+  const setSelectedGameId = (gameId?: number) => {
+    setSelectedGameIdState(gameId);
+    if (gameId) {
+      setSearchParams({ gameId: gameId.toString() });
+    } else {
+      setSearchParams({});
+    }
+  };
+  
   const [mode, setMode] = useState<Mode>("event-only");
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -894,6 +911,7 @@ function AccountsDetailContent({
                 setShowExportDialog(true);
               }}
               rangeFillMode={rangeFillMode}
+              selectedGameId={selectedGameId}
             />
           ))
         )}
@@ -957,6 +975,7 @@ interface BranchSectionProps {
   t: TFunction;
   onExport: () => void;
   rangeFillMode: boolean;
+  selectedGameId?: number;
 }
 
 function BranchSection({
@@ -974,17 +993,18 @@ function BranchSection({
   t,
   onExport,
   rangeFillMode,
+  selectedGameId,
 }: BranchSectionProps) {
   const navigate = useNavigate();
   const { levels = [] } = useLevels(branch.id);
   const { events: purchaseEvents = [] } = usePurchaseEvents(branch.id);
 
   const handleAccountClick = (account: Account) => {
-    navigate(`/accounts/${account.id}`, { state: { account } });
+    navigate(`/accounts/${account.id}`, { state: { account, selectedGameId } });
   };
 
   const handleAccountEdit = (account: Account) => {
-    navigate(`/accounts/edit/${account.id}`, { state: { account } });
+    navigate(`/accounts/edit/${account.id}`, { state: { account, selectedGameId } });
   };
 
   const columns = useMemo(() => {
