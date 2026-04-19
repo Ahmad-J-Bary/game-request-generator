@@ -84,6 +84,9 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, on
 
   const { isReady, isBlocked, remainingTime } = timerState;
 
+  // Session Only tasks can always be completed regardless of timer state
+  const effectiveIsReady = isSessionOnlyTask || isReady;
+
   // Calculate progress percentage for the cooldown (if applicable)
   const progressPercent = useMemo(() => {
     if (isReady || isBlocked) return 100;
@@ -119,7 +122,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, on
 
   // Determine status badge
   const getStatusBadge = () => {
-    if (isReady) {
+    if (effectiveIsReady) {
       return (
         <Badge variant="default" className="text-xs bg-emerald-500 shadow-sm shadow-emerald-500/20">
           {t('dailyTasks.ready')}
@@ -156,7 +159,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, on
                   ? "glass-amber"
                   : isSessionOnlyTask
                       ? "glass-emerald"
-                      : !isReady ? "glass border-amber-200/30 dark:border-amber-800/20 bg-amber-50/10 dark:bg-amber-900/5" : "glass"
+                      : !effectiveIsReady ? "glass border-amber-200/30 dark:border-amber-800/20 bg-amber-50/10 dark:bg-amber-900/5" : "glass"
           )}
       >
         {/* Animated Progress Bar at top of card */}
@@ -164,7 +167,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, on
           <motion.div 
             className={cn(
                "h-full",
-               isReady ? "bg-emerald-500" : "bg-amber-500"
+               effectiveIsReady ? "bg-emerald-500" : "bg-amber-500"
             )}
             initial={{ width: "0%" }}
             animate={{ width: `${progressPercent}%` }}
@@ -219,7 +222,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, on
                   )}
                 </AnimatePresence>
 
-                {!isReady && !isBlocked && (
+                {!effectiveIsReady && !isBlocked && (
                   <motion.span 
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -242,7 +245,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, on
           <TaskRequestList
             task={task}
             batchIndex={batchIndex}
-            isReady={isReady}
+            isReady={effectiveIsReady}
             accountTaskIndex={accountTaskMeta.accountTaskIndex}
             accountTaskTotal={accountTaskMeta.accountTaskTotal}
             onUpdateResponse={onUpdateResponse}

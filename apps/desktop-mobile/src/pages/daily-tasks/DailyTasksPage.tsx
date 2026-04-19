@@ -17,6 +17,7 @@ export default function DailyTasksPage() {
     batches,
     deferredTasks: hookDeferredTasks,
     loading,
+    isGenerating,
     games,
     accountCompletionRecords,
     accountTaskAssignments,
@@ -74,10 +75,16 @@ export default function DailyTasksPage() {
               <span className="text-xs font-medium">{t('dailyTasks.generateTasksLoading')}</span>
             </div>
           )}
+          {!loading && isGenerating && (
+            <div className="flex items-center gap-2 text-muted-foreground bg-accent/10 px-2 py-1 rounded border border-dashed animate-pulse">
+              <div className="h-4 w-4 border-2 border-primary/40 border-t-primary rounded-full animate-spin"></div>
+              <span className="text-xs font-medium italic opacity-80">{t('dailyTasks.refreshingTasks', 'Updating tasks...')}</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {batches.length === 0 && !loading && (
+      {batches.length === 0 && !loading && !isGenerating && (
         <EmptyState />
       )}
 

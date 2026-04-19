@@ -23,36 +23,19 @@ export interface TaskGenerationOptions {
 }
 
 export class TaskGenerator {
-  private static readonly BRANCH_CACHE_TTL_MS = 5 * 60 * 1000;
-  private static readonly branchDataCache = new Map<number, {
-    expiresAt: number;
-    promise: Promise<{ levels: any[]; purchases: any[] }>;
-  }>();
   private options: TaskGenerationOptions;
 
   constructor(options: TaskGenerationOptions) {
     this.options = options;
   }
 
-  private getBranchData(branchId: number) {
-    const now = Date.now();
-    const cached = TaskGenerator.branchDataCache.get(branchId);
-
-    if (cached && cached.expiresAt > now) {
-      return cached.promise;
-    }
-
-    const promise = Promise.all([
+  private async getBranchData(branchId: number) {
+    const [levels, purchases] = await Promise.all([
       TauriService.getGameLevels(branchId),
       TauriService.getGamePurchaseEvents(branchId)
-    ]).then(([levels, purchases]) => ({ levels, purchases }));
-
-    TaskGenerator.branchDataCache.set(branchId, {
-      expiresAt: now + TaskGenerator.BRANCH_CACHE_TTL_MS,
-      promise,
-    });
-
-    return promise;
+    ]);
+    
+    return { levels, purchases };
   }
 
   async generateTodaysTasks(): Promise<{ batches: GameBatch[], deferredTasks: DailyTask[], accountScheduledTime: { [accountId: number]: number[] } }> {
@@ -109,6 +92,12 @@ export class TaskGenerator {
               .filter(progress => progress.is_completed)
               .map(progress => progress.purchase_event_id)
           );
+          const toMidnightUTC = (dateStr: string) => {
+            const date = new Date(dateStr);
+            if (Number.isNaN(date.getTime())) return null;
+            return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())).getTime();
+          };
+
           const sessionLevelIdByKey = new Map(
             gameLevels
               .filter(level => level.level_name === '-')
@@ -139,8 +128,33 @@ export class TaskGenerator {
               return sessionLevelId ? completedLevelIds.has(sessionLevelId) : false;
             }
 
-            if (requestType === 'Level Event' || requestType === 'Session Only') {
+            if (requestType === 'Level Event') {
               return request.level_id != null ? completedLevelIds.has(request.level_id) : false;
+            }
+
+            if (requestType === 'Session Only') {
+              let daysOffset = 0;
+              const eventTokenMatch = (request.event_token || '').match(/_day(-?\d+)$/);
+              if (eventTokenMatch) {
+                daysOffset = parseInt(eventTokenMatch[1], 10);
+              } else {
+                const startUTC = toMidnightUTC(account.start_date);
+                const targetUTC = toMidnightUTC(response.target_date);
+                
+                if (startUTC !== null && targetUTC !== null) {
+                  const msPerDay = 24 * 60 * 60 * 1000;
+                  daysOffset = Math.round((targetUTC - startUTC) / msPerDay);
+                }
+              }
+              const baseToken = (request.event_token || '').split('_day')[0];
+              const sessionKey = `${baseToken}::${daysOffset}`;
+              const sessionLevelId = sessionLevelIdByKey.get(sessionKey);
+              
+              if (!sessionLevelId && request.level_id != null) {
+                  return completedLevelIds.has(request.level_id);
+              }
+
+              return sessionLevelId ? completedLevelIds.has(sessionLevelId) : false;
             }
 
             return false;
@@ -302,33 +316,24 @@ export class TaskGenerator {
         const gameIds = Object.keys(tasksByGame).map(Number);
         const maxTasksInAnyGame = Math.max(...Object.values(tasksByGame).map(arr => arr.length));
         
-        // Create numStateBatches
+        // Create batches using diversity algorithm (one task from each game per batch)
         for (let i = 0; i < maxTasksInAnyGame; i++) {
           const currentBatchTasks: DailyTask[] = [];
           
           for (const gid of gameIds) {
             const gameTasks = tasksByGame[gid];
             if (i < gameTasks.length) {
-              const task = gameTasks[i];
-              currentBatchTasks.push(task);
-
-              // Record assignment (optional, for tracking)
-              const group = task.requestGroups![0];
-              if (!pendingAssignments[task.account.id]) {
-                pendingAssignments[task.account.id] = [];
-              }
-              pendingAssignments[task.account.id].push({
-                accountId: task.account.id,
-                assignedTime: Date.now(),
-                eventToken: group.event_token,
-                timeSpent: group.time_spent,
-              });
+              currentBatchTasks.push(gameTasks[i]);
             }
           }
 
           if (currentBatchTasks.length > 0) {
+            // Create a stable batchIndex based on the first account in this batch
+            const firstAccount = currentBatchTasks[0].account;
+            const stableBatchKey = `batch-${firstAccount.branch_id || 'global'}-${firstAccount.id}-index-${i}`;
+            
             allBatches.push({
-              batchIndex: batchIndex++,
+              batchIndex: stableBatchKey as any,
               tasks: currentBatchTasks,
             });
           }

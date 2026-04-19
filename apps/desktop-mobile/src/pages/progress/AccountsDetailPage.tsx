@@ -311,10 +311,28 @@ function AccountsDetailContent({
       )
       .sort((a, b) => a.days_offset - b.days_offset);
 
-    const fallbackLevel =
-      relatedRealLevels.find(
-        (level) => level.days_offset >= syntheticMeta.day,
-      ) ?? relatedRealLevels[relatedRealLevels.length - 1];
+    const searchLevels =
+      relatedRealLevels.length > 0 ? relatedRealLevels : branchLevels.filter(l => l.level_name !== "-");
+    const nextMatch = searchLevels.find((l) => l.days_offset > syntheticMeta.day);
+
+    const realLevels = searchLevels;
+    const firstRealDay = Number(realLevels[0]?.days_offset ?? 0);
+
+    let synthesizedTime = 0;
+    if (nextMatch && syntheticMeta.day < firstRealDay) {
+      synthesizedTime = Math.round(
+        (syntheticMeta.day + 1) * ((nextMatch.time_spent || 0) / (firstRealDay + 1)),
+      );
+    } else if (nextMatch) {
+      const prevLevels = realLevels.filter((l) => l.days_offset < syntheticMeta.day);
+      const prevReal = prevLevels[prevLevels.length - 1];
+      synthesizedTime = prevReal?.time_spent || 0;
+    } else {
+      const prevReal = realLevels
+        .filter((l) => l.days_offset <= syntheticMeta.day)
+        .slice(-1)[0];
+      synthesizedTime = prevReal?.time_spent || 0;
+    }
 
     return TauriService.addLevel({
       game_id: account.game_id,
@@ -322,7 +340,7 @@ function AccountsDetailContent({
       level_name: "-",
       event_token: eventToken,
       days_offset: syntheticMeta.day,
-      time_spent: fallbackLevel?.time_spent || 0,
+      time_spent: synthesizedTime,
       is_bonus: false,
     });
   };
@@ -1099,16 +1117,36 @@ function BranchSection({
       const relatedRealLevels = numericLevels.filter(
         (l) => l.name !== "-" && l.token === token,
       );
-      const fallbackLevel =
-        relatedRealLevels.find((l) => Number(l.daysOffset) >= day) ??
-        relatedRealLevels[relatedRealLevels.length - 1];
+      const searchLevels =
+        relatedRealLevels.length > 0 ? relatedRealLevels : numericLevels;
+      const nextMatch = searchLevels.find((l) => Number(l.daysOffset) > day);
+
+      const realLevels = searchLevels;
+      const firstRealDay = Number(realLevels[0]?.daysOffset ?? 0);
+
+      let synthesizedTime = 0;
+      if (nextMatch && day < firstRealDay) {
+        synthesizedTime = Math.round(
+          (day + 1) * ((nextMatch.timeSpent || 0) / (firstRealDay + 1)),
+        );
+      } else if (nextMatch) {
+        const prevLevels = realLevels.filter((l) => Number(l.daysOffset) < day);
+        const prevReal = prevLevels[prevLevels.length - 1];
+        synthesizedTime = prevReal?.timeSpent || 0;
+      } else {
+        const prevReal = realLevels
+          .filter((l) => Number(l.daysOffset) <= day)
+          .slice(-1)[0];
+        synthesizedTime = prevReal?.timeSpent || 0;
+      }
+
       return {
         kind: "level" as const,
         id: `synth-${token}-${day}`,
         token,
         name: "-",
         daysOffset: day,
-        timeSpent: fallbackLevel?.timeSpent || 0,
+        timeSpent: synthesizedTime,
         isBonus: false,
         synthetic: true,
       } as Extract<ColumnData, { kind: "level" }>;

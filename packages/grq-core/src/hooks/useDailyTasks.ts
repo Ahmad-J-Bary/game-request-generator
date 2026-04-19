@@ -15,6 +15,7 @@ export interface UseDailyTasksReturn {
   batches: GameBatch[];
   deferredTasks: DailyTask[];
   loading: boolean;
+  isGenerating: boolean;
   games: any[];
   currentTime: number;
   completedTasks: any[];
@@ -39,6 +40,8 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   const [batches, setBatches] = useState<GameBatch[]>([]);
   const [deferredTasks, setDeferredTasks] = useState<DailyTask[]>([]);
   const [loading, setLoading] = useState(true); // Default to true while hydrating
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [games, setGames] = useState<any[]>([]);
   // @ts-expect-error - used for internal state management and persistence
   const [accountScheduledTime, setAccountScheduledTime] = useState<{ [accountId: number]: number[] }>({});
@@ -128,10 +131,16 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       // We no longer load batches from storage to ensure fresh random numbers on every entry.
       // The generateTodaysTasks() call in DailyTasksPage will handle fetching fresh data.
 
-      if (mounted) setLoading(false);
+      if (mounted) {
+        setLoading(false);
+        setIsHydrated(true);
+      }
     } catch (error) {
       console.error('Error loading account data:', error);
-      if (mounted) setLoading(false);
+      if (mounted) {
+        setLoading(false);
+        setIsHydrated(true);
+      }
     }
   };
   hydrateData();
@@ -197,7 +206,18 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
 
   // Generate today's tasks using the TaskGenerator utility
   const generateTodaysTasks = useCallback(async () => {
-    setLoading(true);
+    // Avoid double generation
+    if (isGenerating) return;
+
+    // Only show full page spinner on very first mount/hydration
+    const isInitialLoad = !isHydrated;
+    
+    if (isInitialLoad) {
+      setLoading(true);
+    } else {
+      setIsGenerating(true);
+    }
+
     try {
       const taskGenerator = new TaskGenerator({
         games,
@@ -215,9 +235,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       setDeferredTasks(generatedDeferred);
       setAccountScheduledTime(generatedScheduledTime);
 
-      // We no longer save batches to AsyncStorage here.
-      
-      if (generatedBatches.length > 0) {
+      if (generatedBatches.length > 0 && isInitialLoad) {
         NotificationService.success(t('dailyTasks.generateTasksSuccess', { count: generatedBatches.length }));
       }
     } catch (error) {
@@ -225,8 +243,9 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       console.error(error);
     } finally {
       setLoading(false);
+      setIsGenerating(false);
     }
-  }, [games, accountCompletionRecords, accountStartStates]);
+  }, [games, accountCompletionRecords, accountStartStates, isGenerating, isHydrated, batches.length, deferredTasks.length, completedTasks, t]);
 
   // Complete a task using the TaskCompletionHandler utility
   const completeTask = useCallback(async (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask, response?: RepeaterResponse) => {
@@ -249,6 +268,10 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       } else if (result && result.success) {
         NotificationService.success('Task completed successfully');
       }
+
+      // TRIGGER REFRESH to ensure filtering logic (TaskGenerator) is in sync with fresh DB data
+      // This is crucial for the "first-time" completion where a new level is created.
+      generateTodaysTasks();
 
       // Refresh completed tasks from AsyncStorage
       const today = new Date().toISOString().split('T')[0];
@@ -307,6 +330,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
     batches,
     deferredTasks,
     loading,
+    isGenerating,
     games,
     currentTime,
     completedTasks,

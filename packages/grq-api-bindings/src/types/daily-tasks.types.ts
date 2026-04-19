@@ -73,7 +73,7 @@ export interface DailyTask {
 }
 
 export interface GameBatch {
-    batchIndex: number;
+    batchIndex: number | string;
     tasks: DailyTask[];
 }
 
@@ -85,7 +85,7 @@ export interface TaskItemProps {
     accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
     accountTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
     accountStartStates: { [accountId: number]: AccountStartState };
-    batchIndex: number;
+    batchIndex: number | string;
     allBatches: GameBatch[];
     completedTasks: CompletedDailyTask[];
     deferredTasks?: DailyTask[];

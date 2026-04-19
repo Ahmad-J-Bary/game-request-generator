@@ -110,6 +110,12 @@ export class TaskCompletionHandler {
       const isLevelSession = finalRequestType === 'Level Session';
       const isSessionOnly = finalRequestType === 'Session Only';
       const usesSyntheticSessionLevel = isPurchaseSession || isLevelSession || isSessionOnly;
+      
+      const toMidnightUTC = (dateStr: string) => {
+        const date = new Date(dateStr);
+        if (Number.isNaN(date.getTime())) return null;
+        return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())).getTime();
+      };
 
       const resolveSessionLevelId = async (): Promise<number> => {
         const account = await TauriService.getAccountById(accountId);
@@ -125,6 +131,7 @@ export class TaskCompletionHandler {
           const sourceLevel = gameLevels.find(level => level.id === request.level_id);
           if (sourceLevel) {
             baseToken = (sourceLevel.event_token || baseToken).split('_day')[0];
+            // Initialize daysOffset from level as fallback, but we will likely override it for Session Only
             daysOffset = typeof sourceLevel.days_offset === 'number' ? sourceLevel.days_offset : 0;
             timeSpent = sourceLevel.time_spent || timeSpent;
           }
@@ -134,13 +141,44 @@ export class TaskCompletionHandler {
           if (purchaseEvent) {
             daysOffset = typeof purchaseEvent.days_offset === 'number' ? purchaseEvent.days_offset : 0;
           }
-        } else if (isSessionOnly) {
-          const accountStartDate = new Date(account.start_date);
-          const targetDate = new Date(foundTask.targetDate);
+        }
 
-          if (!Number.isNaN(accountStartDate.getTime()) && !Number.isNaN(targetDate.getTime())) {
-            const timeDiff = targetDate.getTime() - accountStartDate.getTime();
-            daysOffset = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+        // For Session Only or any gap-filler, ALWAYS verify day offset against the target date
+        if (isSessionOnly || !request.level_id) {
+          const eventTokenMatch = (request.event_token || '').match(/_day(-?\d+)$/);
+          if (eventTokenMatch) {
+            daysOffset = parseInt(eventTokenMatch[1], 10);
+          } else {
+            const startUTC = toMidnightUTC(account.start_date);
+            const targetUTC = toMidnightUTC(foundTask.targetDate);
+            if (startUTC !== null && targetUTC !== null) {
+              const msPerDay = 24 * 60 * 60 * 1000;
+              daysOffset = Math.round((targetUTC - startUTC) / msPerDay);
+            }
+          }
+        }
+
+        if (isSessionOnly) {
+          // Calculate timeSpent using sophisticated logic matching AccountDetailPage
+          const relatedRealLevels = gameLevels.filter(
+            (level) =>
+              level.level_name !== "-" &&
+              (level.event_token || "").split("_day")[0] === baseToken
+          ).sort((a, b) => a.days_offset - b.days_offset);
+
+          const searchLevels = relatedRealLevels.length > 0 ? relatedRealLevels : gameLevels.filter(l => l.level_name !== "-");
+          const nextMatch = searchLevels.find((l) => l.days_offset > daysOffset);
+          const firstRealDay = Number(searchLevels[0]?.days_offset ?? 0);
+
+          if (nextMatch && daysOffset < firstRealDay) {
+            timeSpent = Math.round((daysOffset + 1) * ((nextMatch.time_spent || 0) / (firstRealDay + 1)));
+          } else if (nextMatch) {
+            const prevLevels = searchLevels.filter((l) => l.days_offset < daysOffset);
+            const prevReal = prevLevels[prevLevels.length - 1];
+            timeSpent = prevReal?.time_spent || request.time_spent || 0;
+          } else {
+            const prevReal = searchLevels.filter((l) => l.days_offset <= daysOffset).slice(-1)[0];
+            timeSpent = prevReal?.time_spent || request.time_spent || 0;
           }
         }
 
@@ -288,24 +326,30 @@ export class TaskCompletionHandler {
 
         resolvedLevelId = targetLevelId;
 
-        const createRequest = {
-          account_id: accountId,
-          level_id: targetLevelId,
-        };
+        // Ensure level progress record exists before updating
+        // This is critical for the "first-time" completion of session-only tasks
+        const existingProgress = await TauriService.getAccountLevelProgress(accountId);
+        const hasProgress = existingProgress.some(p => p.level_id === targetLevelId);
 
-        try {
-          await TauriService.createLevelProgress(createRequest);
-        } catch (error) {
-          console.warn('Failed to create level progress (likely FK constraint for session event), proceeding to update:', error);
+        if (!hasProgress) {
+          try {
+            await TauriService.createLevelProgress({
+              account_id: accountId,
+              level_id: targetLevelId,
+            });
+          } catch (error) {
+            console.warn('Level progress creation failed, it might have been created by another process:', error);
+          }
         }
 
-        // Now update the progress
+        // Now update the progress to completed status
+        // Aligning with AccountDetailPage.tsx by omitting target_date and time_spent
+        // which ensures the update targets the correct persistent record.
         const updateRequest = {
           account_id: accountId,
           level_id: targetLevelId,
           is_completed: true,
-          time_spent: request.time_spent,
-          target_date: foundTask.targetDate,
+          bypass_cooldown: true,
         };
 
         result = await ApiService.updateLevelProgress(updateRequest);
