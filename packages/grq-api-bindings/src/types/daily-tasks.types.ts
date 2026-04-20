@@ -8,13 +8,30 @@ export interface CompletedDailyTask {
     gameId: number;
     gameName: string;
     eventToken: string;
-    timeSpent: number; // randomly generated once per day
-    completionTime: number; // actual computer clock time (timestamp)
-    completionDate: string; // YYYY-MM-DD
+    timeSpent: number;
+    completionTime: number; 
+    completionDate: string;
+    completedAt?: string;
     levelId?: number;
     levelName?: string;
-    requestType?: 'Session Only' | 'Level Session' | 'Level Event' | 'Purchase Session' | 'Purchase Event'; // Type of request that was completed
-    isPurchase?: boolean;
+    requestType: string;
+    isPurchase: boolean;
+}
+
+export interface AddCompletedTaskRequest {
+    id: string;
+    accountId: number;
+    accountName: string;
+    gameId: number;
+    gameName: string;
+    eventToken: string;
+    timeSpent: number;
+    completionTime: number;
+    completionDate: string;
+    levelId?: number;
+    levelName?: string;
+    requestType: string;
+    isPurchase: boolean;
 }
 
 export interface DailyTasksStorage {

@@ -8,6 +8,8 @@
     "update": "تحديث",
     "saving": "جاري الحفظ...",
     "search": "بحث",
+    "refresh": "تحديث",
+    "clearAll": "مسح الكل",
     "loading": "جاري التحميل...",
     "error": "خطأ",
     "success": "نجاح",
@@ -61,7 +63,8 @@
     "expand": "توسيع",
     "collapse": "طي",
     "gameManager": "مدير الألعاب",
-    "settings": "الإعدادات"
+    "settings": "الإعدادات",
+    "history": "تقرير السجل"
   },
   "games": {
     "title": "الألعاب",
@@ -232,7 +235,17 @@
     "requestAvailable": "الطلب متاح في {{time}}",
     "waiting": "انتظار",
     "sendRequest": "إرسال",
-    "markComplete": "تم"
+    "markComplete": "تم",
+    "historyReport": "تقرير السجل",
+    "historyDescription": "تتبع كل جلسة وإكمال حدث مع كامل التفاصيل والطوابع الزمنية."
+  },
+  "history": {
+    "timestamp": "وقت الإكمال",
+    "account": "الحساب",
+    "game": "اللعبة",
+    "task": "تفاصيل المهمة",
+    "type": "النوع",
+    "duration": "المدة (ملي ثانية)"
   },
   "purchaseEvents": {
     "title": "أحداث الشراء",

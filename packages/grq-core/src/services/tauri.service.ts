@@ -30,6 +30,8 @@ import type {
   BulkProgressUpdateRequest,
   TelegramImportPreview,
   TelegramConfig,
+  CompletedDailyTask,
+  AddCompletedTaskRequest,
 } from "@grq/api-bindings";
 
 export class TauriService {
@@ -315,6 +317,25 @@ export class TauriService {
 
   static async finalizeExitMaintenanceAndQuit(): Promise<void> {
     return await invoke<void>("finalize_app_exit");
+  }
+
+  // ========== Daily Task History Commands ==========
+  static async addCompletedTask(request: AddCompletedTaskRequest): Promise<void> {
+    return await invoke<void>("add_completed_task", { request });
+  }
+
+  static async getTaskHistory(
+    limit?: number,
+    accountId?: number,
+  ): Promise<CompletedDailyTask[]> {
+    return await invoke<CompletedDailyTask[]>("get_task_history", {
+      limit,
+      accountId,
+    });
+  }
+
+  static async clearTaskHistory(): Promise<void> {
+    return await invoke<void>("clear_task_history");
   }
 }
 

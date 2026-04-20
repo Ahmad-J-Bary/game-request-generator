@@ -24,6 +24,7 @@ import GameDetailPage from "./pages/games/GameDetailPage";
 import AccountsDetailPage from "./pages/progress/AccountsDetailPage";
 // Daily Tasks
 import DailyTasksPage from "./pages/daily-tasks/DailyTasksPage";
+import HistoryReportPage from "./pages/daily-tasks/HistoryReportPage";
 // Settings
 import SettingsPage from "./pages/SettingsPage";
 import "./i18n";
@@ -124,6 +125,7 @@ function AppContent() {
                         element={<AccountsDetailPage />}
                       />
                       <Route path="/daily-tasks" element={<DailyTasksPage />} />
+                      <Route path="/history" element={<HistoryReportPage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route
                         path="/settings/appearance"

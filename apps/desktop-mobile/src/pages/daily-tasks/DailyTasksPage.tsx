@@ -6,7 +6,6 @@ import { Clock } from 'lucide-react';
 import { EmptyState } from '@grq/ui/organisms/daily-tasks/EmptyState';
 import { BatchDisplay } from '@grq/ui/organisms/daily-tasks/BatchDisplay';
 import { TaskItem } from '@grq/ui/organisms/daily-tasks/TaskItem';
-import { VirtualizedTaskList } from '@grq/ui/organisms/daily-tasks/VirtualizedTaskList';
 import { useDailyTasks } from '@grq/core/hooks/useDailyTasks';
 import type { GameBatch, DailyTask } from '@grq/api-bindings/types/daily-tasks.types';
 
@@ -48,10 +47,6 @@ export default function DailyTasksPage() {
     return { readyBatches: rBatches, pageDeferredTasks: pDeferred };
   }, [batches, hookDeferredTasks]);
 
-  const shouldVirtualizeTasks = useMemo(() => {
-    const readyTaskCount = readyBatches.reduce((count, batch) => count + batch.tasks.length, 0);
-    return (readyTaskCount + pageDeferredTasks.length) > 50;
-  }, [pageDeferredTasks.length, readyBatches]);
 
   // Generate today's tasks on mount and when games change
   useEffect(() => {
@@ -100,7 +95,7 @@ export default function DailyTasksPage() {
                   transition={{ layout: { duration: 0.2, ease: "easeOut" } }}
                 >
                   <BatchDisplay
-                    key={`display-batch-${batch.batchIndex}-${batch.tasks[0]?.account?.id || 'unknown'}`}
+                    key={`display-batch-${batch.batchIndex}`}
                     batch={batch}
                     allBatches={batches}
                     accountCompletionRecords={accountCompletionRecords}
@@ -113,7 +108,6 @@ export default function DailyTasksPage() {
                     deferredTasks={hookDeferredTasks}
                     showProxyNotice={idx < readyBatches.length - 1}
                     isLastBatch={idx === readyBatches.length - 1}
-                    enableVirtualization={shouldVirtualizeTasks}
                   />
                 </motion.div>
               ))}
@@ -134,15 +128,8 @@ export default function DailyTasksPage() {
                     <h2 className="text-xl font-semibold">{t('dailyTasks.deferredTasksTitle', 'Deferred Tasks')}</h2>
                 </div>
                 
-                <VirtualizedTaskList
-                  items={pageDeferredTasks}
-                  enabled={shouldVirtualizeTasks}
-                  className="space-y-6"
-                  itemClassName={shouldVirtualizeTasks ? 'pb-6' : undefined}
-                  getItemKey={({ task, batchIndex }, idx) =>
-                    `deferred-${task.account?.id || 'no-acc'}-${task.targetDate}-${batchIndex}-${idx}`
-                  }
-                  renderItem={({ task, batchIndex }, idx) => (
+                <div className="space-y-6">
+                  {pageDeferredTasks.map(({ task, batchIndex }, idx) => (
                     <motion.div
                       key={`deferred-${task.account?.id || 'no-acc'}-${task.targetDate}-${batchIndex}-${idx}`}
                       layout
@@ -161,8 +148,8 @@ export default function DailyTasksPage() {
                         deferredTasks={hookDeferredTasks}
                       />
                     </motion.div>
-                  )}
-                />
+                  ))}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

@@ -971,7 +971,7 @@ dependencies = [
 
 [[package]]
 name = "game-request-generator"
-version = "1.4.3"
+version = "1.4.4"
 dependencies = [
  "chrono",
  "grq-engine",
@@ -1244,7 +1244,7 @@ dependencies = [
 
 [[package]]
 name = "grq-engine"
-version = "1.4.3"
+version = "1.4.4"
 dependencies = [
  "chrono",
  "rand 0.8.5",

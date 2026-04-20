@@ -15,7 +15,7 @@ import {
 } from '@grq/ui/atoms/dropdown-menu';
 import { cn } from '@grq/ui/lib/utils';
 import type { CompletedDailyTask } from '@grq/api-bindings/types/daily-tasks.types';
-import { asyncStorageService } from '@grq/core/services/storage.service';
+import { TauriService } from '@grq/core/services/tauri.service';
 
 interface CompletedTasksSidebarProps {
     isOpen: boolean;
@@ -71,15 +71,13 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
     }, []);
 
     const loadCompletedTasks = async () => {
-        const today = new Date().toISOString().split('T')[0];
-        const storageKey = `dailyTasks_completed_${today}`;
         try {
-            const stored = await asyncStorageService.get<CompletedDailyTask[]>(storageKey);
-            if (stored) {
-                setCompletedTasks(stored);
-            } else {
-                setCompletedTasks([]);
-            }
+            const today = new Date().toISOString().split('T')[0];
+            const history = await TauriService.getTaskHistory(100);
+            
+            // Filter for tasks completed today
+            const daily = history.filter(task => task.completionDate === today);
+            setCompletedTasks(daily);
         } catch (error) {
             console.error('Error loading completed tasks:', error);
             setCompletedTasks([]);
@@ -87,11 +85,16 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
     };
 
     const clearCompletedTasks = async () => {
-        const today = new Date().toISOString().split('T')[0];
-        const storageKey = `dailyTasks_completed_${today}`;
-        await asyncStorageService.remove(storageKey);
-        setCompletedTasks([]);
-        setExpandedAccounts(new Set());
+        if (!window.confirm(t('common.confirmDelete'))) return;
+        try {
+            await TauriService.clearTaskHistory();
+            setCompletedTasks([]);
+            setExpandedAccounts(new Set());
+            // Dispatch event to update other components (like the new history report)
+            window.dispatchEvent(new CustomEvent('daily-task-completed'));
+        } catch (error) {
+            console.error('Error clearing history:', error);
+        }
     };
 
     const toggleAccountExpanded = (gameId: number, accountId: number) => {

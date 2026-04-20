@@ -59,6 +59,17 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
     return () => clearInterval(timer);
   }, []);
 
+  // Listen for completed tasks event to refresh
+  useEffect(() => {
+    const handleTaskCompleted = async () => {
+      const history = await TauriService.getTaskHistory(100);
+      setCompletedTasks(history);
+    };
+
+    window.addEventListener('daily-task-completed', handleTaskCompleted);
+    return () => window.removeEventListener('daily-task-completed', handleTaskCompleted);
+  }, []);
+
   // Load games on mount
   const refreshGames = useCallback(async () => {
     try {
@@ -121,11 +132,10 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
         setAccountStartStates(parsedStartStates);
       }
 
-      // Load completed tasks
-      const today = new Date().toISOString().split('T')[0];
-      const savedCompleted = await asyncStorageService.get(`dailyTasks_completed_${today}`) as any;
-      if (savedCompleted && mounted) {
-        setCompletedTasks(savedCompleted);
+      // Load completed tasks from SQLite
+      const history = await TauriService.getTaskHistory(100); // Load last 100 tasks for the daily view
+      if (mounted) {
+        setCompletedTasks(history);
       }
       
       // We no longer load batches from storage to ensure fresh random numbers on every entry.
@@ -271,14 +281,12 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
 
       // TRIGGER REFRESH to ensure filtering logic (TaskGenerator) is in sync with fresh DB data
       // This is crucial for the "first-time" completion where a new level is created.
-      generateTodaysTasks();
+      // WE NO LONGER REFRESH HERE to avoid random jitter shifts and excessive loading states.
+      // The state is kept stable until manual refresh or navigation.
 
-      // Refresh completed tasks from AsyncStorage
-      const today = new Date().toISOString().split('T')[0];
-      const savedCompleted = await asyncStorageService.get(`dailyTasks_completed_${today}`) as any;
-      if (savedCompleted) {
-        setCompletedTasks(savedCompleted);
-      }
+      // Refresh completed tasks from SQLite
+      const history = await TauriService.getTaskHistory(100);
+      setCompletedTasks(history);
     } catch (error: any) {
       console.error('Error completing task:', error);
       const errorMessage = error.message || 'Error completing task';

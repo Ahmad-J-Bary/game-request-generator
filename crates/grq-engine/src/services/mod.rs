@@ -7,3 +7,4 @@ pub mod purchase_event_service;
 pub mod progress_service;
 pub mod telegram_service;
 pub mod repeater_service;
+pub mod history_service;

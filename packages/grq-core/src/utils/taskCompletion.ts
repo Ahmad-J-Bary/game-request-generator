@@ -303,13 +303,8 @@ export class TaskCompletionHandler {
           isPurchase: true,
         };
 
-        // Save to AsyncStorage
-        const completedDate = new Date().toISOString().split('T')[0];
-        const completedKey = `dailyTasks_completed_${completedDate}`;
-        const existingCompleted = await asyncStorageService.get<CompletedDailyTask[]>(completedKey);
-        const completedList: CompletedDailyTask[] = existingCompleted ? existingCompleted : [];
-        completedList.push(completedTask);
-        await asyncStorageService.set(completedKey, completedList);
+        // Save to SQLite via History Service
+        await TauriService.addCompletedTask(completedTask);
 
         // Dispatch event to update sidebar
         window.dispatchEvent(new CustomEvent('daily-task-completed'));
@@ -380,13 +375,8 @@ export class TaskCompletionHandler {
             isPurchase: false,
           };
 
-          // Save to AsyncStorage
-          const completedDate = new Date().toISOString().split('T')[0];
-          const completedKey = `dailyTasks_completed_${completedDate}`;
-          const existingCompleted = await asyncStorageService.get<CompletedDailyTask[]>(completedKey);
-          const completedList: CompletedDailyTask[] = existingCompleted ? existingCompleted : [];
-          completedList.push(levelCompletedTask);
-          await asyncStorageService.set(completedKey, completedList);
+          // Save to SQLite via History Service
+          await TauriService.addCompletedTask(levelCompletedTask);
 
           // Dispatch event to update sidebar
           window.dispatchEvent(new CustomEvent('daily-task-completed'));

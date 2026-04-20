@@ -176,6 +176,7 @@ impl Database {
                 time_spent INTEGER NOT NULL,
                 completion_time INTEGER NOT NULL,
                 completion_date TEXT NOT NULL,
+                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 level_id INTEGER,
                 level_name TEXT,
                 request_type TEXT NOT NULL,
@@ -269,6 +270,12 @@ impl Database {
         if !column_exists("account_purchase_event_progress", "target_date")? {
             tx.execute(
                 "ALTER TABLE account_purchase_event_progress ADD COLUMN target_date TEXT",
+                [],
+            )?;
+        }
+        if !column_exists("completed_daily_tasks", "completed_at")? {
+            tx.execute(
+                "ALTER TABLE completed_daily_tasks ADD COLUMN completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
                 [],
             )?;
         }

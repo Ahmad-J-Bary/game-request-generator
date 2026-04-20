@@ -32,31 +32,24 @@ export const BatchTasks = React.memo(({
   enableVirtualization = false,
 }: BatchTasksProps) => {
   return (
-    <VirtualizedTaskList
-      items={batch.tasks}
-      enabled={enableVirtualization}
-      className="space-y-6"
-      itemClassName={enableVirtualization ? 'pb-6' : undefined}
-      getItemKey={(task, idx) => `${task.account.id}-${batch.batchIndex}-${idx}`}
-      renderItem={(task) => {
-        return (
-          <div key={`${task.account.id}-${batch.batchIndex}`}>
-            <TaskItem
-              task={task}
-              onCompleteTask={onCompleteTask}
-              onCopyRequest={onCopyRequest}
-              accountCompletionRecords={accountCompletionRecords}
-              accountTaskAssignments={accountTaskAssignments}
-              accountStartStates={accountStartStates}
-              batchIndex={batch.batchIndex}
-              allBatches={allBatches}
-              onUpdateResponse={onUpdateResponse}
-              completedTasks={completedTasks}
-              deferredTasks={deferredTasks}
-            />
-          </div>
-        );
-      }}
-    />
+    <div className="space-y-6">
+      {batch.tasks.map((task, idx) => (
+        <div key={`${task.account.id}-${batch.batchIndex}-${idx}`}>
+          <TaskItem
+            task={task}
+            onCompleteTask={onCompleteTask}
+            onCopyRequest={onCopyRequest}
+            accountCompletionRecords={accountCompletionRecords}
+            accountTaskAssignments={accountTaskAssignments}
+            accountStartStates={accountStartStates}
+            batchIndex={batch.batchIndex}
+            allBatches={allBatches}
+            onUpdateResponse={onUpdateResponse}
+            completedTasks={completedTasks}
+            deferredTasks={deferredTasks}
+          />
+        </div>
+      ))}
+    </div>
   );
 });

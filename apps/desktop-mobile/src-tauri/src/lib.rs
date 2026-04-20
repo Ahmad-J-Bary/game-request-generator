@@ -13,6 +13,7 @@ use grq_engine::models::game::{
     CreateBranchRequest, CreateGameRequest, Game, GameBranch, UpdateBranchRequest,
     UpdateGameRequest,
 };
+use grq_engine::models::history::{AddCompletedTaskRequest, CompletedDailyTask};
 use grq_engine::models::level::{CreateLevelRequest, Level, UpdateLevelRequest};
 use grq_engine::models::progress::{
     AccountLevelProgress, AccountPurchaseEventProgress, CreateAccountLevelProgressRequest,
@@ -25,6 +26,7 @@ use grq_engine::models::purchase_event::{
 
 use grq_engine::services::account_service::{AccountService, CompletedAccount};
 use grq_engine::services::game_service::GameService;
+use grq_engine::services::history_service::HistoryService;
 use grq_engine::services::level_service::LevelService;
 use grq_engine::services::progress_service::ProgressService;
 use grq_engine::services::purchase_event_service::PurchaseEventService;
@@ -1110,7 +1112,63 @@ fn save_bulk_progress_updates(
         .map_err(|e| format!("Failed to start progress transaction: {}", e))?;
     let service = ProgressService::new();
 
-    for level_update in request.level_updates {
+    for level_update in &request.level_updates {
+        // De-duplication check: Skip synthetic levels ("-") if a real level is at the same time
+        let level_name: String = tx
+            .query_row(
+                "SELECT level_name FROM levels WHERE id = ?1",
+                params![level_update.level_id],
+                |row| row.get(0),
+            )
+            .unwrap_or_else(|_| "".to_string());
+
+        if level_name == "-" {
+            // Check if any other level in this BATCH is a real one at the same time
+            let redundant_in_batch = request.level_updates.iter().any(|other| {
+                if other.account_id == level_update.account_id
+                    && other.time_spent == level_update.time_spent
+                    && other.target_date == level_update.target_date
+                    && other.level_id != level_update.level_id
+                {
+                    // Check if the other level is real
+                    let other_name: String = tx
+                        .query_row(
+                            "SELECT level_name FROM levels WHERE id = ?1",
+                            params![other.level_id],
+                            |row| row.get(0),
+                        )
+                        .unwrap_or_else(|_| "".to_string());
+                    other_name != "-"
+                } else {
+                    false
+                }
+            });
+
+            if redundant_in_batch {
+                continue;
+            }
+
+            // Check if any real level already exists in the DATABASE at the same time
+            let redundant_in_db: bool = tx
+                .query_row(
+                    "SELECT 1 FROM account_level_progress alp 
+                     JOIN levels l ON alp.level_id = l.id 
+                     WHERE alp.account_id = ?1 AND alp.time_spent = ?2 AND alp.target_date = ?3 
+                     AND l.level_name != '-' LIMIT 1",
+                    params![
+                        level_update.account_id,
+                        level_update.time_spent,
+                        level_update.target_date
+                    ],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+
+            if redundant_in_db {
+                continue;
+            }
+        }
+
         service.create_or_update_level_progress(
             &tx,
             CreateAccountLevelProgressRequest {
@@ -1128,7 +1186,7 @@ fn save_bulk_progress_updates(
                 level_id: level_update.level_id,
                 is_completed: level_update.is_completed,
                 time_spent: level_update.time_spent,
-                target_date: level_update.target_date,
+                target_date: level_update.target_date.clone(),
                 bypass_cooldown: level_update.bypass_cooldown,
             },
         )?;
@@ -1607,68 +1665,33 @@ fn get_daily_requests(
             let is_completed = prog.map(|p| p.is_completed).unwrap_or(false);
 
             if event_day_offset as i64 == days_passed && !is_completed {
-                let time_spent = if let Some(p) = prog {
-                    // ONLY lock if completed. If not completed, it will generate new time below.
-                    if p.is_completed && p.target_date == Some(target_date.clone()) {
-                        p.time_spent as i64
-                    } else {
-                        let mut sorted_levels = levels.clone();
-                        sorted_levels.sort_by_key(|l| l.days_offset);
-                        let total_time: i32 = sorted_levels
-                            .iter()
-                            .filter(|l| {
-                                l.days_offset == event_day_offset
-                                    || l.days_offset > event_day_offset
-                            })
-                            .take(2)
-                            .map(|l| l.time_spent)
-                            .sum();
-                        let count = sorted_levels
-                            .iter()
-                            .filter(|l| {
-                                l.days_offset == event_day_offset
-                                    || l.days_offset > event_day_offset
-                            })
-                            .take(2)
-                            .count();
-
-                        let base_time = if count > 0 {
-                            (total_time as f64 / count as f64).round() as i32
-                        } else {
-                            243
-                        };
-
-                        use rand::Rng;
-                        let mut rng = rand::thread_rng();
-                        let jitter = if base_time < 25 {
-                            rng.gen_range(-100..=500)
-                        } else {
-                            rng.gen_range(-750..=1500)
-                        };
-                        (base_time as i64 * 1000) + jitter as i64
-                    }
+                let time_spent = if let Some(p) =
+                    prog.filter(|p| p.is_completed && p.target_date == Some(target_date.clone()))
+                {
+                    p.time_spent as i64
                 } else {
-                    // Generate new
+                    // Generate new time using the restored averaging logic
                     let mut sorted_levels = levels.clone();
                     sorted_levels.sort_by_key(|l| l.days_offset);
-                    let total_time: i32 = sorted_levels
-                        .iter()
-                        .filter(|l| {
-                            l.days_offset == event_day_offset || l.days_offset > event_day_offset
-                        })
-                        .take(2)
-                        .map(|l| l.time_spent)
-                        .sum();
-                    let count = sorted_levels
-                        .iter()
-                        .filter(|l| {
-                            l.days_offset == event_day_offset || l.days_offset > event_day_offset
-                        })
-                        .take(2)
-                        .count();
 
-                    let base_time = if count > 0 {
-                        (total_time as f64 / count as f64).round() as i32
+                    let same_day_levels: Vec<&Level> = sorted_levels
+                        .iter()
+                        .filter(|l| l.days_offset == event_day_offset)
+                        .collect();
+
+                    let next_level = sorted_levels
+                        .iter()
+                        .find(|l| l.days_offset > event_day_offset);
+
+                    let mut levels_to_average = Vec::new();
+                    levels_to_average.extend(same_day_levels);
+                    if let Some(nl) = next_level {
+                        levels_to_average.push(nl);
+                    }
+
+                    let base_time = if !levels_to_average.is_empty() {
+                        let total_time: i32 = levels_to_average.iter().map(|l| l.time_spent).sum();
+                        (total_time as f64 / levels_to_average.len() as f64).round() as i32
                     } else {
                         243
                     };
@@ -1739,13 +1762,115 @@ fn get_daily_requests(
         }
     }
 
+    // De-duplication: Delete "Session Only" requests if there's a "Session + Event" task at the same time
+    // A task is "Session + Event" if it has an event at that time/timestamp.
+    // If such a task exists at a given time, any session request without a corresponding event is redundant.
+    let mut final_requests = Vec::new();
+
+    // Group requests by (time_spent, timestamp) to analyze snapshots in time
+    let mut time_groups: std::collections::HashMap<(i64, String), Vec<serde_json::Value>> =
+        std::collections::HashMap::new();
+    for req in requests {
+        let time = req["time_spent"].as_i64().unwrap_or(0);
+        let ts = req["timestamp"].as_str().unwrap_or("").to_string();
+        time_groups.entry((time, ts)).or_default().push(req);
+    }
+
+    for ((_time, _ts), mut group_reqs) in time_groups {
+        let has_any_event = group_reqs.iter().any(|r| r["request_type"] == "event");
+
+        if has_any_event {
+            // Identify tokens that have events at this moment in current list
+            let tokens_with_events: std::collections::HashSet<String> = group_reqs
+                .iter()
+                .filter(|r| r["request_type"] == "event")
+                .map(|r| r["event_token"].as_str().unwrap_or("").to_string())
+                .collect();
+
+            // Keep only one session for this moment, preferably for the token that has an event
+            let mut session_kept = false;
+            group_reqs.retain(|r| {
+                if r["request_type"] == "session" {
+                    if session_kept {
+                        return false;
+                    }
+                    let token = r["event_token"].as_str().unwrap_or("");
+                    if tokens_with_events.contains(token) {
+                        session_kept = true;
+                        return true;
+                    }
+                    false
+                } else {
+                    true // Always keep events
+                }
+            });
+        } else {
+            // No event in current list, check if a REAL level or purchase exists in DB at this time
+            let real_activity_exists_in_db: bool = conn
+                .query_row(
+                    "SELECT 1 FROM (
+                        SELECT alp.account_id, alp.time_spent, alp.target_date 
+                        FROM account_level_progress alp 
+                        JOIN levels l ON alp.level_id = l.id 
+                        WHERE l.level_name != '-'
+                        UNION ALL
+                        SELECT apep.account_id, apep.time_spent, apep.target_date 
+                        FROM account_purchase_event_progress apep
+                    ) AS combined_activity
+                    WHERE account_id = ?1 AND time_spent = ?2 AND target_date = ?3 LIMIT 1",
+                    params![account_id, _time, target_date],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+
+            if real_activity_exists_in_db {
+                // If real activity exists in DB at this time, any standalone session is redundant
+                group_reqs.retain(|r| r["request_type"] != "session");
+            }
+        }
+
+        final_requests.extend(group_reqs);
+    }
+
     Ok(serde_json::json!({
         "account_id": account_id,
         "account_name": account.name,
         "target_date": target_date,
         "days_passed": days_passed,
-        "requests": requests
+        "requests": final_requests
     }))
+}
+
+// ==================== أوامر تاريخ المهام اليومية ====================
+#[tauri::command]
+fn add_completed_task(
+    state: tauri::State<AppState>,
+    request: AddCompletedTaskRequest,
+) -> Result<(), String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = HistoryService::new();
+    service.insert_completed_task(conn, request)
+}
+
+#[tauri::command]
+fn get_task_history(
+    state: tauri::State<AppState>,
+    limit: Option<u32>,
+    account_id: Option<i64>,
+) -> Result<Vec<CompletedDailyTask>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = HistoryService::new();
+    service.get_task_history(conn, limit, account_id)
+}
+
+#[tauri::command]
+fn clear_task_history(state: tauri::State<AppState>) -> Result<(), String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = HistoryService::new();
+    service.clear_history(conn)
 }
 
 #[tauri::command]
@@ -1956,6 +2081,9 @@ pub fn run() {
             delete_store_value,
             get_config_version,
             run_legacy_config_cleanup_once,
+            add_completed_task,
+            get_task_history,
+            clear_task_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

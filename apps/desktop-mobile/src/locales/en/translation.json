@@ -8,6 +8,8 @@
     "update": "Update",
     "saving": "Saving...",
     "search": "Search",
+    "refresh": "Refresh",
+    "clearAll": "Clear All",
     "loading": "Loading...",
     "error": "Error",
     "success": "Success",
@@ -61,7 +63,8 @@
     "expand": "Expand",
     "collapse": "Collapse",
     "gameManager": "Game Manager",
-    "settings": "Settings"
+    "settings": "Settings",
+    "history": "History Report"
   },
   "games": {
     "title": "Games",
@@ -232,7 +235,17 @@
     "requestAvailable": "Request available at {{time}}",
     "waiting": "Wait",
     "sendRequest": "Send",
-    "markComplete": "Done"
+    "markComplete": "Done",
+    "historyReport": "History Report",
+    "historyDescription": "Track every session and event completion with full details and timestamps."
+  },
+  "history": {
+    "timestamp": "Completed At",
+    "account": "Account",
+    "game": "Game",
+    "task": "Task Detail",
+    "type": "Type",
+    "duration": "Dur. (ms)"
   },
   "purchaseEvents": {
     "title": "Purchase Events",

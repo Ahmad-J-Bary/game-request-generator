@@ -328,12 +328,8 @@ export class TaskGenerator {
           }
 
           if (currentBatchTasks.length > 0) {
-            // Create a stable batchIndex based on the first account in this batch
-            const firstAccount = currentBatchTasks[0].account;
-            const stableBatchKey = `batch-${firstAccount.branch_id || 'global'}-${firstAccount.id}-index-${i}`;
-            
             allBatches.push({
-              batchIndex: stableBatchKey as any,
+              batchIndex: allBatches.length, // Use simple 0-based index
               tasks: currentBatchTasks,
             });
           }

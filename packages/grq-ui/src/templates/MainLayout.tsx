@@ -21,6 +21,7 @@ import {
   Palette,
   Pin,
   PinOff,
+  History,
 } from 'lucide-react';
 import { cn } from '@grq/ui/lib/utils';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
@@ -43,6 +44,7 @@ const navigation = [
   { name: 'accounts',       href: '/accounts',        icon: Users },
   { name: 'accountsDetail', href: '/accounts/detail', icon: FileText },
   { name: 'dailyTasks',     href: '/daily-tasks',     icon: Calendar },
+  { name: 'history',        href: '/history',         icon: History },
 ];
 
 const settingsNavigation = [
