@@ -1,7 +1,6 @@
 // src/components/daily-tasks/BatchTasks.tsx
 import React from 'react';
 import { TaskItem } from './TaskItem';
-import { VirtualizedTaskList } from './VirtualizedTaskList';
 import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, RepeaterResponse } from '@grq/api-bindings/types/daily-tasks.types';
 
 interface BatchTasksProps {
@@ -29,7 +28,6 @@ export const BatchTasks = React.memo(({
   onCopyRequest,
   completedTasks,
   deferredTasks = [],
-  enableVirtualization = false,
 }: BatchTasksProps) => {
   return (
     <div className="space-y-6">
