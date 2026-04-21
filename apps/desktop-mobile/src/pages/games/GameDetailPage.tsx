@@ -776,15 +776,18 @@ function GameBranchSection({
             const day = p.days_offset;
             let midpointTime: number | null = null;
             if (day != null) {
-                const numericLevels = levelCols.filter(l => l.daysOffset !== null).sort((a, b) => (a.daysOffset as number) - (b.daysOffset as number));
+                // Exclude synthetic session levels ("-") so they don't inflate the purchase average
+                const numericLevels = levelCols.filter(l => l.daysOffset !== null && !l.synthetic).sort((a, b) => (a.daysOffset as number) - (b.daysOffset as number));
                 if (numericLevels.length > 0) {
-                    const sameDayLevels = numericLevels.filter(l => (l.daysOffset as number) === day);
+                    const prevLevel = [...numericLevels].reverse().find(l => (l.daysOffset as number) <= day);
                     const nextLevel = numericLevels.find(l => (l.daysOffset as number) > day);
-                    const levelsToAverage = [...sameDayLevels];
-                    if (nextLevel) levelsToAverage.push(nextLevel);
-                    if (levelsToAverage.length > 0) {
-                        const totalTimeSpent = levelsToAverage.reduce((sum, level) => sum + (level.timeSpent || 0), 0);
-                        midpointTime = Math.round(totalTimeSpent / levelsToAverage.length);
+
+                    if (prevLevel && nextLevel) {
+                        midpointTime = Math.round(((prevLevel.timeSpent || 0) + (nextLevel.timeSpent || 0)) / 2);
+                    } else if (prevLevel) {
+                        midpointTime = prevLevel.timeSpent || 0;
+                    } else if (nextLevel) {
+                        midpointTime = nextLevel.timeSpent || 0;
                     }
                 }
             }
@@ -845,6 +848,16 @@ function GameBranchSection({
         numeric.forEach(e => {
             if (!entriesByDay[e.daysOffset]) entriesByDay[e.daysOffset] = [];
             entriesByDay[e.daysOffset].push(e);
+        });
+
+        // Filter out redundant '-' levels in the UI if a real level exists for the same day
+        Object.keys(entriesByDay).forEach(dayKey => {
+            const day = parseInt(dayKey, 10);
+            const levels = entriesByDay[day];
+            const hasRealLevel = levels.some(l => l.kind === 'level' && !l.synthetic);
+            if (hasRealLevel) {
+                entriesByDay[day] = levels.filter(l => !(l.kind === 'level' && l.synthetic));
+            }
         });
 
         const minDay = numeric.length > 0 ? Math.min(0, numeric[0].daysOffset) : 0;

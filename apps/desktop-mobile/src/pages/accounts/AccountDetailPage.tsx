@@ -413,7 +413,7 @@ export default function AccountDetailPage() {
             const existingLevel = existingLevels.find(
               (l) =>
                 l.days_offset === newLevel.days_offset &&
-                l.event_token === newLevel.event_token,
+                (l.level_name !== "-" || l.event_token === newLevel.event_token),
             );
             if (existingLevel) actualLevelId = existingLevel.id.toString();
             else {
@@ -475,29 +475,34 @@ export default function AccountDetailPage() {
               (1000 * 60 * 60 * 24),
           );
 
-          const numericLevels = levels
-            .filter((l) => typeof l.days_offset === "number")
+          const realLevels = levels
+            .filter(
+              (l) => typeof l.days_offset === "number" && l.level_name !== "-",
+            )
             .sort(
               (a, b) => (a.days_offset as number) - (b.days_offset as number),
             );
-          if (numericLevels.length > 0) {
-            const sameDayLevels = numericLevels.filter(
-              (l) => (l.days_offset as number) === daysOffset,
-            );
-            const nextLevel = numericLevels.find(
+
+          if (realLevels.length > 0) {
+            const prevLevel = [...realLevels]
+              .reverse()
+              .find((l) => (l.days_offset as number) <= daysOffset);
+            const nextLevel = realLevels.find(
               (l) => (l.days_offset as number) > daysOffset,
             );
-            const levelsToAverage = [...sameDayLevels];
-            if (nextLevel) levelsToAverage.push(nextLevel);
-            if (levelsToAverage.length > 0) {
-              const totalTimeSpent = levelsToAverage.reduce(
-                (sum, level) => sum + (level.time_spent || 0),
-                0,
-              );
+
+            if (prevLevel && nextLevel) {
               calculatedTimeSpent = Math.round(
-                totalTimeSpent / levelsToAverage.length,
+                ((prevLevel.time_spent || 0) + (nextLevel.time_spent || 0)) / 2,
               );
+            } else if (prevLevel) {
+              calculatedTimeSpent = prevLevel.time_spent || 0;
+            } else if (nextLevel) {
+              calculatedTimeSpent = nextLevel.time_spent || 0;
             }
+            // Standardize: UI and DB work in seconds for base values, 
+            // but for request generation we need the base multiplied by 1000.
+            // Here we ensure it's at least a reasonable base value.
           }
           if (calculatedTimeSpent <= 0) {
             const existingProgress = purchaseProgress.find(

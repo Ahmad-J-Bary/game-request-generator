@@ -11,19 +11,36 @@ impl LevelService {
     }
 
     pub fn create_level(&self, conn: &Connection, request: CreateLevelRequest) -> Result<i64, String> {
-        // تحقق من وجود الفرع
-        let branch_exists: i64 = conn
-            .query_row(
-                "SELECT 1 FROM game_branches WHERE id = ?1",
-                params![request.branch_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| format!("Failed to check branch existence: {}", e))?
-            .unwrap_or(0);
+        // If this is a synthetic session level (name = "-"), check if a real level already exists for this day.
+        if request.level_name == "-" {
+            let existing_real_id: Option<i64> = conn
+                .query_row(
+                    "SELECT id FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND level_name != '-' LIMIT 1",
+                    params![request.branch_id, request.days_offset],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| format!("Failed to check for existing real level: {}", e))?;
 
-        if branch_exists == 0 {
-            return Err(format!("Branch with ID {} not found", request.branch_id));
+            if let Some(id) = existing_real_id {
+                // If a real level exists, don't create a new '-' level.
+                // We return the existing level's ID to satisfy the UI, although usually the UI checks before calling.
+                return Ok(id);
+            }
+            
+            // Also check if an identical '-' level already exists to avoid exact duplicates
+            let existing_synthetic_id: Option<i64> = conn
+                .query_row(
+                    "SELECT id FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND level_name = '-' AND event_token = ?3 LIMIT 1",
+                    params![request.branch_id, request.days_offset, request.event_token],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| format!("Failed to check for existing synthetic level: {}", e))?;
+            
+            if let Some(id) = existing_synthetic_id {
+                return Ok(id);
+            }
         }
 
         conn.execute(

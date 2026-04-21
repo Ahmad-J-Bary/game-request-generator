@@ -32,9 +32,9 @@ export default function DailyTasksPage() {
     const rBatches: GameBatch[] = [];
     const pDeferred: { task: DailyTask; batchIndex: number }[] = [];
 
-    // KEEP ALL ACTIVE BATCHES IN THE READY SECTION
-    // This allows the user to see their progress as tasks stay in place after completion.
-    // The "Deferred" section will be strictly for tasks that were not generated as part of today's initial batches.
+    // Batches contain active tasks for today.
+    // Tasks disappear from the view once they are considered fully completed
+    // (e.g. when their corresponding Event is completed).
     batches.forEach(batch => {
       rBatches.push(batch);
     });

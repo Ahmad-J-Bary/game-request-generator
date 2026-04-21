@@ -294,9 +294,8 @@ function AccountsDetailContent({
     const eventToken = `${syntheticMeta.token}_day${syntheticMeta.day}`;
     const existingLevel = branchLevels.find(
       (level) =>
-        level.level_name === "-" &&
-        level.event_token === eventToken &&
-        level.days_offset === syntheticMeta.day,
+        level.days_offset === syntheticMeta.day &&
+        (level.level_name !== "-" || level.event_token === eventToken),
     );
 
     if (existingLevel) {
@@ -526,6 +525,9 @@ function AccountsDetailContent({
       purchaseKeys.add(`${accId}_${peId}`);
     });
 
+    // Cache branch levels to avoid redundant API calls across multiple accounts
+    const branchLevelsCache = new Map<number, Awaited<ReturnType<typeof TauriService.getGameLevels>>>();
+
     for (const key of Array.from(purchaseKeys)) {
       const [accIdStr, peIdStr] = key.split("_");
       const accId = parseInt(accIdStr);
@@ -546,10 +548,44 @@ function AccountsDetailContent({
           daysOffset = Math.round(
             (selectedDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
           );
-          calculatedTimeSpent = existing?.time_spent || 243;
         }
       } else {
         daysOffset = existing?.days_offset || 0;
+      }
+
+      // Calculate time_spent: average of same-day real levels + next real level.
+      // Mirrors display table (peCols) and backend (get_daily_requests) logic.
+      // Synthetic session levels (level_name="-") are excluded to prevent inflated averages.
+      if (existing?.time_spent && !selectedDate) {
+        // Preserve stored value when no date change is made
+        calculatedTimeSpent = existing.time_spent;
+      } else if (account.branch_id != null) {
+        try {
+          // Fetch from cache or API (same pattern as ensureSyntheticLevel)
+          if (!branchLevelsCache.has(account.branch_id)) {
+            const lvls = await TauriService.getGameLevels(account.branch_id);
+            branchLevelsCache.set(account.branch_id, lvls);
+          }
+          const branchLevels = branchLevelsCache.get(account.branch_id)!;
+          const realLevels = branchLevels
+            .filter((l) => l.level_name !== "-")
+            .sort((a, b) => a.days_offset - b.days_offset);
+          const prevLevel = [...realLevels].reverse().find(l => l.days_offset <= daysOffset);
+          const nextLevel = realLevels.find(l => l.days_offset > daysOffset);
+
+          if (prevLevel && nextLevel) {
+            calculatedTimeSpent = Math.round(((prevLevel.time_spent || 0) + (nextLevel.time_spent || 0)) / 2);
+          } else if (prevLevel) {
+            calculatedTimeSpent = prevLevel.time_spent || 0;
+          } else if (nextLevel) {
+            calculatedTimeSpent = nextLevel.time_spent || 0;
+          } else {
+            calculatedTimeSpent = existing?.time_spent || 243;
+          }
+        } catch {
+          calculatedTimeSpent = existing?.time_spent || 243;
+        }
+      } else {
         calculatedTimeSpent = existing?.time_spent || 243;
       }
 
@@ -1044,7 +1080,7 @@ function BranchSection({
       if (day != null) {
         const numericLevels = levelCols
           .filter(
-            (l) => typeof l.daysOffset === "number" && l.daysOffset !== null,
+            (l) => typeof l.daysOffset === "number" && l.daysOffset !== null && !l.synthetic,
           )
           .sort((a, b) => (a.daysOffset as number) - (b.daysOffset as number));
         const sameDayLevels = numericLevels.filter(

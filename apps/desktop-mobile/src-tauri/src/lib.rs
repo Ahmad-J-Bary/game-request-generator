@@ -929,6 +929,26 @@ fn delete_branch(state: tauri::State<AppState>, id: i64) -> Result<bool, String>
 fn add_level(state: tauri::State<AppState>, request: CreateLevelRequest) -> Result<i64, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
+
+    if request.level_name == "-" {
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND time_spent = ?3 AND level_name != '-' LIMIT 1",
+                params![request.branch_id, request.days_offset, request.time_spent],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        if exists {
+            return Err("A real level already exists at this offset and time spent".to_string());
+        }
+    } else {
+        // If adding a real level, remove any redundant session-only levels at the same spot
+        let _ = conn.execute(
+            "DELETE FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND time_spent = ?3 AND level_name = '-'",
+            params![request.branch_id, request.days_offset, request.time_spent],
+        );
+    }
+
     let service = LevelService::new();
     service.create_level(conn, request)
 }
@@ -956,6 +976,37 @@ fn update_level(
 ) -> Result<bool, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
+
+    // Get current level info to check for redundancy
+    let (branch_id, level_name, days_offset, time_spent) = conn.query_row(
+        "SELECT branch_id, level_name, days_offset, time_spent FROM levels WHERE id = ?1",
+        params![request.id],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, i32>(2)?, row.get::<_, i32>(3)?))
+    ).map_err(|e| e.to_string())?;
+
+    let target_name = request.level_name.as_ref().unwrap_or(&level_name);
+    let target_days = request.days_offset.unwrap_or(days_offset);
+    let target_time = request.time_spent.unwrap_or(time_spent);
+
+    if target_name == "-" {
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND time_spent = ?3 AND level_name != '-' AND id != ?4 LIMIT 1",
+                params![branch_id, target_days, target_time, request.id],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        if exists {
+            return Err("A real level already exists at this offset and time spent".to_string());
+        }
+    } else {
+        // If updating to a real level, remove any other redundant session-only levels at the same spot
+        let _ = conn.execute(
+            "DELETE FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND time_spent = ?3 AND level_name = '-' AND id != ?4",
+            params![branch_id, target_days, target_time, request.id],
+        );
+    }
+
     let service = LevelService::new();
     service.update_level(conn, request)
 }
@@ -1616,8 +1667,20 @@ fn get_daily_requests(
             }
         }
 
-        // 5. If day has real levels but no synthetic session level exists yet, add a virtual session
-        if has_real_level && !has_synthetic_level {
+        // 5. If day has real levels but no synthetic session level exists yet, add a virtual session.
+        // Guard: do NOT add a fallback session if a real '-' level already exists in all_levels
+        // for the same base token + day (to avoid duplicate sessions).
+        let has_db_session_for_token = all_levels.iter().any(|l| {
+            l.level_name == "-"
+                && l.event_token
+                    .split("_day")
+                    .next()
+                    .unwrap_or("")
+                    == clean_event_token
+                && l.days_offset == level.days_offset
+        });
+
+        if has_real_level && !has_synthetic_level && !has_db_session_for_token {
             let mut base_request_content = template.clone();
             base_request_content =
                 base_request_content.replace("{event_token}", &clean_event_token);
@@ -1668,32 +1731,38 @@ fn get_daily_requests(
                 let time_spent = if let Some(p) =
                     prog.filter(|p| p.is_completed && p.target_date == Some(target_date.clone()))
                 {
-                    p.time_spent as i64
-                } else {
-                    // Generate new time using the restored averaging logic
-                    let mut sorted_levels = levels.clone();
-                    sorted_levels.sort_by_key(|l| l.days_offset);
-
-                    let same_day_levels: Vec<&Level> = sorted_levels
-                        .iter()
-                        .filter(|l| l.days_offset == event_day_offset)
-                        .collect();
-
-                    let next_level = sorted_levels
-                        .iter()
-                        .find(|l| l.days_offset > event_day_offset);
-
-                    let mut levels_to_average = Vec::new();
-                    levels_to_average.extend(same_day_levels);
-                    if let Some(nl) = next_level {
-                        levels_to_average.push(nl);
-                    }
-
-                    let base_time = if !levels_to_average.is_empty() {
-                        let total_time: i32 = levels_to_average.iter().map(|l| l.time_spent).sum();
-                        (total_time as f64 / levels_to_average.len() as f64).round() as i32
+                    // Standardize: if progress is stored in seconds, convert to milliseconds
+                    if p.time_spent < 10000 { // Heuristic: likely seconds if very small
+                         p.time_spent as i64 * 1000
                     } else {
-                        243
+                         p.time_spent as i64
+                    }
+                } else {
+                    // Generate time using averaging logic.
+                    // IMPORTANT: Use only REAL levels (level_name != "-") to avoid
+                    // inflating the average with synthetic session levels.
+                    let mut real_sorted_levels: Vec<&Level> = levels
+                        .iter()
+                        .filter(|l| l.level_name != "-")
+                        .collect();
+                    real_sorted_levels.sort_by_key(|l| l.days_offset);
+
+                    let base_time = {
+                        let prev_level = real_sorted_levels
+                            .iter()
+                            .filter(|l| l.days_offset <= event_day_offset)
+                            .last();
+
+                        let next_level = real_sorted_levels
+                            .iter()
+                            .find(|l| l.days_offset > event_day_offset);
+
+                        match (prev_level, next_level) {
+                            (Some(p), Some(n)) => ((p.time_spent + n.time_spent) as f64 / 2.0).round() as i32,
+                            (Some(p), None) => p.time_spent,
+                            (None, Some(n)) => n.time_spent,
+                            (None, None) => 243,
+                        }
                     };
 
                     use rand::Rng;
@@ -1743,7 +1812,7 @@ fn get_daily_requests(
                     "event_token": clean_event_token,
                     "level_id": null,
                     "time_spent": time_spent,
-                    "timestamp": target_date
+                    "timestamp": target_date.clone()
                 }));
 
                 let purchase_event_content = process_content_length(
@@ -1756,7 +1825,7 @@ fn get_daily_requests(
                     "event_token": clean_event_token,
                     "level_id": null,
                     "time_spent": time_spent,
-                    "timestamp": target_date
+                    "timestamp": target_date.clone()
                 }));
             }
         }
@@ -1787,23 +1856,42 @@ fn get_daily_requests(
                 .map(|r| r["event_token"].as_str().unwrap_or("").to_string())
                 .collect();
 
-            // Keep only one session for this moment, preferably for the token that has an event
-            let mut session_kept = false;
-            group_reqs.retain(|r| {
+            // Keep only one session for this moment.
+            // Prioritize the session for a token that has an event.
+            let mut session_to_keep_index = None;
+            
+            // First pass: try to find a session matching an event token
+            for (idx, r) in group_reqs.iter().enumerate() {
                 if r["request_type"] == "session" {
-                    if session_kept {
-                        return false;
-                    }
                     let token = r["event_token"].as_str().unwrap_or("");
                     if tokens_with_events.contains(token) {
-                        session_kept = true;
-                        return true;
+                        session_to_keep_index = Some(idx);
+                        break;
                     }
-                    false
-                } else {
-                    true // Always keep events
                 }
-            });
+            }
+            
+            // Second pass: if no matching session found, just take the first session
+            if session_to_keep_index.is_none() {
+                for (idx, r) in group_reqs.iter().enumerate() {
+                    if r["request_type"] == "session" {
+                        session_to_keep_index = Some(idx);
+                        break;
+                    }
+                }
+            }
+
+            let mut final_group = Vec::new();
+            for (idx, r) in group_reqs.into_iter().enumerate() {
+                if r["request_type"] == "session" {
+                    if Some(idx) == session_to_keep_index {
+                        final_group.push(r);
+                    }
+                } else {
+                    final_group.push(r);
+                }
+            }
+            group_reqs = final_group;
         } else {
             // No event in current list, check if a REAL level or purchase exists in DB at this time
             let real_activity_exists_in_db: bool = conn

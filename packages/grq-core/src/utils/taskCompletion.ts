@@ -382,22 +382,34 @@ export class TaskCompletionHandler {
           window.dispatchEvent(new CustomEvent('daily-task-completed'));
         }
 
-        // Update task completion status
+        // Update task completion status and filter out tasks that are now considered fully completed.
+        // A task is fully completed if its Event is completed, or all requests are completed if no event exists.
+        const filterCompletedTasks = (tasks: DailyTask[]): DailyTask[] => {
+          return updateTaskCollection(tasks).filter(task => {
+            const eventReqIdx = task.requests.findIndex(r => (r.request_type as string).includes('Event'));
+            if (eventReqIdx !== -1) {
+              // If it has an event, hide if that event is completed
+              return !task.completedTasks.has(eventReqIdx.toString());
+            }
+            // If no event, hide if all requests are completed
+            return task.completedTasks.size < task.requests.length;
+          });
+        };
+        
         const updatedBatches = this.options.batches.map(batch => ({
           ...batch,
-          tasks: updateTaskCollection(batch.tasks)
-        }));
-        const updatedDeferredTasks = updateTaskCollection(this.options.deferredTasks);
+          tasks: filterCompletedTasks(batch.tasks)
+        })).filter(batch => batch.tasks.length > 0);
+
+        const updatedDeferredTasks = filterCompletedTasks(this.options.deferredTasks);
 
         // Check if this completes a Session+Event pair (both requests in the group)
         if (foundTask && foundTask.requestGroups) {
-          const updatedTask = foundInDeferred
-            ? (updatedDeferredTasks.find(matchesTask) || null)
-            : (
-                foundBatch
-                  ? (updatedBatches.find(b => b.batchIndex === foundBatch!.batchIndex)?.tasks.find(matchesTask) || null)
-                  : (updatedBatches.flatMap(batch => batch.tasks).find(matchesTask) || null)
-              );
+          const matchingTasks = foundInDeferred
+            ? updatedDeferredTasks
+            : updatedBatches.flatMap(b => b.tasks);
+          
+          const updatedTask = matchingTasks.find(matchesTask) || null;
 
           // Find which group this request belongs to
           for (const group of foundTask.requestGroups) {

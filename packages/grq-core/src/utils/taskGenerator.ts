@@ -241,10 +241,17 @@ export class TaskGenerator {
               };
             }
 
-            // Keep partially completed groups visible. A group only disappears when all its requests are completed.
-            const pendingGroups = requestGroups.filter(group =>
-              group.requests.some(request => !isRequestCompleted(request))
-            );
+            // A task (request group) is considered completed if its Event is completed.
+            // If it has no Event (e.g. Session Only), it's completed if all its requests are completed.
+            const pendingGroups = requestGroups.filter(group => {
+              const eventReq = group.requests.find(r => (r.request_type as string).includes('Event'));
+              if (eventReq) {
+                // If there is an event, only show if that event is NOT completed
+                return !isRequestCompleted(eventReq);
+              }
+              // For session-only groups, show if any request is not completed
+              return group.requests.some(request => !isRequestCompleted(request));
+            });
 
             pendingGroups.forEach((group, index) => {
               const completedTasks = new Set<string>();
