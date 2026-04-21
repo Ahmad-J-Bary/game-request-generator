@@ -930,25 +930,6 @@ fn add_level(state: tauri::State<AppState>, request: CreateLevelRequest) -> Resu
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
 
-    if request.level_name == "-" {
-        let exists: bool = conn
-            .query_row(
-                "SELECT 1 FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND time_spent = ?3 AND level_name != '-' LIMIT 1",
-                params![request.branch_id, request.days_offset, request.time_spent],
-                |_| Ok(true),
-            )
-            .unwrap_or(false);
-        if exists {
-            return Err("A real level already exists at this offset and time spent".to_string());
-        }
-    } else {
-        // If adding a real level, remove any redundant session-only levels at the same spot
-        let _ = conn.execute(
-            "DELETE FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND time_spent = ?3 AND level_name = '-'",
-            params![request.branch_id, request.days_offset, request.time_spent],
-        );
-    }
-
     let service = LevelService::new();
     service.create_level(conn, request)
 }
@@ -987,25 +968,6 @@ fn update_level(
     let target_name = request.level_name.as_ref().unwrap_or(&level_name);
     let target_days = request.days_offset.unwrap_or(days_offset);
     let target_time = request.time_spent.unwrap_or(time_spent);
-
-    if target_name == "-" {
-        let exists: bool = conn
-            .query_row(
-                "SELECT 1 FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND time_spent = ?3 AND level_name != '-' AND id != ?4 LIMIT 1",
-                params![branch_id, target_days, target_time, request.id],
-                |_| Ok(true),
-            )
-            .unwrap_or(false);
-        if exists {
-            return Err("A real level already exists at this offset and time spent".to_string());
-        }
-    } else {
-        // If updating to a real level, remove any other redundant session-only levels at the same spot
-        let _ = conn.execute(
-            "DELETE FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND time_spent = ?3 AND level_name = '-' AND id != ?4",
-            params![branch_id, target_days, target_time, request.id],
-        );
-    }
 
     let service = LevelService::new();
     service.update_level(conn, request)

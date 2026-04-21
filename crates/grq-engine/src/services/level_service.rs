@@ -11,24 +11,8 @@ impl LevelService {
     }
 
     pub fn create_level(&self, conn: &Connection, request: CreateLevelRequest) -> Result<i64, String> {
-        // If this is a synthetic session level (name = "-"), check if a real level already exists for this day.
+        // Check if an identical '-' level already exists to avoid exact duplicates
         if request.level_name == "-" {
-            let existing_real_id: Option<i64> = conn
-                .query_row(
-                    "SELECT id FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND level_name != '-' LIMIT 1",
-                    params![request.branch_id, request.days_offset],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|e| format!("Failed to check for existing real level: {}", e))?;
-
-            if let Some(id) = existing_real_id {
-                // If a real level exists, don't create a new '-' level.
-                // We return the existing level's ID to satisfy the UI, although usually the UI checks before calling.
-                return Ok(id);
-            }
-            
-            // Also check if an identical '-' level already exists to avoid exact duplicates
             let existing_synthetic_id: Option<i64> = conn
                 .query_row(
                     "SELECT id FROM levels WHERE branch_id = ?1 AND days_offset = ?2 AND level_name = '-' AND event_token = ?3 LIMIT 1",
