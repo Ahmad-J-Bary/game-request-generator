@@ -1,6 +1,7 @@
 {
   "common": {
     "add": "إضافة",
+    "create": "إنشاء",
     "edit": "تعديل",
     "delete": "حذف",
     "cancel": "إلغاء",
@@ -68,6 +69,8 @@
   },
   "games": {
     "title": "الألعاب",
+    "newGame": "لعبة جديدة",
+    "enterName": "أدخل الاسم",
     "addGame": "إضافة لعبة",
     "editGame": "تعديل لعبة",
     "deleteGame": "حذف لعبة",

@@ -28,8 +28,21 @@ export const calculateTimerState = (
   extraTasks: DailyTask[] = []
 ): TimerState => {
   const accountId = task.account.id;
-  const completionRecord = accountCompletionRecords[accountId];
+  
+  // Determine task category: Session Only vs Session + Event
+  // A group is Session + Event if it contains an actual Event request
+  const hasEvent = task.requests.some(r => (r.request_type as string).includes('Event'));
+  const category = hasEvent ? 'session_event' : 'session_only';
+  
+  const completionRecord = accountCompletionRecords[`${accountId}_${category}`];
   const startState = accountStartStates[accountId];
+
+  // Helper to get timeSpent of a task
+  const getTaskTimeSpent = (t: DailyTask): number => {
+    return (t as any).requestGroups?.[0]?.time_spent || t.requests[0]?.time_spent || 0;
+  };
+
+  const currentTimeSpent = getTaskTimeSpent(task);
 
   // flattened list of all tasks for this account in order to find previous task
   let previousTask: DailyTask | null = null;
@@ -38,7 +51,19 @@ export const calculateTimerState = (
   for (const batch of allBatches) {
       for (const t of batch.tasks) {
           if (t.account.id === accountId) {
-              if (t === task || (t.account.id === task.account.id && t.requests[0]?.event_token === task.requests[0]?.event_token && t.requests[0]?.level_id === task.requests[0]?.level_id)) { 
+              const tHasEvent = t.requests.some(r => (r.request_type as string).includes('Event'));
+              const tCategory = tHasEvent ? 'session_event' : 'session_only';
+              
+              // Only consider tasks in the same category for sequential blocking
+              if (tCategory !== category) continue;
+
+              if (t === task || (
+                  t.account.id === task.account.id && 
+                  t.requests[0]?.event_token === task.requests[0]?.event_token && 
+                  t.requests[0]?.level_id === task.requests[0]?.level_id &&
+                  (t.requests[0] as any).days_offset === (task.requests[0] as any).days_offset &&
+                  getTaskTimeSpent(t) === currentTimeSpent
+              )) { 
                   foundCurrent = true;
                   break;
               }
@@ -51,7 +76,18 @@ export const calculateTimerState = (
   if (!foundCurrent) {
       for (const t of extraTasks) {
           if (t.account.id === accountId) {
-              if (t === task || (t.account.id === task.account.id && t.requests[0]?.event_token === task.requests[0]?.event_token && t.requests[0]?.level_id === task.requests[0]?.level_id)) {
+              const tHasEvent = t.requests.some(r => (r.request_type as string).includes('Event'));
+              const tCategory = tHasEvent ? 'session_event' : 'session_only';
+              
+              if (tCategory !== category) continue;
+
+              if (t === task || (
+                  t.account.id === task.account.id && 
+                  t.requests[0]?.event_token === task.requests[0]?.event_token && 
+                  t.requests[0]?.level_id === task.requests[0]?.level_id &&
+                  (t.requests[0] as any).days_offset === (task.requests[0] as any).days_offset &&
+                  getTaskTimeSpent(t) === currentTimeSpent
+              )) {
                   foundCurrent = true;
                   break;
               }
@@ -59,11 +95,6 @@ export const calculateTimerState = (
           }
       }
   }
-  
-  // Helper to get timeSpent of a task
-  const getTaskTimeSpent = (t: DailyTask): number => {
-       return t.requestGroups?.[0]?.time_spent || t.requests[0]?.time_spent || 0;
-  };
   
   // Helper to check if a task is completed
   const isTaskCompleted = (t: DailyTask): boolean => {
@@ -85,9 +116,6 @@ export const calculateTimerState = (
   // 2. Calculate Target Availability Time
   let targetTime = 0;
   let reason: TimerState['reason'] = 'cooldown';
-
-  const currentTimeSpent = getTaskTimeSpent(task);
-
   if (completionRecord) {
       // Subsequent tasks: Wait from the moment the previous unit was finished
       // Target = Previous Completion Time + (Current Task TimeSpent - Previous Task TimeSpent)

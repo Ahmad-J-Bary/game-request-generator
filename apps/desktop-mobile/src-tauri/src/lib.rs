@@ -958,17 +958,6 @@ fn update_level(
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
 
-    // Get current level info to check for redundancy
-    let (branch_id, level_name, days_offset, time_spent) = conn.query_row(
-        "SELECT branch_id, level_name, days_offset, time_spent FROM levels WHERE id = ?1",
-        params![request.id],
-        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, i32>(2)?, row.get::<_, i32>(3)?))
-    ).map_err(|e| e.to_string())?;
-
-    let target_name = request.level_name.as_ref().unwrap_or(&level_name);
-    let target_days = request.days_offset.unwrap_or(days_offset);
-    let target_time = request.time_spent.unwrap_or(time_spent);
-
     let service = LevelService::new();
     service.update_level(conn, request)
 }

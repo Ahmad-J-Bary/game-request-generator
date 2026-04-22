@@ -1,6 +1,7 @@
 {
   "common": {
     "add": "Add",
+    "create": "Create",
     "edit": "Edit",
     "delete": "Delete",
     "cancel": "Cancel",
@@ -68,6 +69,8 @@
   },
   "games": {
     "title": "Games",
+    "newGame": "New Game",
+    "enterName": "Enter Name",
     "addGame": "Add Game",
     "editGame": "Edit Game",
     "deleteGame": "Delete Game",

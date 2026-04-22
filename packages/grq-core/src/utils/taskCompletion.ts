@@ -434,8 +434,14 @@ export class TaskCompletionHandler {
                 eventToken: group.event_token,
               };
 
+              // Determine task category for independent timer tracking
+              const hasEventInGroup = group.requests.some(r => (r.request_type as string).includes('Event'));
+              const category = hasEventInGroup ? 'session_event' : 'session_only';
+
               this.options.setAccountCompletionRecords(prev => ({
                 ...prev,
+                [`${accountId}_${category}`]: completionRecord,
+                // Keep the original accountId key for backward compatibility or global tracking if needed
                 [accountId]: completionRecord
               }));
 

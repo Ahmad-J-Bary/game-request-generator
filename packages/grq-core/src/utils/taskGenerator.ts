@@ -177,6 +177,9 @@ export class TaskGenerator {
 
             if (matchingLevel) {
               req.level_name = matchingLevel.level_name;
+              req.level_id = matchingLevel.id;
+              req.days_offset = matchingLevel.days_offset;
+              
               const rawType = (req.request_type as string).toLowerCase();
               if (rawType === 'session' || rawType === 'session only') {
                 const hasCorrespondingEvent = tempRequests.some(r =>
@@ -191,6 +194,9 @@ export class TaskGenerator {
               validRequests.push(req);
             } else if (matchingPurchase) {
               req.level_name = '$$$';
+              req.level_id = matchingPurchase.id;
+              req.days_offset = matchingPurchase.days_offset;
+              
               const rawType = req.request_type as string;
               req.request_type = rawType === 'session' ? 'Purchase Session' : 'Purchase Event';
               validRequests.push(req);
