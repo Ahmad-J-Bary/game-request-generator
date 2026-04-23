@@ -1153,9 +1153,9 @@ fn save_bulk_progress_updates(
             // Check if any real level already exists in the DATABASE at the same time
             let redundant_in_db: bool = tx
                 .query_row(
-                    "SELECT 1 FROM account_level_progress alp 
-                     JOIN levels l ON alp.level_id = l.id 
-                     WHERE alp.account_id = ?1 AND alp.time_spent = ?2 AND alp.target_date = ?3 
+                    "SELECT 1 FROM account_level_progress alp
+                     JOIN levels l ON alp.level_id = l.id
+                     WHERE alp.account_id = ?1 AND alp.time_spent = ?2 AND alp.target_date = ?3
                      AND l.level_name != '-' LIMIT 1",
                     params![
                         level_update.account_id,
@@ -1623,11 +1623,7 @@ fn get_daily_requests(
         // for the same base token + day (to avoid duplicate sessions).
         let has_db_session_for_token = all_levels.iter().any(|l| {
             l.level_name == "-"
-                && l.event_token
-                    .split("_day")
-                    .next()
-                    .unwrap_or("")
-                    == clean_event_token
+                && l.event_token.split("_day").next().unwrap_or("") == clean_event_token
                 && l.days_offset == level.days_offset
         });
 
@@ -1683,36 +1679,119 @@ fn get_daily_requests(
                     prog.filter(|p| p.is_completed && p.target_date == Some(target_date.clone()))
                 {
                     // Standardize: if progress is stored in seconds, convert to milliseconds
-                    if p.time_spent < 10000 { // Heuristic: likely seconds if very small
-                         p.time_spent as i64 * 1000
+                    if p.time_spent < 10000 {
+                        // Heuristic: likely seconds if very small
+                        p.time_spent as i64 * 1000
                     } else {
-                         p.time_spent as i64
+                        p.time_spent as i64
                     }
                 } else {
-                    // Generate time using averaging logic.
-                    // IMPORTANT: Use only REAL levels (level_name != "-") to avoid
-                    // inflating the average with synthetic session levels.
-                    let mut real_sorted_levels: Vec<&Level> = levels
-                        .iter()
-                        .filter(|l| l.level_name != "-")
-                        .collect();
+                    // Generate time using timeline-aware averaging logic that includes
+                    // session-only days (synthetic '-') between real event anchors.
+                    // This matches frontend tables where missing days are represented
+                    // by session-only timeline entries.
+                    let mut real_sorted_levels: Vec<&Level> =
+                        levels.iter().filter(|l| l.level_name != "-").collect();
                     real_sorted_levels.sort_by_key(|l| l.days_offset);
 
                     let base_time = {
-                        let prev_level = real_sorted_levels
-                            .iter()
-                            .filter(|l| l.days_offset <= event_day_offset)
-                            .last();
+                        if real_sorted_levels.is_empty() {
+                            243
+                        } else {
+                            // Build a virtual timeline that includes missing days between min..max
+                            // and assigns them interpolated session-only values.
+                            let mut timeline_points: Vec<(i32, i32)> = real_sorted_levels
+                                .iter()
+                                .map(|l| (l.days_offset, l.time_spent))
+                                .collect();
 
-                        let next_level = real_sorted_levels
-                            .iter()
-                            .find(|l| l.days_offset > event_day_offset);
+                            let min_day = std::cmp::min(
+                                0,
+                                timeline_points.first().map(|(d, _)| *d).unwrap_or(0),
+                            );
+                            let max_day = timeline_points.last().map(|(d, _)| *d).unwrap_or(0);
 
-                        match (prev_level, next_level) {
-                            (Some(p), Some(n)) => ((p.time_spent + n.time_spent) as f64 / 2.0).round() as i32,
-                            (Some(p), None) => p.time_spent,
-                            (None, Some(n)) => n.time_spent,
-                            (None, None) => 243,
+                            let existing_days: std::collections::HashSet<i32> =
+                                timeline_points.iter().map(|(d, _)| *d).collect();
+
+                            for day in min_day..=max_day {
+                                if existing_days.contains(&day) {
+                                    continue;
+                                }
+
+                                let prev = real_sorted_levels
+                                    .iter()
+                                    .filter(|l| l.days_offset < day)
+                                    .max_by_key(|l| l.days_offset);
+
+                                let next = real_sorted_levels
+                                    .iter()
+                                    .filter(|l| l.days_offset > day)
+                                    .min_by_key(|l| l.days_offset);
+
+                                let interpolated = match (prev, next) {
+                                    (Some(p), Some(n)) => {
+                                        let span = (n.days_offset - p.days_offset) as f64;
+                                        if span <= 0.0 {
+                                            p.time_spent
+                                        } else {
+                                            let ratio = (day - p.days_offset) as f64 / span;
+                                            (p.time_spent as f64
+                                                + ratio * (n.time_spent - p.time_spent) as f64)
+                                                .round()
+                                                as i32
+                                        }
+                                    }
+                                    (None, Some(n)) => {
+                                        // Before first real level: progressive ramp from day 0
+                                        let first_real_day = n.days_offset;
+                                        if first_real_day <= 0 {
+                                            n.time_spent
+                                        } else {
+                                            ((day + 1) as f64
+                                                * (n.time_spent as f64
+                                                    / (first_real_day + 1) as f64))
+                                                .round()
+                                                as i32
+                                        }
+                                    }
+                                    (Some(p), None) => p.time_spent,
+                                    (None, None) => 243,
+                                };
+
+                                timeline_points.push((day, interpolated));
+                            }
+
+                            timeline_points.sort_by_key(|(d, _)| *d);
+
+                            // For purchase day: average same-day timeline entries + next timeline entry.
+                            let same_day_levels: Vec<i32> = timeline_points
+                                .iter()
+                                .filter(|(d, _)| *d == event_day_offset)
+                                .map(|(_, t)| *t)
+                                .collect();
+
+                            let next_level = timeline_points
+                                .iter()
+                                .find(|(d, _)| *d > event_day_offset)
+                                .map(|(_, t)| *t);
+
+                            let mut levels_to_average = same_day_levels;
+                            if let Some(n) = next_level {
+                                levels_to_average.push(n);
+                            }
+
+                            if !levels_to_average.is_empty() {
+                                let total: i32 = levels_to_average.iter().sum();
+                                (total as f64 / levels_to_average.len() as f64).round() as i32
+                            } else {
+                                // Fallback to previous real anchor if no same/next timeline point exists.
+                                let prev_level = real_sorted_levels
+                                    .iter()
+                                    .filter(|l| l.days_offset <= event_day_offset)
+                                    .last();
+                                prev_level.map(|p| p.time_spent).unwrap_or(243)
+                            }
                         }
                     };
 
@@ -1810,7 +1889,7 @@ fn get_daily_requests(
             // Keep only one session for this moment.
             // Prioritize the session for a token that has an event.
             let mut session_to_keep_index = None;
-            
+
             // First pass: try to find a session matching an event token
             for (idx, r) in group_reqs.iter().enumerate() {
                 if r["request_type"] == "session" {
@@ -1821,7 +1900,7 @@ fn get_daily_requests(
                     }
                 }
             }
-            
+
             // Second pass: if no matching session found, just take the first session
             if session_to_keep_index.is_none() {
                 for (idx, r) in group_reqs.iter().enumerate() {
@@ -1848,12 +1927,12 @@ fn get_daily_requests(
             let real_activity_exists_in_db: bool = conn
                 .query_row(
                     "SELECT 1 FROM (
-                        SELECT alp.account_id, alp.time_spent, alp.target_date 
-                        FROM account_level_progress alp 
-                        JOIN levels l ON alp.level_id = l.id 
+                        SELECT alp.account_id, alp.time_spent, alp.target_date
+                        FROM account_level_progress alp
+                        JOIN levels l ON alp.level_id = l.id
                         WHERE l.level_name != '-'
                         UNION ALL
-                        SELECT apep.account_id, apep.time_spent, apep.target_date 
+                        SELECT apep.account_id, apep.time_spent, apep.target_date
                         FROM account_purchase_event_progress apep
                     ) AS combined_activity
                     WHERE account_id = ?1 AND time_spent = ?2 AND target_date = ?3 LIMIT 1",

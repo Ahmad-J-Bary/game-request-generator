@@ -3,14 +3,19 @@
  * Timer utilities for managing task readiness and countdown logic
  */
 
-import type { DailyTask, GameBatch, AccountCompletionRecord, AccountStartState } from '@grq/api-bindings';
+import type {
+  DailyTask,
+  GameBatch,
+  AccountCompletionRecord,
+  AccountStartState,
+} from "@grq/api-bindings";
 
 export interface TimerState {
   isReady: boolean;
   isBlocked: boolean;
   remainingTime: number;
   comeBackTime: Date | null;
-  reason: 'ready' | 'blocked' | 'cooldown' | 'initializing';
+  reason: "ready" | "blocked" | "cooldown" | "initializing";
 }
 
 /**
@@ -25,21 +30,20 @@ export const calculateTimerState = (
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
   accountStartStates: { [accountId: number]: AccountStartState },
   completedTasks: any[] = [],
-  extraTasks: DailyTask[] = []
+  extraTasks: DailyTask[] = [],
 ): TimerState => {
   const accountId = task.account.id;
-  
-  // Determine task category: Session Only vs Session + Event
-  // A group is Session + Event if it contains an actual Event request
-  const hasEvent = task.requests.some(r => (r.request_type as string).includes('Event'));
-  const category = hasEvent ? 'session_event' : 'session_only';
-  
-  const completionRecord = accountCompletionRecords[`${accountId}_${category}`];
+
+  const completionRecord = accountCompletionRecords[accountId];
   const startState = accountStartStates[accountId];
 
   // Helper to get timeSpent of a task
   const getTaskTimeSpent = (t: DailyTask): number => {
-    return (t as any).requestGroups?.[0]?.time_spent || t.requests[0]?.time_spent || 0;
+    return (
+      (t as any).requestGroups?.[0]?.time_spent ||
+      t.requests[0]?.time_spent ||
+      0
+    );
   };
 
   const currentTimeSpent = getTaskTimeSpent(task);
@@ -49,57 +53,50 @@ export const calculateTimerState = (
   let foundCurrent = false;
 
   for (const batch of allBatches) {
-      for (const t of batch.tasks) {
-          if (t.account.id === accountId) {
-              const tHasEvent = t.requests.some(r => (r.request_type as string).includes('Event'));
-              const tCategory = tHasEvent ? 'session_event' : 'session_only';
-              
-              // Only consider tasks in the same category for sequential blocking
-              if (tCategory !== category) continue;
-
-              if (t === task || (
-                  t.account.id === task.account.id && 
-                  t.requests[0]?.event_token === task.requests[0]?.event_token && 
-                  t.requests[0]?.level_id === task.requests[0]?.level_id &&
-                  (t.requests[0] as any).days_offset === (task.requests[0] as any).days_offset &&
-                  getTaskTimeSpent(t) === currentTimeSpent
-              )) { 
-                  foundCurrent = true;
-                  break;
-              }
-              previousTask = t;
-          }
+    for (const t of batch.tasks) {
+      if (t.account.id === accountId) {
+        if (
+          t === task ||
+          (t.account.id === task.account.id &&
+            t.requests[0]?.event_token === task.requests[0]?.event_token &&
+            t.requests[0]?.level_id === task.requests[0]?.level_id &&
+            (t.requests[0] as any).days_offset ===
+              (task.requests[0] as any).days_offset &&
+            getTaskTimeSpent(t) === currentTimeSpent)
+        ) {
+          foundCurrent = true;
+          break;
+        }
+        previousTask = t;
       }
-      if (foundCurrent) break;
+    }
+    if (foundCurrent) break;
   }
 
   if (!foundCurrent) {
-      for (const t of extraTasks) {
-          if (t.account.id === accountId) {
-              const tHasEvent = t.requests.some(r => (r.request_type as string).includes('Event'));
-              const tCategory = tHasEvent ? 'session_event' : 'session_only';
-              
-              if (tCategory !== category) continue;
-
-              if (t === task || (
-                  t.account.id === task.account.id && 
-                  t.requests[0]?.event_token === task.requests[0]?.event_token && 
-                  t.requests[0]?.level_id === task.requests[0]?.level_id &&
-                  (t.requests[0] as any).days_offset === (task.requests[0] as any).days_offset &&
-                  getTaskTimeSpent(t) === currentTimeSpent
-              )) {
-                  foundCurrent = true;
-                  break;
-              }
-              previousTask = t;
-          }
+    for (const t of extraTasks) {
+      if (t.account.id === accountId) {
+        if (
+          t === task ||
+          (t.account.id === task.account.id &&
+            t.requests[0]?.event_token === task.requests[0]?.event_token &&
+            t.requests[0]?.level_id === task.requests[0]?.level_id &&
+            (t.requests[0] as any).days_offset ===
+              (task.requests[0] as any).days_offset &&
+            getTaskTimeSpent(t) === currentTimeSpent)
+        ) {
+          foundCurrent = true;
+          break;
+        }
+        previousTask = t;
       }
+    }
   }
-  
+
   // Helper to check if a task is completed
   const isTaskCompleted = (t: DailyTask): boolean => {
-      if (!t.requests || t.requests.length === 0) return true;
-      return t.requests.every((_, idx) => t.completedTasks.has(idx.toString()));
+    if (!t.requests || t.requests.length === 0) return true;
+    return t.requests.every((_, idx) => t.completedTasks.has(idx.toString()));
   };
 
   // 1. Check for sequential dependency (Pending Previous)
@@ -109,39 +106,39 @@ export const calculateTimerState = (
       isBlocked: true,
       remainingTime: 0,
       comeBackTime: null,
-      reason: 'blocked'
+      reason: "blocked",
     };
   }
 
   // 2. Calculate Target Availability Time
   let targetTime = 0;
-  let reason: TimerState['reason'] = 'cooldown';
+  let reason: TimerState["reason"] = "cooldown";
   if (completionRecord) {
-      // Subsequent tasks: Wait from the moment the previous unit was finished
-      // Target = Previous Completion Time + (Current Task TimeSpent - Previous Task TimeSpent)
-      const prevTimeSpent = completionRecord.timeSpent;
-      const waitDuration = Math.max(0, currentTimeSpent - prevTimeSpent);
-      targetTime = completionRecord.completionTime + (waitDuration * 1000);
+    // Subsequent tasks: Wait from the moment the previous unit was finished
+    // Target = Previous Completion Time + (Current Task TimeSpent - Previous Task TimeSpent)
+    const prevTimeSpent = completionRecord.timeSpent;
+    const waitDuration = Math.max(0, currentTimeSpent - prevTimeSpent);
+    targetTime = completionRecord.completionTime + waitDuration * 1000;
   } else if (startState && startState.startTime) {
-      // First Task: Wait from the account's configured start time (the "zero" reference)
-      // Target = Start Time + (Current Task TimeSpent - 0)
-      reason = 'initializing';
-      const baseTime = new Date(startState.startTime).getTime();
-      if (!isNaN(baseTime)) {
-          targetTime = baseTime + (currentTimeSpent * 1000);
-      }
+    // First Task: Wait from the account's configured start time (the "zero" reference)
+    // Target = Start Time + (Current Task TimeSpent - 0)
+    reason = "initializing";
+    const baseTime = new Date(startState.startTime).getTime();
+    if (!isNaN(baseTime)) {
+      targetTime = baseTime + currentTimeSpent * 1000;
+    }
   }
 
   // Check if we need to wait
   if (targetTime > 0 && currentTime < targetTime) {
-       const remainingTime = Math.ceil((targetTime - currentTime) / 1000);
-       return {
-          isReady: false,
-          isBlocked: false,
-          remainingTime,
-          comeBackTime: new Date(targetTime),
-          reason: reason
-       };
+    const remainingTime = Math.ceil((targetTime - currentTime) / 1000);
+    return {
+      isReady: false,
+      isBlocked: false,
+      remainingTime,
+      comeBackTime: new Date(targetTime),
+      reason: reason,
+    };
   }
 
   // 3. Global Cooldown Check (1 hour)
@@ -149,35 +146,40 @@ export const calculateTimerState = (
   const taskLevelId = task.requests[0]?.level_id;
   const taskEventToken = task.requests[0]?.event_token;
   const taskGameId = task.account.game_id;
-  
+
   if (taskLevelId || taskEventToken) {
     let globalCooldownTarget = 0;
     const OneHourMs = 3600 * 1000;
 
     for (const completedTask of completedTasks) {
-       // Skip own completions as they are handled by the sequential logic
-       if (completedTask.accountId === accountId) continue;
-       if (completedTask.gameId !== taskGameId) continue;
+      // Skip own completions as they are handled by the sequential logic
+      if (completedTask.accountId === accountId) continue;
+      if (completedTask.gameId !== taskGameId) continue;
 
-       const isSameLevel = taskLevelId && completedTask.levelId === taskLevelId;
-       const isSameEvent = taskEventToken && completedTask.eventToken === taskEventToken && !taskLevelId;
+      const isSameLevel = taskLevelId && completedTask.levelId === taskLevelId;
+      const isSameEvent =
+        taskEventToken &&
+        completedTask.eventToken === taskEventToken &&
+        !taskLevelId;
 
-       if (isSameLevel || isSameEvent) {
-          const cooldownEnd = completedTask.completionTime + OneHourMs;
-          if (cooldownEnd > globalCooldownTarget) {
-            globalCooldownTarget = cooldownEnd;
-          }
-       }
+      if (isSameLevel || isSameEvent) {
+        const cooldownEnd = completedTask.completionTime + OneHourMs;
+        if (cooldownEnd > globalCooldownTarget) {
+          globalCooldownTarget = cooldownEnd;
+        }
+      }
     }
 
     if (globalCooldownTarget > currentTime) {
-      const remainingTime = Math.ceil((globalCooldownTarget - currentTime) / 1000);
+      const remainingTime = Math.ceil(
+        (globalCooldownTarget - currentTime) / 1000,
+      );
       return {
         isReady: false,
         isBlocked: false,
         remainingTime,
         comeBackTime: new Date(globalCooldownTarget),
-        reason: 'cooldown'
+        reason: "cooldown",
       };
     }
   }
@@ -188,7 +190,7 @@ export const calculateTimerState = (
     isBlocked: false,
     remainingTime: 0,
     comeBackTime: null,
-    reason: 'ready'
+    reason: "ready",
   };
 };
 
@@ -196,8 +198,8 @@ export const calculateTimerState = (
  * Format remaining time in a human-readable format
  */
 export const formatRemainingTime = (seconds: number): string => {
-  if (seconds <= 0) return '0s';
-  
+  if (seconds <= 0) return "0s";
+
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
@@ -207,7 +209,7 @@ export const formatRemainingTime = (seconds: number): string => {
   if (minutes > 0) parts.push(`${minutes}m`);
   if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
 
-  return parts.join(' ');
+  return parts.join(" ");
 };
 
 /**
@@ -215,29 +217,29 @@ export const formatRemainingTime = (seconds: number): string => {
  */
 export const getTimerMessage = (
   timerState: TimerState,
-  t: (key: string, options?: any) => string
+  t: (key: string, options?: any) => string,
 ): string => {
   if (timerState.isReady) {
-    return t('dailyTasks.ready');
+    return t("dailyTasks.ready");
   }
 
   if (timerState.isBlocked) {
-    return t('dailyTasks.blockedByPrevious');
+    return t("dailyTasks.blockedByPrevious");
   }
 
-  if (timerState.reason === 'cooldown' && timerState.comeBackTime) {
-    return t('dailyTasks.requestAvailable', { 
-        time: timerState.comeBackTime.toLocaleString() 
+  if (timerState.reason === "cooldown" && timerState.comeBackTime) {
+    return t("dailyTasks.requestAvailable", {
+      time: timerState.comeBackTime.toLocaleString(),
     });
   }
 
-  if (timerState.reason === 'initializing' && timerState.comeBackTime) {
-    return t('dailyTasks.accountInitializing', {
-      time: timerState.comeBackTime.toLocaleString()
+  if (timerState.reason === "initializing" && timerState.comeBackTime) {
+    return t("dailyTasks.accountInitializing", {
+      time: timerState.comeBackTime.toLocaleString(),
     });
   }
 
-  return t('dailyTasks.waitingTime', { seconds: timerState.remainingTime });
+  return t("dailyTasks.waitingTime", { seconds: timerState.remainingTime });
 };
 
 /**
@@ -249,9 +251,9 @@ export const isBatchReady = (
   currentTime: number,
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord },
   accountStartStates: { [accountId: number]: AccountStartState },
-  completedTasks: any[] = []
+  completedTasks: any[] = [],
 ): boolean => {
-  return batch.tasks.every(task => {
+  return batch.tasks.every((task) => {
     const timerState = calculateTimerState(
       task,
       batch.batchIndex,
@@ -259,7 +261,7 @@ export const isBatchReady = (
       currentTime,
       accountCompletionRecords,
       accountStartStates,
-      completedTasks
+      completedTasks,
     );
     return timerState.isReady;
   });

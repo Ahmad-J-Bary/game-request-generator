@@ -40,6 +40,11 @@ import { ExcelTabBar } from "@grq/ui/organisms/ExcelTabBar";
 import { Popover, PopoverContent, PopoverTrigger } from "@grq/ui/atoms/popover";
 import { Label } from "@grq/ui/atoms/label";
 import { Badge } from "@grq/ui/atoms/badge";
+import {
+  getRealTimelineLevels,
+  getSyntheticSessionTimeSpent,
+  expandTimelineWithSessionDays,
+} from "@grq/core/utils/timeline-time.utils";
 
 import type {
   PurchaseEvent,
@@ -125,13 +130,13 @@ export default function AccountsDetailPage() {
   const { theme } = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   const [layout, setLayout] = useState<Layout>("vertical");
-  
+
   // Read gameId from URL query params
-  const urlGameId = searchParams.get('gameId');
+  const urlGameId = searchParams.get("gameId");
   const [selectedGameId, setSelectedGameIdState] = useState<number | undefined>(
-    urlGameId ? parseInt(urlGameId, 10) : undefined
+    urlGameId ? parseInt(urlGameId, 10) : undefined,
   );
-  
+
   // Update URL when game is selected
   const setSelectedGameId = (gameId?: number) => {
     setSelectedGameIdState(gameId);
@@ -141,7 +146,7 @@ export default function AccountsDetailPage() {
       setSearchParams({});
     }
   };
-  
+
   const [mode, setMode] = useState<Mode>("event-only");
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -311,8 +316,12 @@ function AccountsDetailContent({
       .sort((a, b) => a.days_offset - b.days_offset);
 
     const searchLevels =
-      relatedRealLevels.length > 0 ? relatedRealLevels : branchLevels.filter(l => l.level_name !== "-");
-    const nextMatch = searchLevels.find((l) => l.days_offset > syntheticMeta.day);
+      relatedRealLevels.length > 0
+        ? relatedRealLevels
+        : branchLevels.filter((l) => l.level_name !== "-");
+    const nextMatch = searchLevels.find(
+      (l) => l.days_offset > syntheticMeta.day,
+    );
 
     const realLevels = searchLevels;
     const firstRealDay = Number(realLevels[0]?.days_offset ?? 0);
@@ -320,10 +329,13 @@ function AccountsDetailContent({
     let synthesizedTime = 0;
     if (nextMatch && syntheticMeta.day < firstRealDay) {
       synthesizedTime = Math.round(
-        (syntheticMeta.day + 1) * ((nextMatch.time_spent || 0) / (firstRealDay + 1)),
+        (syntheticMeta.day + 1) *
+          ((nextMatch.time_spent || 0) / (firstRealDay + 1)),
       );
     } else if (nextMatch) {
-      const prevLevels = realLevels.filter((l) => l.days_offset < syntheticMeta.day);
+      const prevLevels = realLevels.filter(
+        (l) => l.days_offset < syntheticMeta.day,
+      );
       const prevReal = prevLevels[prevLevels.length - 1];
       synthesizedTime = prevReal?.time_spent || 0;
     } else {
@@ -526,7 +538,10 @@ function AccountsDetailContent({
     });
 
     // Cache branch levels to avoid redundant API calls across multiple accounts
-    const branchLevelsCache = new Map<number, Awaited<ReturnType<typeof TauriService.getGameLevels>>>();
+    const branchLevelsCache = new Map<
+      number,
+      Awaited<ReturnType<typeof TauriService.getGameLevels>>
+    >();
 
     for (const key of Array.from(purchaseKeys)) {
       const [accIdStr, peIdStr] = key.split("_");
@@ -567,18 +582,34 @@ function AccountsDetailContent({
             branchLevelsCache.set(account.branch_id, lvls);
           }
           const branchLevels = branchLevelsCache.get(account.branch_id)!;
-          const realLevels = branchLevels
-            .filter((l) => l.level_name !== "-")
-            .sort((a, b) => a.days_offset - b.days_offset);
-          const prevLevel = [...realLevels].reverse().find(l => l.days_offset <= daysOffset);
-          const nextLevel = realLevels.find(l => l.days_offset > daysOffset);
+          const realLevels = getRealTimelineLevels(
+            branchLevels.map((l) => ({
+              daysOffset: Number(l.days_offset),
+              timeSpent: Number(l.time_spent || 0),
+              levelName: l.level_name,
+              token: (l.event_token || "").split("_day")[0],
+              synthetic: l.level_name === "-",
+            })),
+          );
 
-          if (prevLevel && nextLevel) {
-            calculatedTimeSpent = Math.round(((prevLevel.time_spent || 0) + (nextLevel.time_spent || 0)) / 2);
-          } else if (prevLevel) {
-            calculatedTimeSpent = prevLevel.time_spent || 0;
-          } else if (nextLevel) {
-            calculatedTimeSpent = nextLevel.time_spent || 0;
+          const expandedLevels = expandTimelineWithSessionDays(realLevels);
+          const sameDayLevels = expandedLevels.filter(
+            (l) => l.daysOffset === daysOffset,
+          );
+          const nextLevel = expandedLevels.find(
+            (l) => l.daysOffset > daysOffset,
+          );
+          const levelsToAverage = [...sameDayLevels];
+          if (nextLevel) levelsToAverage.push(nextLevel);
+
+          if (levelsToAverage.length > 0) {
+            const totalTimeSpent = levelsToAverage.reduce(
+              (sum, level) => sum + (level.timeSpent || 0),
+              0,
+            );
+            calculatedTimeSpent = Math.round(
+              totalTimeSpent / levelsToAverage.length,
+            );
           } else {
             calculatedTimeSpent = existing?.time_spent || 243;
           }
@@ -1058,7 +1089,9 @@ function BranchSection({
   };
 
   const handleAccountEdit = (account: Account) => {
-    navigate(`/accounts/edit/${account.id}`, { state: { account, selectedGameId } });
+    navigate(`/accounts/edit/${account.id}`, {
+      state: { account, selectedGameId },
+    });
   };
 
   const columns = useMemo(() => {
@@ -1078,25 +1111,31 @@ function BranchSection({
       const day = p.days_offset;
       let midpointTime: number | null = null;
       if (day != null) {
-        const numericLevels = levelCols
-          .filter(
-            (l) => typeof l.daysOffset === "number" && l.daysOffset !== null && !l.synthetic,
-          )
-          .sort((a, b) => (a.daysOffset as number) - (b.daysOffset as number));
-        const sameDayLevels = numericLevels.filter(
-          (l) => (l.daysOffset as number) === day,
+        const realLevels = getRealTimelineLevels(
+          levelCols.map((l) => ({
+            daysOffset: Number(l.daysOffset),
+            timeSpent: Number(l.timeSpent || 0),
+            levelName: l.name,
+            token: l.token,
+            synthetic: l.synthetic,
+          })),
         );
-        const nextLevel = numericLevels.find(
-          (l) => (l.daysOffset as number) > day,
-        );
-        const levelsToAverage = [...sameDayLevels];
-        if (nextLevel) levelsToAverage.push(nextLevel);
-        if (levelsToAverage.length > 0) {
-          const totalTimeSpent = levelsToAverage.reduce(
-            (sum, level) => sum + (level.timeSpent || 0),
-            0,
+        if (realLevels.length > 0) {
+          const expandedLevels = expandTimelineWithSessionDays(realLevels);
+          const sameDayLevels = expandedLevels.filter(
+            (l) => l.daysOffset === day,
           );
-          midpointTime = Math.round(totalTimeSpent / levelsToAverage.length);
+          const nextLevel = expandedLevels.find((l) => l.daysOffset > day);
+          const levelsToAverage = [...sameDayLevels];
+          if (nextLevel) levelsToAverage.push(nextLevel);
+
+          if (levelsToAverage.length > 0) {
+            const totalTimeSpent = levelsToAverage.reduce(
+              (sum, level) => sum + (level.timeSpent || 0),
+              0,
+            );
+            midpointTime = Math.round(totalTimeSpent / levelsToAverage.length);
+          }
         }
       }
       return {
@@ -1150,31 +1189,24 @@ function BranchSection({
     const getSessionForKey = (token: string, day: number) => {
       const existing = sessionByKey.get(buildSessionKey(token, day));
       if (existing) return existing;
-      const relatedRealLevels = numericLevels.filter(
-        (l) => l.name !== "-" && l.token === token,
+      const sharedRealLevels = getRealTimelineLevels(
+        numericLevels
+          .filter((l) => l.name !== "-")
+          .map((l) => ({
+            daysOffset: Number(l.daysOffset),
+            timeSpent: Number(l.timeSpent || 0),
+            levelName: l.name,
+            token: l.token,
+            synthetic: l.synthetic,
+          })),
       );
-      const searchLevels =
-        relatedRealLevels.length > 0 ? relatedRealLevels : numericLevels;
-      const nextMatch = searchLevels.find((l) => Number(l.daysOffset) > day);
 
-      const realLevels = searchLevels;
-      const firstRealDay = Number(realLevels[0]?.daysOffset ?? 0);
-
-      let synthesizedTime = 0;
-      if (nextMatch && day < firstRealDay) {
-        synthesizedTime = Math.round(
-          (day + 1) * ((nextMatch.timeSpent || 0) / (firstRealDay + 1)),
-        );
-      } else if (nextMatch) {
-        const prevLevels = realLevels.filter((l) => Number(l.daysOffset) < day);
-        const prevReal = prevLevels[prevLevels.length - 1];
-        synthesizedTime = prevReal?.timeSpent || 0;
-      } else {
-        const prevReal = realLevels
-          .filter((l) => Number(l.daysOffset) <= day)
-          .slice(-1)[0];
-        synthesizedTime = prevReal?.timeSpent || 0;
-      }
+      const synthesizedTime = getSyntheticSessionTimeSpent(
+        token,
+        day,
+        sharedRealLevels,
+        0,
+      );
 
       return {
         kind: "level" as const,

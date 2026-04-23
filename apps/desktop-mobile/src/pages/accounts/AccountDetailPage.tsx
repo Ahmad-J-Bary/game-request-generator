@@ -39,6 +39,11 @@ import { useSettings } from "@grq/ui/contexts/SettingsContext";
 import { useTheme } from "@grq/ui/contexts/ThemeContext";
 import { AccountDataTable } from "@grq/ui/organisms/tables/AccountDataTable";
 import type { TimelineCell } from "@grq/ui/organisms/tables/AccountDataTable";
+import {
+  getRealTimelineLevels,
+  getSyntheticSessionTimeSpent,
+  expandTimelineWithSessionDays,
+} from "@grq/core/utils/timeline-time.utils";
 
 type Mode = "all" | "event-only";
 
@@ -130,7 +135,11 @@ export default function AccountDetailPage() {
   const { theme } = useTheme();
 
   const state =
-    (location.state as { account?: Account; levels?: Level[]; selectedGameId?: number }) || {};
+    (location.state as {
+      account?: Account;
+      levels?: Level[];
+      selectedGameId?: number;
+    }) || {};
   const stateAccount: Account | undefined = state.account;
   const selectedGameId = state.selectedGameId;
 
@@ -413,7 +422,8 @@ export default function AccountDetailPage() {
             const existingLevel = existingLevels.find(
               (l) =>
                 l.days_offset === newLevel.days_offset &&
-                (l.level_name !== "-" || l.event_token === newLevel.event_token),
+                (l.level_name !== "-" ||
+                  l.event_token === newLevel.event_token),
             );
             if (existingLevel) actualLevelId = existingLevel.id.toString();
             else {
@@ -475,34 +485,37 @@ export default function AccountDetailPage() {
               (1000 * 60 * 60 * 24),
           );
 
-          const realLevels = levels
-            .filter(
-              (l) => typeof l.days_offset === "number" && l.level_name !== "-",
-            )
-            .sort(
-              (a, b) => (a.days_offset as number) - (b.days_offset as number),
-            );
+          const realLevels = getRealTimelineLevels(
+            levels.map((l) => ({
+              daysOffset: Number(l.days_offset),
+              timeSpent: Number(l.time_spent || 0),
+              levelName: l.level_name,
+              token: (l.event_token || "").split("_day")[0],
+              synthetic: l.level_name === "-",
+            })),
+          );
 
-          if (realLevels.length > 0) {
-            const prevLevel = [...realLevels]
-              .reverse()
-              .find((l) => (l.days_offset as number) <= daysOffset);
-            const nextLevel = realLevels.find(
-              (l) => (l.days_offset as number) > daysOffset,
-            );
+          const expandedLevels = expandTimelineWithSessionDays(realLevels);
 
-            if (prevLevel && nextLevel) {
-              calculatedTimeSpent = Math.round(
-                ((prevLevel.time_spent || 0) + (nextLevel.time_spent || 0)) / 2,
+          if (expandedLevels.length > 0) {
+            const sameDayLevels = expandedLevels.filter(
+              (l) => l.daysOffset === daysOffset,
+            );
+            const nextLevel = expandedLevels.find(
+              (l) => l.daysOffset > daysOffset,
+            );
+            const levelsToAverage = [...sameDayLevels];
+            if (nextLevel) levelsToAverage.push(nextLevel);
+
+            if (levelsToAverage.length > 0) {
+              const totalTimeSpent = levelsToAverage.reduce(
+                (sum, level) => sum + (level.timeSpent || 0),
+                0,
               );
-            } else if (prevLevel) {
-              calculatedTimeSpent = prevLevel.time_spent || 0;
-            } else if (nextLevel) {
-              calculatedTimeSpent = nextLevel.time_spent || 0;
+              calculatedTimeSpent = Math.round(
+                totalTimeSpent / levelsToAverage.length,
+              );
             }
-            // Standardize: UI and DB work in seconds for base values, 
-            // but for request generation we need the base multiplied by 1000.
-            // Here we ensure it's at least a reasonable base value.
           }
           if (calculatedTimeSpent <= 0) {
             const existingProgress = purchaseProgress.find(
@@ -581,21 +594,33 @@ export default function AccountDetailPage() {
       let midpointTime: number | null = null;
 
       if (day != null) {
-        const numericLevels = levelCols
-          .filter((l) => typeof l.daysOffset === "number")
-          .sort((a, b) => Number(a.daysOffset) - Number(b.daysOffset));
-        const sameDayLevels = numericLevels.filter(
-          (l) => Number(l.daysOffset) === day,
+        const realLevels = getRealTimelineLevels(
+          levelCols.map((l) => ({
+            daysOffset: Number(l.daysOffset),
+            timeSpent: Number(l.timeSpent || 0),
+            levelName: l.name,
+            token: l.token,
+            synthetic: l.synthetic,
+          })),
         );
-        const nextLevel = numericLevels.find((l) => Number(l.daysOffset) > day);
-        const levelsToAverage = [...sameDayLevels];
-        if (nextLevel) levelsToAverage.push(nextLevel);
-        if (levelsToAverage.length > 0) {
-          const totalTimeSpent = levelsToAverage.reduce(
-            (sum, level) => sum + (level.timeSpent || 0),
-            0,
+
+        const expandedLevels = expandTimelineWithSessionDays(realLevels);
+
+        if (expandedLevels.length > 0) {
+          const sameDayLevels = expandedLevels.filter(
+            (l) => l.daysOffset === day,
           );
-          midpointTime = Math.round(totalTimeSpent / levelsToAverage.length);
+          const nextLevel = expandedLevels.find((l) => l.daysOffset > day);
+          const levelsToAverage = [...sameDayLevels];
+          if (nextLevel) levelsToAverage.push(nextLevel);
+
+          if (levelsToAverage.length > 0) {
+            const totalTimeSpent = levelsToAverage.reduce(
+              (sum, level) => sum + (level.timeSpent || 0),
+              0,
+            );
+            midpointTime = Math.round(totalTimeSpent / levelsToAverage.length);
+          }
         }
       }
 
@@ -662,41 +687,22 @@ export default function AccountDetailPage() {
       const existing = sessionLevelsByKey.get(buildSessionKey(token, day));
       if (existing) return existing;
 
-      const relatedRealLevels = sortedRealLevels.filter(
-        (l) => l.token === token,
+      const sharedRealLevels = getRealTimelineLevels(
+        sortedRealLevels.map((l) => ({
+          daysOffset: Number(l.daysOffset),
+          timeSpent: Number(l.timeSpent || 0),
+          levelName: l.name,
+          token: l.token,
+          synthetic: l.synthetic,
+        })),
       );
-      const searchLevels =
-        relatedRealLevels.length > 0 ? relatedRealLevels : sortedRealLevels;
-      const nextMatch = searchLevels.find((l) => Number(l.daysOffset) > day);
 
-      const realLevels = searchLevels;
-      const firstRealDay = Number(realLevels[0]?.daysOffset ?? 0);
-
-      let synthesizedTime = 0;
-      if (nextMatch && day < firstRealDay) {
-        synthesizedTime = Math.round(
-          (day + 1) * ((nextMatch.timeSpent || 0) / (firstRealDay + 1)),
-        );
-      } else if (nextMatch) {
-        const prevLevels = realLevels.filter((l) => Number(l.daysOffset) < day);
-        const prevReal = prevLevels[prevLevels.length - 1];
-        if (prevReal) {
-          const ratio =
-            (day - Number(prevReal.daysOffset)) /
-            (Number(nextMatch.daysOffset) - Number(prevReal.daysOffset));
-          synthesizedTime = Math.round(
-            (prevReal.timeSpent || 0) +
-              ratio * ((nextMatch.timeSpent || 0) - (prevReal.timeSpent || 0)),
-          );
-        } else {
-          synthesizedTime = Math.round((nextMatch.timeSpent || 0) / 2);
-        }
-      } else {
-        const prevReal = realLevels
-          .filter((l) => Number(l.daysOffset) <= day)
-          .slice(-1)[0];
-        synthesizedTime = prevReal?.timeSpent || 0;
-      }
+      const synthesizedTime = getSyntheticSessionTimeSpent(
+        token,
+        day,
+        sharedRealLevels,
+        0,
+      );
 
       return {
         kind: "level" as const,
@@ -860,7 +866,11 @@ export default function AccountDetailPage() {
     return (
       <div className="w-full px-1 sm:px-2 py-4">
         <div className="mb-4">
-          <BackButton to={selectedGameId ? `/accounts?gameId=${selectedGameId}` : undefined} />
+          <BackButton
+            to={
+              selectedGameId ? `/accounts?gameId=${selectedGameId}` : undefined
+            }
+          />
         </div>
         <Card>
           <CardContent className="p-6 text-center">
@@ -1165,7 +1175,11 @@ export default function AccountDetailPage() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => navigate(`/accounts/edit/${account?.id}`, { state: { account, selectedGameId } })}
+                    onClick={() =>
+                      navigate(`/accounts/edit/${account?.id}`, {
+                        state: { account, selectedGameId },
+                      })
+                    }
                     className="flex items-center gap-2 h-9"
                     title={t("accounts.editAccountInfo", "Edit Account Info")}
                   >
@@ -1178,7 +1192,13 @@ export default function AccountDetailPage() {
               )}
             </div>
 
-            <BackButton to={selectedGameId ? `/accounts?gameId=${selectedGameId}` : undefined} />
+            <BackButton
+              to={
+                selectedGameId
+                  ? `/accounts?gameId=${selectedGameId}`
+                  : undefined
+              }
+            />
           </div>
         </div>
         <section className="space-y-0.5 animate-in fade-in slide-in-from-bottom-4 duration-500">
