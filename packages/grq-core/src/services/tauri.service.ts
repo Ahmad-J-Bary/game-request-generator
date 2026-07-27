@@ -341,6 +341,19 @@ export class TauriService {
     return await invoke<void>("finalize_app_exit");
   }
 
+  // ========== Local Backup Commands ==========
+  static async getBackupConfig(): Promise<{ useSameLocation: boolean; customPath: string | null; backupDir: string | null; lastCleanupDate: string | null; latestBackupTime: number | null }> {
+    return await invoke("get_backup_config");
+  }
+
+  static async setBackupConfig(useSameLocation: boolean, customPath: string | null): Promise<void> {
+    return await invoke("set_backup_config", { useSameLocation, customPath });
+  }
+
+  static async backupDatabaseLocalNow(): Promise<void> {
+    return await invoke("backup_database_local_now");
+  }
+
   // ========== Daily Task History Commands ==========
   static async addCompletedTask(request: AddCompletedTaskRequest): Promise<void> {
     return await invoke<void>("add_completed_task", { request });

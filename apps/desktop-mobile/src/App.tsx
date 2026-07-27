@@ -1,17 +1,12 @@
-import { useEffect, useRef } from "react";
-
-import { getCurrentWindow } from "@tauri-apps/api/window";
-
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@grq/ui/atoms/sonner";
 import { TooltipProvider } from "@grq/ui/atoms/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
 import { ThemeProvider } from "@grq/ui/contexts/ThemeContext";
 import { LanguageProvider } from "@grq/core/contexts/LanguageContext";
 import { SettingsProvider } from "@grq/ui/contexts/SettingsContext";
 import { MainLayout } from "@grq/ui/templates/MainLayout";
 import { useGames } from "@grq/core/hooks/useGames";
-import { TauriService } from "@grq/core/services/tauri.service";
 import Dashboard from "./pages/Dashboard";
 // Accounts
 import AccountListPage from "./pages/accounts/AccountListPage";
@@ -47,48 +42,6 @@ function GameDetailPageWrapper() {
 }
 
 function AppContent() {
-  const isHandlingCloseRef = useRef(false);
-  const allowCloseRef = useRef(false);
-
-  useEffect(() => {
-    const win = getCurrentWindow();
-
-    const unlistenPromise = win.onCloseRequested(async (event) => {
-      if (allowCloseRef.current) return;
-      event.preventDefault();
-
-      // Notify backend/front listeners that we intentionally intercepted this close request.
-      // This helps avoid duplicate close attempts from external listeners.
-      window.dispatchEvent(new CustomEvent("app-close-flow-started"));
-
-      if (isHandlingCloseRef.current) return;
-      isHandlingCloseRef.current = true;
-
-      try {
-        // Automatic mode:
-        // If DB changed in this app session, backup will run in background before quit.
-        // If unchanged, app exits immediately.
-        allowCloseRef.current = true;
-        await TauriService.runBackupIfChangedInBackgroundAndQuit();
-      } catch (error) {
-        console.error("Close flow failed:", error);
-        // Final fallback: force close from backend to avoid hanging.
-        try {
-          allowCloseRef.current = true;
-          await TauriService.finalizeExitMaintenanceAndQuit();
-        } catch (fallbackError) {
-          console.error("Fallback close failed:", fallbackError);
-        }
-      } finally {
-        isHandlingCloseRef.current = false;
-      }
-    });
-
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten()).catch(() => {});
-    };
-  }, []);
-
   return (
     <>
       <QueryClientProvider client={queryClient}>

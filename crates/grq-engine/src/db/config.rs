@@ -22,6 +22,11 @@ pub struct AppConfig {
     pub telegram_sync_bot_token: Option<String>,
     pub telegram_sync_chat_id: Option<String>,
     pub telegram_sync_enabled: bool,
+
+    // Local backup settings
+    pub backup_use_same_location: bool,
+    pub backup_custom_path: Option<String>,
+    pub backup_last_cleanup_date: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -36,6 +41,9 @@ impl Default for AppConfig {
             telegram_sync_bot_token: None,
             telegram_sync_chat_id: None,
             telegram_sync_enabled: false,
+            backup_use_same_location: true,
+            backup_custom_path: None,
+            backup_last_cleanup_date: None,
         }
     }
 }

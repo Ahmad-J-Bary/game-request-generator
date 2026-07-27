@@ -6,7 +6,7 @@ use tauri::Manager;
 
 use chrono::Datelike;
 use grq_engine::db::Database;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use grq_engine::models::account::{
     Account, AccountBranchTransferResult, CreateAccountRequest, TransferPreview,
@@ -43,19 +43,6 @@ use rusqlite::params;
 // === حالة التطبيق ===
 struct AppState {
     db: Mutex<Database>,
-    db_backup_last_mtime: Mutex<Option<i64>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-struct ExitMaintenancePlan {
-    should_backup_db: bool,
-    should_send_hall_of_fame: bool,
-    created_at: Option<String>,
-}
-
-fn now_local_string() -> String {
-    chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 fn resolve_internal_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -68,74 +55,7 @@ fn resolve_internal_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf
     }
 }
 
-fn current_db_mtime_unix(app: &tauri::AppHandle) -> Result<Option<i64>, String> {
-    let path = resolve_internal_db_path(app)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let metadata =
-        std::fs::metadata(&path).map_err(|e| format!("Failed to read DB metadata: {}", e))?;
-    let modified = metadata
-        .modified()
-        .map_err(|e| format!("Failed to read DB modified time: {}", e))?;
-    let duration = modified
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| format!("Failed to convert DB modified time: {}", e))?;
-    Ok(Some(duration.as_secs() as i64))
-}
-
-fn db_changed_since_last_backup(
-    app: &tauri::AppHandle,
-    state: &tauri::State<'_, AppState>,
-) -> Result<bool, String> {
-    let current = current_db_mtime_unix(app)?;
-    let last = state.db_backup_last_mtime.lock().unwrap();
-    match (current, *last) {
-        (Some(c), Some(l)) => Ok(c > l),
-        (Some(_), None) => Ok(true),
-        (None, _) => Ok(false),
-    }
-}
-
-fn mark_backup_mtime(
-    app: &tauri::AppHandle,
-    state: &tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let current = current_db_mtime_unix(app)?;
-    let mut last = state.db_backup_last_mtime.lock().unwrap();
-    *last = current;
-    Ok(())
-}
-
-fn get_exit_maintenance_plan(
-    app: &tauri::AppHandle,
-) -> Result<Option<ExitMaintenancePlan>, String> {
-    let raw = KeyValueService::get_value(app, "exit_maintenance_plan")?;
-    match raw {
-        Some(json) => {
-            let parsed = serde_json::from_str::<ExitMaintenancePlan>(&json)
-                .map_err(|e| format!("Failed to parse exit maintenance plan: {}", e))?;
-            Ok(Some(parsed))
-        }
-        None => Ok(None),
-    }
-}
-
-fn set_exit_maintenance_plan(
-    app: &tauri::AppHandle,
-    plan: &ExitMaintenancePlan,
-) -> Result<(), String> {
-    let json = serde_json::to_string(plan)
-        .map_err(|e| format!("Failed to serialize exit maintenance plan: {}", e))?;
-    KeyValueService::set_value(app, "exit_maintenance_plan", &json)
-}
-
-fn clear_exit_maintenance_plan(app: &tauri::AppHandle) -> Result<(), String> {
-    KeyValueService::delete_value(app, "exit_maintenance_plan")
-}
-
-async fn send_and_clear_hall_of_fame_impl(
+async fn execute_hall_of_fame_send_clear(
     app: &tauri::AppHandle,
 ) -> Result<(usize, usize), String> {
     let completed_accounts: Vec<CompletedAccount> = {
@@ -171,66 +91,6 @@ async fn send_and_clear_hall_of_fame_impl(
         .map_err(|e| format!("Failed to commit Hall of Fame cleanup: {}", e))?;
 
     Ok((completed_accounts.len(), completed_accounts.len()))
-}
-
-async fn run_deferred_exit_maintenance(app: tauri::AppHandle) -> Result<(), String> {
-    let Some(plan) = get_exit_maintenance_plan(&app)? else {
-        return Ok(());
-    };
-
-    // Enforce requested order:
-    // 1) Hall of Fame send+delete
-    // 2) Backup DB
-    if plan.should_send_hall_of_fame {
-        let _ = send_and_clear_hall_of_fame_impl(&app).await?;
-    }
-
-    if plan.should_backup_db {
-        TelegramService::backup_db(&app).await?;
-    }
-
-    clear_exit_maintenance_plan(&app)?;
-    Ok(())
-}
-
-#[tauri::command]
-fn finalize_app_exit(app: tauri::AppHandle) -> Result<(), String> {
-    app.exit(0);
-    Ok(())
-}
-
-#[tauri::command]
-fn run_exit_maintenance_in_background_and_quit(app: tauri::AppHandle) -> Result<(), String> {
-    let app_handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let _ = run_deferred_exit_maintenance(app_handle.clone()).await;
-        app_handle.exit(0);
-    });
-    Ok(())
-}
-
-#[tauri::command]
-fn run_backup_if_changed_in_background_and_quit(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    let app_handle = app.clone();
-
-    let should_backup = db_changed_since_last_backup(&app_handle, &state)?;
-    if !should_backup {
-        app_handle.exit(0);
-        return Ok(());
-    }
-
-    tauri::async_runtime::spawn(async move {
-        if TelegramService::backup_db(&app_handle).await.is_ok() {
-            let app_state = app_handle.state::<AppState>();
-            let _ = mark_backup_mtime(&app_handle, &app_state);
-        }
-        app_handle.exit(0);
-    });
-
-    Ok(())
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -436,25 +296,11 @@ async fn send_to_telegram(app: tauri::AppHandle, message: String) -> Result<(), 
 }
 
 #[tauri::command]
-fn schedule_exit_maintenance(
-    app: tauri::AppHandle,
-    should_backup_db: bool,
-    should_send_hall_of_fame: bool,
-) -> Result<(), String> {
-    let plan = ExitMaintenancePlan {
-        should_backup_db,
-        should_send_hall_of_fame,
-        created_at: Some(now_local_string()),
-    };
-    set_exit_maintenance_plan(&app, &plan)
-}
-
-#[tauri::command]
 async fn send_and_clear_hall_of_fame(
     app: tauri::AppHandle,
     _state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
-    let (sent, deleted) = send_and_clear_hall_of_fame_impl(&app).await?;
+    let (sent, deleted) = execute_hall_of_fame_send_clear(&app).await?;
 
     if sent == 0 {
         return Ok(serde_json::json!({
@@ -501,40 +347,158 @@ async fn update_telegram_offset(app: tauri::AppHandle, offset: i64) -> Result<()
     ConfigService::save(&app, &config)
 }
 
-// ==================== أوامر المزامنة (Sync) ====================
+// ==================== أوامر النسخ الاحتياطي المحلي ====================
+fn resolve_backup_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let config = ConfigService::load(app);
+    if config.backup_use_same_location || config.backup_custom_path.is_none() {
+        let db_path = resolve_internal_db_path(app)?;
+        let dir = db_path.parent().ok_or("DB path has no parent")?;
+        Ok(dir.to_path_buf())
+    } else {
+        Ok(std::path::PathBuf::from(config.backup_custom_path.as_ref().unwrap()))
+    }
+}
+
+fn files_identical(path1: &std::path::Path, path2: &std::path::Path) -> bool {
+    let meta1 = match std::fs::metadata(path1) { Ok(m) => m, Err(_) => return false };
+    let meta2 = match std::fs::metadata(path2) { Ok(m) => m, Err(_) => return false };
+    if meta1.len() != meta2.len() { return false; }
+    let content1 = match std::fs::read(path1) { Ok(c) => c, Err(_) => return false };
+    let content2 = match std::fs::read(path2) { Ok(c) => c, Err(_) => return false };
+    content1 == content2
+}
+
+fn find_latest_backup(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut latest: Option<(chrono::NaiveDateTime, std::path::PathBuf)> = None;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if let Some(ts) = name.strip_prefix("backup_").and_then(|s| s.strip_suffix(".sqlite")) {
+                        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d_%H%M%S") {
+                            if latest.as_ref().map_or(true, |(t, _)| dt > *t) {
+                                latest = Some((dt, path));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    latest.map(|(_, p)| p)
+}
+
+fn cleanup_old_backups(dir: &std::path::Path) -> Result<(), String> {
+    let today = chrono::Local::now().format("%Y%m%d").to_string();
+    let today_date = chrono::NaiveDate::parse_from_str(&today, "%Y%m%d")
+        .map_err(|e| format!("Failed to parse today date: {}", e))?;
+    let cutoff = today_date - chrono::Duration::days(1);
+
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if let Some(date_str) = name.strip_prefix("backup_").and_then(|s| s.get(..8)) {
+                        if let Ok(file_date) = chrono::NaiveDate::parse_from_str(date_str, "%Y%m%d") {
+                            if file_date < cutoff {
+                                let _ = std::fs::remove_file(&path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn perform_backup_if_needed(app: &tauri::AppHandle) -> Result<(), String> {
+    let config = ConfigService::load(app);
+    let db_path = resolve_internal_db_path(app)?;
+    if !db_path.exists() { return Ok(()); }
+
+    let backup_dir = resolve_backup_dir(app)?;
+    std::fs::create_dir_all(&backup_dir)
+        .map_err(|e| format!("Failed to create backup dir: {}", e))?;
+
+    let latest = find_latest_backup(&backup_dir);
+
+    let needs_backup = match &latest {
+        Some(latest_path) => !files_identical(&db_path, latest_path),
+        None => true,
+    };
+
+    if needs_backup {
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let backup_filename = format!("backup_{}.sqlite", timestamp);
+        let backup_path = backup_dir.join(&backup_filename);
+        std::fs::copy(&db_path, &backup_path)
+            .map_err(|e| format!("Failed to copy DB: {}", e))?;
+    }
+
+    // Cleanup old backups once per day (runs even if no new backup was needed).
+    let today = chrono::Local::now().format("%Y%m%d").to_string();
+    let last_cleanup = config.backup_last_cleanup_date.clone().unwrap_or_default();
+    if last_cleanup != today {
+        let _ = cleanup_old_backups(&backup_dir);
+        let mut updated = config.clone();
+        updated.backup_last_cleanup_date = Some(today);
+        ConfigService::save(app, &updated)?;
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
-async fn get_sync_config(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+fn get_backup_config(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let config = ConfigService::load(&app);
+    let backup_dir = resolve_backup_dir(&app).ok().map(|p| p.to_string_lossy().to_string());
+    let latest = backup_dir.as_ref().and_then(|d| find_latest_backup(std::path::Path::new(d)));
+    let latest_time = latest.as_ref().and_then(|p| {
+        p.metadata().ok().and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+    });
+
     Ok(serde_json::json!({
-        "bot_token": config.telegram_sync_bot_token,
-        "chat_id": config.telegram_sync_chat_id,
-        "enabled": config.telegram_sync_enabled,
+        "useSameLocation": config.backup_use_same_location,
+        "customPath": config.backup_custom_path,
+        "backupDir": backup_dir,
+        "lastCleanupDate": config.backup_last_cleanup_date,
+        "latestBackupTime": latest_time,
     }))
 }
 
 #[tauri::command]
-async fn set_sync_config(
+fn set_backup_config(
     app: tauri::AppHandle,
-    bot_token: Option<String>,
-    chat_id: Option<String>,
-    enabled: bool,
+    use_same_location: bool,
+    custom_path: Option<String>,
 ) -> Result<(), String> {
     let mut config = ConfigService::load(&app);
-    config.telegram_sync_bot_token = bot_token;
-    config.telegram_sync_chat_id = chat_id;
-    config.telegram_sync_enabled = enabled;
+    config.backup_use_same_location = use_same_location;
+    config.backup_custom_path = if use_same_location { None } else { custom_path };
     ConfigService::save(&app, &config)
 }
 
 #[tauri::command]
-async fn backup_database_now(app: tauri::AppHandle) -> Result<(), String> {
-    TelegramService::backup_db(&app).await
+fn backup_database_local_now(app: tauri::AppHandle) -> Result<(), String> {
+    // Force backup even if identical — always create a new timestamped copy
+    let db_path = resolve_internal_db_path(&app)?;
+    let backup_dir = resolve_backup_dir(&app)?;
+    std::fs::create_dir_all(&backup_dir)
+        .map_err(|_| format!("Failed to create backup dir"))?;
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let backup_filename = format!("backup_{}.sqlite", timestamp);
+    let backup_path = backup_dir.join(&backup_filename);
+    std::fs::copy(&db_path, &backup_path)
+        .map_err(|e| format!("Failed to copy DB: {}", e))?;
+    Ok(())
 }
 
-#[tauri::command]
-async fn restore_database_from_telegram(app: tauri::AppHandle) -> Result<(), String> {
-    TelegramService::restore_db_from_telegram(&app).await
-}
+// ==================== أوامر المزامنة عن بُعد (Telegram) - ملغاة ====================
 
 #[tauri::command]
 async fn send_raw_request(
@@ -1826,24 +1790,13 @@ pub fn run() {
             let db = Database::new(&handle)?;
             db.init()?;
 
-            let initial_mtime = current_db_mtime_unix(&handle).ok().flatten();
             app.manage(AppState {
                 db: Mutex::new(db),
-                db_backup_last_mtime: Mutex::new(initial_mtime),
             });
 
-            // Run deferred exit maintenance from previous close request (best effort).
-            {
-                let app_handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    if run_deferred_exit_maintenance(app_handle.clone())
-                        .await
-                        .is_ok()
-                    {
-                        let app_state = app_handle.state::<AppState>();
-                        let _ = mark_backup_mtime(&app_handle, &app_state);
-                    }
-                });
+            // Local backup check on startup (best effort, synchronous before window opens).
+            if let Err(e) = perform_backup_if_needed(app.handle()) {
+                eprintln!("⚠️ Startup backup failed: {e}");
             }
 
             Ok(())
@@ -1893,10 +1846,6 @@ pub fn run() {
             test_telegram_connection,
             send_to_telegram,
             send_and_clear_hall_of_fame,
-            schedule_exit_maintenance,
-            finalize_app_exit,
-            run_exit_maintenance_in_background_and_quit,
-            run_backup_if_changed_in_background_and_quit,
             get_game_branches,
             add_branch,
             update_branch,
@@ -1905,10 +1854,6 @@ pub fn run() {
             get_telegram_updates,
             download_telegram_file,
             update_telegram_offset,
-            get_sync_config,
-            set_sync_config,
-            backup_database_now,
-            restore_database_from_telegram,
             send_raw_request,
             get_store_value,
             set_store_value,
@@ -1918,7 +1863,14 @@ pub fn run() {
             add_completed_task,
             get_task_history,
             clear_task_history,
+            get_backup_config,
+            set_backup_config,
+            backup_database_local_now,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+#[path = "backup_tests.rs"]
+mod backup_tests;

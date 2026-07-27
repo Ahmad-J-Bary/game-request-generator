@@ -1,23 +1,30 @@
 import { useState, useEffect } from 'react';
-import { Database, ShieldCheck, Loader2, Save, CloudUpload, History, CloudDownload } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { Database, Loader2, Save, FolderOpen, Clock, HardDrive, CheckCircle2 } from 'lucide-react';
 import { Button } from '@grq/ui/atoms/button';
-import { Input } from '@grq/ui/atoms/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@grq/ui/atoms/card';
 import { toast } from 'sonner';
 import { Badge } from '@grq/ui/atoms/badge';
 import { cn } from '@grq/ui/lib/utils';
 import { useTranslation } from 'react-i18next';
+import { TauriService } from '@grq/core/services/tauri.service';
+
+interface BackupConfig {
+  useSameLocation: boolean;
+  customPath: string | null;
+  backupDir: string | null;
+  lastCleanupDate: string | null;
+  latestBackupTime: number | null;
+}
 
 export function SyncSettingsPanel() {
   const { t } = useTranslation();
-  const [botToken, setBotToken] = useState('');
-  const [chatId, setChatId] = useState('');
-  const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [useSameLocation, setUseSameLocation] = useState(true);
+  const [customPath, setCustomPath] = useState('');
+  const [backupDir, setBackupDir] = useState<string | null>(null);
+  const [latestBackupTime, setLatestBackupTime] = useState<number | null>(null);
   const [backingUp, setBackingUp] = useState(false);
-  const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -25,12 +32,13 @@ export function SyncSettingsPanel() {
 
   const loadConfig = async () => {
     try {
-      const config = await invoke<any>('get_sync_config');
-      setBotToken(config.bot_token || '');
-      setChatId(config.chat_id || '');
-      setEnabled(config.enabled || false);
+      const config: BackupConfig = await TauriService.getBackupConfig();
+      setUseSameLocation(config.useSameLocation);
+      setCustomPath(config.customPath || '');
+      setBackupDir(config.backupDir);
+      setLatestBackupTime(config.latestBackupTime);
     } catch (error) {
-      console.error('Failed to load Sync config:', error);
+      console.error('Failed to load backup config:', error);
       toast.error(t('errors.fetchFailed'));
     } finally {
       setLoading(false);
@@ -40,14 +48,12 @@ export function SyncSettingsPanel() {
   const handleSave = async () => {
     try {
       setSaving(true);
-      await invoke('set_sync_config', {
-        botToken: botToken || null,
-        chatId: chatId || null,
-        enabled
-      });
+      await TauriService.setBackupConfig(useSameLocation, useSameLocation ? null : customPath || null);
       toast.success(t('common.success'));
+      // Reload to show updated backupDir
+      await loadConfig();
     } catch (error) {
-      console.error('Failed to save Sync config:', error);
+      console.error('Failed to save backup config:', error);
       toast.error(t('errors.saveFailed'));
     } finally {
       setSaving(false);
@@ -55,14 +61,11 @@ export function SyncSettingsPanel() {
   };
 
   const handleBackupNow = async () => {
-    if (!botToken || !chatId) {
-      toast.error(t('settings.sync.backupFailed'));
-      return;
-    }
     try {
       setBackingUp(true);
-      await invoke('backup_database_now');
+      await TauriService.backupDatabaseLocalNow();
       toast.success(t('settings.sync.backupSuccess'));
+      await loadConfig();
     } catch (error: any) {
       console.error('Backup failed:', error);
       toast.error(`${t('settings.sync.backupFailed')}: ${error}`);
@@ -71,28 +74,26 @@ export function SyncSettingsPanel() {
     }
   };
 
-  const handleRestore = async () => {
-    if (!botToken || !chatId) {
-      toast.error(t('settings.sync.restoreFailed'));
-      return;
-    }
-
-    // Safety confirmation as this is destructive
-    const confirmed = window.confirm(t('settings.sync.restoreConfirm'));
-    if (!confirmed) return;
-
+  const handleSelectFolder = async () => {
     try {
-      setRestoring(true);
-      await invoke('restore_database_from_telegram');
-      toast.success(t('settings.sync.restoreSuccess'), {
-        duration: 6000,
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: t('settings.sync.selectFolder'),
       });
-    } catch (error: any) {
-      console.error('Restore failed:', error);
-      toast.error(`${t('settings.sync.restoreFailed')}: ${error}`);
-    } finally {
-      setRestoring(false);
+      if (selected) {
+        setCustomPath(selected);
+      }
+    } catch (error) {
+      console.error('Failed to open folder picker:', error);
     }
+  };
+
+  const formatBackupTime = (timestamp: number | null): string => {
+    if (!timestamp) return t('common.none');
+    const d = new Date(timestamp * 1000);
+    return d.toLocaleString();
   };
 
   if (loading) return (
@@ -102,12 +103,12 @@ export function SyncSettingsPanel() {
   );
 
   return (
-    <Card className="border-sky-500/20 bg-sky-500/5 backdrop-blur-sm shadow-xl">
+    <Card className="border-emerald-500/20 bg-emerald-500/5 backdrop-blur-sm shadow-xl">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-xl bg-sky-500/10 flex items-center justify-center">
-              <Database className="h-5 w-5 text-sky-500" />
+            <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+              <Database className="h-5 w-5 text-emerald-500" />
             </div>
             <div>
               <CardTitle className="text-lg">{t('settings.sync.title')}</CardTitle>
@@ -116,63 +117,107 @@ export function SyncSettingsPanel() {
               </CardDescription>
             </div>
           </div>
-          <Badge variant={enabled ? "default" : "secondary"} className={cn("rounded-lg", enabled ? "bg-sky-500 hover:bg-sky-600" : "")}>
-            {enabled ? t('common.yes') : t('common.no')}
+          <Badge variant="outline" className="rounded-lg text-emerald-600 border-emerald-500/30">
+            <HardDrive className="h-3 w-3 mr-1" /> {t('settings.sync.local')}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid gap-5">
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('settings.sync.botToken')}</label>
-            <Input
-              type="password"
-              placeholder={t('settings.sync.botTokenPlaceholder')}
-              value={botToken}
-              onChange={(e) => setBotToken(e.target.value)}
-              className="bg-background/40 border-sky-500/20 focus:border-sky-500 rounded-xl h-11"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('settings.sync.chatId')}</label>
-            <Input
-              placeholder={t('settings.sync.chatIdPlaceholder')}
-              value={chatId}
-              onChange={(e) => setChatId(e.target.value)}
-              className="bg-background/40 border-sky-500/20 focus:border-sky-500 rounded-xl h-11"
-            />
-          </div>
-        </div>
+        <div className="space-y-3">
+          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+            {t('settings.sync.backupLocation')}
+          </label>
 
-        <div className="flex flex-col gap-4 py-2">
-          <div className={cn(
-            "flex items-center justify-between p-4 rounded-2xl transition-all duration-300 border-2",
-            enabled ? "bg-sky-500/10 border-sky-500/20 shadow-inner" : "bg-background/40 border-border/40"
+          <label className={cn(
+            "flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all duration-200",
+            useSameLocation
+              ? "bg-emerald-500/10 border-emerald-500/30 shadow-inner"
+              : "bg-background/40 border-border/40 hover:border-emerald-500/20"
           )}>
+            <input
+              type="radio"
+              name="backupLocation"
+              checked={useSameLocation}
+              onChange={() => setUseSameLocation(true)}
+              className="h-4 w-4 accent-emerald-500"
+            />
             <div className="space-y-0.5">
-              <div className="text-sm font-bold flex items-center gap-2">
-                {t('settings.sync.enabled')}
-                {enabled && <ShieldCheck className="h-3.5 w-3.5 text-sky-500" />}
-              </div>
-              <div className="text-[10px] text-muted-foreground">{t('settings.sync.enabledDesc')}</div>
+              <div className="text-sm font-bold">{t('settings.sync.sameAsDb')}</div>
+              <div className="text-[10px] text-muted-foreground">{t('settings.sync.sameAsDbDesc')}</div>
             </div>
-            <button
-               onClick={() => setEnabled(!enabled)}
-               className={cn(
-                 "relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2",
-                 enabled ? "bg-sky-500 shadow-lg shadow-sky-500/20" : "bg-muted"
-               )}
-            >
-              <span className={cn(
-                "inline-block h-4 w-4 transform rounded-full bg-white transition-all duration-300 shadow-sm",
-                enabled ? "ltr:translate-x-6 rtl:-translate-x-6" : "ltr:translate-x-1 rtl:-translate-x-1"
-              )} />
-            </button>
-          </div>
+          </label>
+
+          <label className={cn(
+            "flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all duration-200",
+            !useSameLocation
+              ? "bg-emerald-500/10 border-emerald-500/30 shadow-inner"
+              : "bg-background/40 border-border/40 hover:border-emerald-500/20"
+          )}>
+            <input
+              type="radio"
+              name="backupLocation"
+              checked={!useSameLocation}
+              onChange={() => setUseSameLocation(false)}
+              className="h-4 w-4 accent-emerald-500"
+            />
+            <div className="space-y-0.5 flex-1">
+              <div className="text-sm font-bold">{t('settings.sync.customPath')}</div>
+              <div className="text-[10px] text-muted-foreground">{t('settings.sync.customPathDesc')}</div>
+            </div>
+          </label>
+
+          {!useSameLocation && (
+            <div className="flex items-center gap-2 pl-8">
+              <div className="flex-1 px-3 py-2 rounded-xl bg-background/40 border border-border/40 text-xs text-muted-foreground truncate">
+                {customPath || t('settings.sync.noFolderSelected')}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSelectFolder}
+                className="shrink-0 h-9 rounded-xl"
+              >
+                <FolderOpen className="h-4 w-4 mr-1" /> {t('settings.sync.browse')}
+              </Button>
+            </div>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 border-t border-sky-500/10">
-          <Button 
+        {backupDir && (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-background/40 border border-border/40">
+            <HardDrive className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className="space-y-0.5 min-w-0">
+              <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                {t('settings.sync.currentBackupDir')}
+              </div>
+              <div className="text-xs truncate">{backupDir}</div>
+            </div>
+          </div>
+        )}
+
+        {latestBackupTime && (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-background/40 border border-border/40">
+            <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className="space-y-0.5">
+              <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                {t('settings.sync.latestBackup')}
+              </div>
+              <div className="text-xs">{formatBackupTime(latestBackupTime)}</div>
+            </div>
+          </div>
+        )}
+
+        {!latestBackupTime && (
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <Clock className="h-4 w-4 text-amber-600 shrink-0" />
+            <div className="text-[11px] text-amber-700 font-medium">
+              {t('settings.sync.noBackupYet')}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 border-t border-emerald-500/10">
+          <Button
             className="rounded-xl h-11 font-bold shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90 transition-all active:scale-95"
             onClick={handleSave}
             disabled={saving}
@@ -180,11 +225,11 @@ export function SyncSettingsPanel() {
             {saving ? <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" /> : <Save className="h-4 w-4 ltr:mr-2 rtl:ml-2" />}
             {t('common.save')}
           </Button>
-          <Button 
-            variant="outline" 
-            className="rounded-xl h-11 font-bold border-sky-500/30 hover:bg-sky-500/5 text-sky-600 transition-all active:scale-95"
+          <Button
+            variant="outline"
+            className="rounded-xl h-11 font-bold border-emerald-500/30 hover:bg-emerald-500/5 text-emerald-600 transition-all active:scale-95"
             onClick={handleBackupNow}
-            disabled={backingUp || restoring || !botToken || !chatId}
+            disabled={backingUp}
           >
             {backingUp ? (
               <>
@@ -193,38 +238,17 @@ export function SyncSettingsPanel() {
               </>
             ) : (
               <>
-                <CloudUpload className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+                <CheckCircle2 className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
                 {t('settings.sync.backupNow')}
-              </>
-            )}
-          </Button>
-          <Button 
-            variant="outline" 
-            className="rounded-xl h-11 font-bold border-amber-500/30 hover:bg-amber-500/5 text-amber-600 transition-all active:scale-95"
-            onClick={handleRestore}
-            disabled={restoring || backingUp || !botToken || !chatId}
-          >
-            {restoring ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" />
-                {t('settings.sync.restoreInProgress')}
-              </>
-            ) : (
-              <>
-                <CloudDownload className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
-                {t('settings.sync.restoreNow')}
               </>
             )}
           </Button>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-sky-500/10 border border-sky-500/20 flex gap-3 items-start backdrop-blur-sm">
-          <History className="h-4 w-4 text-sky-600 mt-1 flex-shrink-0" />
+        <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex gap-3 items-start backdrop-blur-sm">
+          <Database className="h-4 w-4 text-emerald-600 mt-1 flex-shrink-0" />
           <div className="space-y-1">
-            <p className="text-[11px] text-sky-800 font-medium leading-tight">
-              {t('settings.sync.subtitle')}
-            </p>
-            <p className="text-[10px] text-sky-600/70 leading-relaxed italic">
+            <p className="text-[11px] text-emerald-800 font-medium leading-tight">
               {t('settings.sync.backupHint')}
             </p>
           </div>
