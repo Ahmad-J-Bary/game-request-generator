@@ -38,7 +38,6 @@ export class TaskCompletionHandler {
     requestIndex: number,
     batchIndex: number,
     taskRef: DailyTask,
-    response?: RepeaterResponse,
   ): Promise<ApiResponse> {
     try {
       const deriveFinalType = (req: any): any => {
@@ -105,15 +104,9 @@ export class TaskCompletionHandler {
             }
           }
 
-          const newLastResponses = { ...(task.lastResponses || {}) };
-          if (response) {
-            newLastResponses[requestIndex] = response;
-          }
-
           return {
             ...task,
             completedTasks: newCompletedTasks,
-            lastResponses: newLastResponses,
           };
         });
 

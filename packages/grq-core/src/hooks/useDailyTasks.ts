@@ -6,7 +6,7 @@ import { NotificationService } from '@grq/core/utils/notifications';
 import { TaskGenerator } from '@grq/core/utils/taskGenerator';
 import { TaskCompletionHandler } from '@grq/core/utils/taskCompletion';
 import { RequestProcessor } from '@grq/core/services/tauri.service';
-import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, CompletedDailyTask, RepeaterResponse } from '@grq/api-bindings';
+import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, CompletedDailyTask } from '@grq/api-bindings';
 
 import { asyncStorageService } from '@grq/core/services/storage.service';
 
@@ -27,9 +27,8 @@ export interface UseDailyTasksReturn {
 
   // Actions
   generateTodaysTasks: () => Promise<void>;
-  completeTask: (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask, response?: RepeaterResponse) => Promise<void>;
+  completeTask: (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask) => Promise<void>;
   copyToClipboard: (content: string, eventToken?: string, timeSpent?: number) => void;
-  updateTaskResponse: (accountId: number, requestIndex: number, response: RepeaterResponse) => void;
 
   // Utilities
   refreshGames: () => Promise<void>;
@@ -258,7 +257,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   }, [games, accountCompletionRecords, accountStartStates, isGenerating, isHydrated, batches.length, deferredTasks.length, completedTasks, t]);
 
   // Complete a task using the TaskCompletionHandler utility
-  const completeTask = useCallback(async (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask, response?: RepeaterResponse) => {
+  const completeTask = useCallback(async (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask) => {
     try {
       const completionHandler = new TaskCompletionHandler({
         batches,
@@ -271,7 +270,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
         setAccountTaskAssignments,
       });
 
-      const result = await completionHandler.completeTask(accountId, requestIndex, batchIndex, task, response);
+      const result = await completionHandler.completeTask(accountId, requestIndex, batchIndex, task);
       
       if (result && result.success && result.message) {
         NotificationService.success(result.message);
@@ -293,37 +292,6 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       NotificationService.error(errorMessage);
     }
   }, [batches, deferredTasks, games, accountCompletionRecords]);
-
-  const updateTaskResponse = useCallback((accountId: number, requestIndex: number, response: RepeaterResponse) => {
-    setBatches(prev => prev.map(batch => ({
-      ...batch,
-      tasks: batch.tasks.map(task => {
-        if (task.account.id === accountId) {
-          return {
-            ...task,
-            lastResponses: {
-              ...(task.lastResponses || {}),
-              [requestIndex]: response
-            }
-          };
-        }
-        return task;
-      })
-    })));
-
-    setDeferredTasks(prev => prev.map(task => {
-      if (task.account.id === accountId) {
-        return {
-          ...task,
-          lastResponses: {
-            ...(task.lastResponses || {}),
-            [requestIndex]: response
-          }
-        };
-      }
-      return task;
-    }));
-  }, []);
 
   const copyToClipboard = useCallback((content: string, eventToken?: string, timeSpent?: number) => {
     const processedContent = eventToken && timeSpent !== undefined
@@ -352,7 +320,6 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
     generateTodaysTasks,
     completeTask,
     copyToClipboard,
-    updateTaskResponse,
 
     // Utilities
     refreshGames,

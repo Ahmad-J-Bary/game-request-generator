@@ -27,6 +27,10 @@ pub struct AppConfig {
     pub backup_use_same_location: bool,
     pub backup_custom_path: Option<String>,
     pub backup_last_cleanup_date: Option<String>,
+
+    // Database pointer (tracks imported backup origin)
+    pub db_pointer_path: Option<String>,
+    pub db_auto_backup_path: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -44,6 +48,8 @@ impl Default for AppConfig {
             backup_use_same_location: true,
             backup_custom_path: None,
             backup_last_cleanup_date: None,
+            db_pointer_path: None,
+            db_auto_backup_path: None,
         }
     }
 }

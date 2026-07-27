@@ -28,7 +28,6 @@ export default function DailyTasksPage() {
     completeTask,
     copyToClipboard,
     completedTasks,
-    updateTaskResponse,
   } = useDailyTasks();
 
   const { readyBatches, pageDeferredTasks } = useMemo(() => {
@@ -110,7 +109,6 @@ export default function DailyTasksPage() {
                     accountTaskAssignments={accountTaskAssignments}
                     accountStartStates={accountStartStates}
                     onCompleteTask={completeTask}
-                    onUpdateResponse={updateTaskResponse}
                     onCopyRequest={copyToClipboard}
                     completedTasks={completedTasks}
                     deferredTasks={hookDeferredTasks}
@@ -150,7 +148,6 @@ export default function DailyTasksPage() {
                         accountStartStates={accountStartStates}
                         accountTaskAssignments={accountTaskAssignments}
                         onCompleteTask={completeTask}
-                        onUpdateResponse={updateTaskResponse}
                         onCopyRequest={copyToClipboard}
                         completedTasks={completedTasks}
                         deferredTasks={hookDeferredTasks}

@@ -281,6 +281,19 @@ export class TauriService {
     return await invoke<string>("read_text_file", { filePath });
   }
 
+  // ========== Database Path Commands ==========
+  static async getDbPath(): Promise<string> {
+    return await invoke<string>("get_db_path");
+  }
+
+  static async setDbPath(path: string | null): Promise<void> {
+    return await invoke<void>("set_db_path", { path });
+  }
+
+  static async exportDatabaseToBytes(): Promise<number[]> {
+    return await invoke<number[]>("export_database_to_bytes");
+  }
+
   // ========== Telegram Commands (NEW) ==========
   static async getTelegramConfig(): Promise<TelegramConfig> {
     return await invoke<TelegramConfig>("get_telegram_config");
@@ -352,6 +365,27 @@ export class TauriService {
 
   static async backupDatabaseLocalNow(): Promise<void> {
     return await invoke("backup_database_local_now");
+  }
+
+  // ========== Import with Pointer (Smart Import) ==========
+  static async importDatabaseWithPointer(sourcePath: string): Promise<void> {
+    return await invoke("import_database_with_pointer", { sourcePath });
+  }
+
+  static async restoreFromAutoBackup(): Promise<void> {
+    return await invoke("restore_from_auto_backup");
+  }
+
+  static async acceptCurrentAsLatest(): Promise<void> {
+    return await invoke("accept_current_as_latest");
+  }
+
+  static async getPointerInfo(): Promise<{ pointerPath: string | null; autoBackupPath: string | null }> {
+    return await invoke("get_pointer_info");
+  }
+
+  static async listBackupFiles(): Promise<Array<{ name: string; path: string; label: string; size: number }>> {
+    return await invoke("list_backup_files");
   }
 
   // ========== Daily Task History Commands ==========

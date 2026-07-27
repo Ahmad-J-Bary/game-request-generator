@@ -1,7 +1,7 @@
 // src/components/daily-tasks/BatchTasks.tsx
 import React from 'react';
 import { TaskItem } from './TaskItem';
-import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, RepeaterResponse } from '@grq/api-bindings/types/daily-tasks.types';
+import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings/types/daily-tasks.types';
 
 interface BatchTasksProps {
   batch: GameBatch;
@@ -9,8 +9,7 @@ interface BatchTasksProps {
   accountCompletionRecords: { [accountId: number]: AccountCompletionRecord };
   accountTaskAssignments: { [accountId: number]: AccountTaskAssignment[] };
   accountStartStates: { [accountId: number]: AccountStartState };
-  onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask, response?: RepeaterResponse) => void;
-  onUpdateResponse: (accountId: number, requestIndex: number, response: RepeaterResponse) => void;
+  onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask) => void;
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   completedTasks: any[];
   deferredTasks?: DailyTask[];
@@ -24,7 +23,6 @@ export const BatchTasks = React.memo(({
   accountTaskAssignments,
   accountStartStates,
   onCompleteTask,
-  onUpdateResponse,
   onCopyRequest,
   completedTasks,
   deferredTasks = [],
@@ -42,7 +40,6 @@ export const BatchTasks = React.memo(({
             accountStartStates={accountStartStates}
             batchIndex={batch.batchIndex}
             allBatches={allBatches}
-            onUpdateResponse={onUpdateResponse}
             completedTasks={completedTasks}
             deferredTasks={deferredTasks}
           />

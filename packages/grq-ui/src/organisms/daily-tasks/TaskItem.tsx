@@ -15,7 +15,6 @@ interface TaskRequestListProps {
   isReady: boolean;
   accountTaskIndex: number;
   accountTaskTotal: number;
-  onUpdateResponse: TaskItemProps['onUpdateResponse'];
   onCompleteTask: TaskItemProps['onCompleteTask'];
   onCopyRequest: TaskItemProps['onCopyRequest'];
 }
@@ -26,7 +25,6 @@ const TaskRequestList = React.memo(({
   isReady,
   accountTaskIndex,
   accountTaskTotal,
-  onUpdateResponse,
   onCompleteTask,
   onCopyRequest,
 }: TaskRequestListProps) => {
@@ -41,11 +39,9 @@ const TaskRequestList = React.memo(({
             request={request}
             isCompleted={task.completedTasks.has(index.toString())}
             isReady={isReady}
-            onResponseUpdate={(res) => onUpdateResponse(task.account.id, index, res)}
-            onComplete={(res) => onCompleteTask(task.account.id, index, batchIndex, task, res)}
+            onComplete={() => onCompleteTask(task.account.id, index, batchIndex, task)}
             onCopy={(content, eventToken, timeSpent) =>
               onCopyRequest(content, eventToken, timeSpent)}
-            lastResponse={task.lastResponses?.[index]}
           />
         );
       })}
@@ -53,7 +49,7 @@ const TaskRequestList = React.memo(({
   );
 });
 
-export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks, deferredTasks = [] }: TaskItemProps) => {
+export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks, deferredTasks = [] }: TaskItemProps) => {
   const { t } = useTranslation();
   const currentTime = useTimer(1000);
 
@@ -248,7 +244,6 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onUpdateResponse, on
             isReady={effectiveIsReady}
             accountTaskIndex={accountTaskMeta.accountTaskIndex}
             accountTaskTotal={accountTaskMeta.accountTaskTotal}
-            onUpdateResponse={onUpdateResponse}
             onCompleteTask={onCompleteTask}
             onCopyRequest={onCopyRequest}
           />

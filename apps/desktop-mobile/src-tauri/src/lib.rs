@@ -36,7 +36,6 @@ use grq_engine::services::purchase_event_service::PurchaseEventService;
 
 use grq_engine::db::config::ConfigService;
 use grq_engine::db::key_value::KeyValueService;
-use grq_engine::services::repeater_service::{RepeaterResponse, RepeaterService};
 use grq_engine::services::telegram_service::TelegramService;
 use rusqlite::params;
 
@@ -498,14 +497,148 @@ fn backup_database_local_now(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// ==================== أوامر المزامنة عن بُعد (Telegram) - ملغاة ====================
+// ==================== أوامر المؤشر والاستيراد الذكي ====================
+#[tauri::command]
+fn import_database_with_pointer(
+    app: tauri::AppHandle,
+    state: tauri::State<AppState>,
+    source_path: String,
+) -> Result<(), String> {
+    let internal_db_path = resolve_internal_db_path(&app)?;
+    let backup_dir = resolve_backup_dir(&app)?;
+    std::fs::create_dir_all(&backup_dir)
+        .map_err(|e| format!("Failed to create backup dir: {}", e))?;
+
+    let mut config = ConfigService::load(&app);
+
+    // Lock DB to prevent any operations during copy
+    let _guard = state.db.lock().unwrap();
+
+    // If no pointer exists, the current DB is the "live" original — auto-backup it first
+    if config.db_pointer_path.is_none() && config.db_auto_backup_path.is_none() {
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let auto_backup_name = format!("backup_auto_{}.sqlite", timestamp);
+        let auto_backup_path = backup_dir.join(&auto_backup_name);
+        std::fs::copy(&internal_db_path, &auto_backup_path)
+            .map_err(|e| format!("Failed to create auto-backup before import: {}", e))?;
+        config.db_auto_backup_path = Some(auto_backup_path.to_string_lossy().to_string());
+    }
+
+    // Copy the selected source file over the internal DB
+    std::fs::copy(&source_path, &internal_db_path)
+        .map_err(|e| format!("Failed to import database from {}: {}", source_path, e))?;
+
+    // Set pointer to the imported source file
+    config.db_pointer_path = Some(source_path);
+    ConfigService::save(&app, &config)?;
+
+    Ok(())
+}
 
 #[tauri::command]
-async fn send_raw_request(
-    raw_request: String,
-) -> Result<RepeaterResponse, String> {
-    RepeaterService::send_raw_request(&raw_request).await
+fn restore_from_auto_backup(
+    app: tauri::AppHandle,
+    state: tauri::State<AppState>,
+) -> Result<(), String> {
+    let config = ConfigService::load(&app);
+    let auto_backup_path = config
+        .db_auto_backup_path
+        .as_ref()
+        .ok_or("No auto-backup found. Import a backup file first.")?;
+
+    let internal_db_path = resolve_internal_db_path(&app)?;
+    let source = std::path::Path::new(auto_backup_path);
+    if !source.exists() {
+        return Err(format!(
+            "Auto-backup file no longer exists at: {}",
+            auto_backup_path
+        ));
+    }
+
+    let _guard = state.db.lock().unwrap();
+    std::fs::copy(source, &internal_db_path)
+        .map_err(|e| format!("Failed to restore from auto-backup: {}", e))?;
+
+    // Clear pointer after restore (DB is back to its pre-import state)
+    let mut updated = config.clone();
+    updated.db_pointer_path = None;
+    updated.db_auto_backup_path = None;
+    ConfigService::save(&app, &updated)?;
+
+    Ok(())
 }
+
+#[tauri::command]
+fn accept_current_as_latest(app: tauri::AppHandle) -> Result<(), String> {
+    let mut config = ConfigService::load(&app);
+    config.db_pointer_path = None;
+    config.db_auto_backup_path = None;
+    ConfigService::save(&app, &config)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_pointer_info(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let config = ConfigService::load(&app);
+    Ok(serde_json::json!({
+        "pointerPath": config.db_pointer_path,
+        "autoBackupPath": config.db_auto_backup_path,
+    }))
+}
+
+#[tauri::command]
+fn list_backup_files(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
+    let backup_dir = resolve_backup_dir(&app)?;
+    if !backup_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut files = Vec::new();
+    let entries =
+        std::fs::read_dir(&backup_dir).map_err(|e| format!("Failed to read backup dir: {}", e))?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with("backup_") && name.ends_with(".sqlite") {
+                    if let Some(ts) = name
+                        .strip_prefix("backup_")
+                        .and_then(|s| s.strip_suffix(".sqlite"))
+                    {
+                        let label = if let Ok(dt) =
+                            chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d_%H%M%S")
+                        {
+                            dt.format("%Y-%m-%d %H:%M:%S").to_string()
+                        } else {
+                            ts.to_string()
+                        };
+
+                        if let Ok(meta) = path.metadata() {
+                            files.push(serde_json::json!({
+                                "name": name,
+                                "path": path.to_string_lossy().to_string(),
+                                "label": label,
+                                "size": meta.len(),
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort newest first (by filename which starts with timestamp)
+    files.sort_by(|a, b| {
+        let a_name = a["name"].as_str().unwrap_or("");
+        let b_name = b["name"].as_str().unwrap_or("");
+        b_name.cmp(a_name)
+    });
+
+    Ok(files)
+}
+
+// ==================== أوامر المزامنة عن بُعد (Telegram) - ملغاة ====================
 
 #[tauri::command]
 fn add_game(state: tauri::State<AppState>, request: CreateGameRequest) -> Result<i64, String> {
@@ -1854,7 +1987,6 @@ pub fn run() {
             get_telegram_updates,
             download_telegram_file,
             update_telegram_offset,
-            send_raw_request,
             get_store_value,
             set_store_value,
             delete_store_value,
@@ -1866,6 +1998,11 @@ pub fn run() {
             get_backup_config,
             set_backup_config,
             backup_database_local_now,
+            import_database_with_pointer,
+            restore_from_auto_backup,
+            accept_current_as_latest,
+            get_pointer_info,
+            list_backup_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
