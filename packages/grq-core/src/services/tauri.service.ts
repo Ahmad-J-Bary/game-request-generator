@@ -12,6 +12,8 @@ import type {
   CompletedAccount,
   CreateAccountRequest,
   UpdateAccountRequest,
+  AccountBranchTransferResult,
+  TransferPreview,
   Level,
   CreateLevelRequest,
   UpdateLevelRequest,
@@ -100,6 +102,26 @@ export class TauriService {
 
   static async deleteAccount(id: number): Promise<boolean> {
     return await invoke<boolean>("delete_account", { id });
+  }
+
+  static async transferAccountBranch(
+    accountId: number,
+    targetBranchId: number,
+  ): Promise<AccountBranchTransferResult> {
+    return await invoke<AccountBranchTransferResult>(
+      "transfer_account_branch",
+      { accountId, targetBranchId },
+    );
+  }
+
+  static async previewTransferAccountBranch(
+    accountId: number,
+    targetBranchId: number,
+  ): Promise<TransferPreview> {
+    return await invoke<TransferPreview>(
+      "preview_transfer_account_branch",
+      { accountId, targetBranchId },
+    );
   }
 
   // ========== Level Commands ==========

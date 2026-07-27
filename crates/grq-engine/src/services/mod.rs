@@ -8,3 +8,6 @@ pub mod progress_service;
 pub mod telegram_service;
 pub mod repeater_service;
 pub mod history_service;
+
+#[cfg(test)]
+pub mod account_service_tests;

@@ -120,7 +120,30 @@
     "pickTime": "اختر وقتاً",
     "country": "الدولة",
     "rangeFillOn": "ملء النطاق: مفعل",
-    "rangeFillOff": "ملء النطاق: غير مفعل"
+    "rangeFillOff": "ملء النطاق: غير مفعل",
+    "branchTransfer": {
+      "title": "نقل الفرع",
+      "description": "نقل هذا الحساب إلى فرع مختلف مع الحفاظ على التقدم",
+      "currentBranch": "الفرع الحالي",
+      "selectTargetBranch": "الفرع الهدف",
+      "selectBranchPlaceholder": "اختر فرعاً",
+      "transfer": "نقل",
+      "warningTitle": "سيؤدي هذا الإجراء إلى نقل التقدم",
+      "warningDescription": "سيتم نقل المستويات وأحداث الشراء المكتملة إلى الفرع الهدف. لا يمكن التراجع عن هذا.",
+      "completed": "تم النقل بنجاح",
+      "success": "تم نقل الفرع بنجاح",
+      "error": "فشل نقل الفرع",
+      "sourceBranch": "الفرع المصدر",
+      "targetBranch": "الفرع الهدف",
+      "transferredLevels": "المستويات المنقولة",
+      "transferredPurchaseEvents": "أحداث الشراء المنقولة",
+      "matchedLevels": "المستويات المتطابقة",
+      "matchedPurchaseEvents": "أحداث الشراء المتطابقة",
+      "missingTokens": "{{count}} رمز حدث مفقود في الفرع الهدف",
+      "level": "مستوى",
+      "purchase": "شراء",
+      "noSourceHint": "الحساب ليس لديه فرع مصدر. سيتم تعيينه للفرع المحدد."
+    }
   },
   "levels": {
     "title": "المستويات",

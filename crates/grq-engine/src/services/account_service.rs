@@ -1,6 +1,9 @@
 // src-tauri/src/services/account_service.rs
 
-use crate::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
+use crate::models::account::{
+    Account, AccountBranchTransferResult, CreateAccountRequest, TransferPreview,
+    UpdateAccountRequest,
+};
 use rusqlite::{params, Connection, OptionalExtension};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -346,6 +349,408 @@ impl AccountService {
             .map_err(|e| format!("Failed to delete account: {}", e))?;
 
         Ok(conn.changes() > 0)
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────────
+
+    pub(crate) fn get_branch_levels(
+        conn: &Connection,
+        branch_id: i64,
+    ) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = conn
+            .prepare("SELECT id, event_token FROM levels WHERE branch_id = ?1")
+            .map_err(|e| format!("Failed to prepare levels query: {}", e))?;
+        let rows = stmt
+            .query_map(params![branch_id], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("Failed to query levels: {}", e))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| format!("Failed to map level: {}", e))?);
+        }
+        Ok(out)
+    }
+
+    pub(crate) fn get_branch_purchase_events(
+        conn: &Connection,
+        branch_id: i64,
+    ) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = conn
+            .prepare("SELECT id, event_token FROM purchase_events WHERE branch_id = ?1")
+            .map_err(|e| format!("Failed to prepare purchase events query: {}", e))?;
+        let rows = stmt
+            .query_map(params![branch_id], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("Failed to query purchase events: {}", e))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| format!("Failed to map purchase event: {}", e))?);
+        }
+        Ok(out)
+    }
+
+    fn get_branch_name(
+        conn: &Connection,
+        branch_id: i64,
+    ) -> Result<(String, i64), String> {
+        conn.query_row(
+            "SELECT name, game_id FROM game_branches WHERE id = ?1",
+            params![branch_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("Branch not found: {}", e))
+    }
+
+    // ── preview ──────────────────────────────────────────────────────────
+
+    pub fn preview_transfer_account_branch(
+        &self,
+        conn: &Connection,
+        account_id: i64,
+        target_branch_id: i64,
+    ) -> Result<TransferPreview, String> {
+        let account = self
+            .get_account_by_id(conn, account_id)?
+            .ok_or_else(|| format!("Account with ID {} not found", account_id))?;
+
+        let (_target_branch_name, target_game_id): (String, i64) =
+            Self::get_branch_name(conn, target_branch_id)?;
+
+        if let Some(source_branch_id) = account.branch_id {
+            if source_branch_id == target_branch_id {
+                return Err("Account is already in this branch".to_string());
+            }
+            let (_source_name, source_game_id) = Self::get_branch_name(conn, source_branch_id)?;
+            if source_game_id != target_game_id {
+                return Err("Cannot transfer account to a branch of a different game".to_string());
+            }
+        }
+
+        let target_levels = Self::get_branch_levels(conn, target_branch_id)?;
+        let target_purchase_events = Self::get_branch_purchase_events(conn, target_branch_id)?;
+
+        let target_level_tokens: std::collections::HashSet<&str> =
+            target_levels.iter().map(|(_, t)| t.as_str()).collect();
+        let target_pe_tokens: std::collections::HashSet<&str> =
+            target_purchase_events.iter().map(|(_, t)| t.as_str()).collect();
+
+        // Get source branch data if account has a branch
+        let (source_levels, source_purchase_events) = if let Some(sb_id) = account.branch_id {
+            (
+                Self::get_branch_levels(conn, sb_id)?,
+                Self::get_branch_purchase_events(conn, sb_id)?,
+            )
+        } else {
+            (vec![], vec![])
+        };
+
+        let mut matched_levels = Vec::new();
+        let mut missing_levels = Vec::new();
+        for (_id, token) in &source_levels {
+            if target_level_tokens.contains(token.as_str()) {
+                matched_levels.push(token.clone());
+            } else {
+                missing_levels.push(token.clone());
+            }
+        }
+
+        let mut matched_purchase_events = Vec::new();
+        let mut missing_purchase_events = Vec::new();
+        for (_id, token) in &source_purchase_events {
+            if target_pe_tokens.contains(token.as_str()) {
+                matched_purchase_events.push(token.clone());
+            } else {
+                missing_purchase_events.push(token.clone());
+            }
+        }
+
+        Ok(TransferPreview {
+            matched_levels,
+            missing_levels,
+            matched_purchase_events,
+            missing_purchase_events,
+            total_source_levels: source_levels.len(),
+            total_target_levels: target_levels.len(),
+            total_source_purchase_events: source_purchase_events.len(),
+            total_target_purchase_events: target_purchase_events.len(),
+        })
+    }
+
+    // ── transfer ──────────────────────────────────────────────────────────
+
+    pub fn transfer_account_branch(
+        &self,
+        conn: &Connection,
+        account_id: i64,
+        target_branch_id: i64,
+    ) -> Result<AccountBranchTransferResult, String> {
+        let account = self
+            .get_account_by_id(conn, account_id)?
+            .ok_or_else(|| format!("Account with ID {} not found", account_id))?;
+
+        let source_branch_id = account.branch_id;
+
+        // If account has no branch, this is a first-time assignment
+        if source_branch_id == Some(target_branch_id) {
+            return Err("Account is already in this branch".to_string());
+        }
+
+        let (target_branch_name, target_game_id): (String, i64) =
+            Self::get_branch_name(conn, target_branch_id)?;
+
+        if let Some(sb_id) = source_branch_id {
+            let (_source_name, source_game_id) = Self::get_branch_name(conn, sb_id)?;
+            if source_game_id != target_game_id {
+                return Err("Cannot transfer account to a branch of a different game".to_string());
+            }
+        }
+
+        // If account had no branch, simple assignment
+        if source_branch_id.is_none() {
+            conn.execute(
+                "UPDATE accounts SET branch_id = ?1 WHERE id = ?2",
+                params![target_branch_id, account_id],
+            )
+            .map_err(|e| format!("Failed to update account branch: {}", e))?;
+
+            return Ok(AccountBranchTransferResult {
+                account_id,
+                account_name: account.name,
+                source_branch_id: None,
+                source_branch_name: None,
+                target_branch_id,
+                target_branch_name,
+                transferred_levels: 0,
+                transferred_purchase_events: 0,
+                warnings: vec![],
+            });
+        }
+
+        let sb_id = source_branch_id.unwrap();
+        let (source_branch_name, _source_game_id) = Self::get_branch_name(conn, sb_id)?;
+
+        let source_levels = Self::get_branch_levels(conn, sb_id)?;
+        let target_levels = Self::get_branch_levels(conn, target_branch_id)?;
+        let source_purchase_events = Self::get_branch_purchase_events(conn, sb_id)?;
+        let target_purchase_events = Self::get_branch_purchase_events(conn, target_branch_id)?;
+
+        // Build token → id maps for target branch
+        let target_level_map: std::collections::HashMap<&str, i64> = target_levels
+            .iter()
+            .map(|(id, token)| (token.as_str(), *id))
+            .collect();
+
+        let target_pe_map: std::collections::HashMap<&str, i64> = target_purchase_events
+            .iter()
+            .map(|(id, token)| (token.as_str(), *id))
+            .collect();
+
+        // Get current progress
+        let level_progress: Vec<(i64, i32, bool, Option<String>, Option<String>)> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT level_id, time_spent, is_completed, target_date, completed_at
+                     FROM account_level_progress WHERE account_id = ?1",
+                )
+                .map_err(|e| format!("Failed to prepare level progress query: {}", e))?;
+            let rows = stmt
+                .query_map(params![account_id], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i32>(1)?,
+                        row.get::<_, i32>(2)? != 0,
+                        row.get::<_, Option<String>>(3).ok().flatten(),
+                        row.get::<_, Option<String>>(4).ok().flatten(),
+                    ))
+                })
+                .map_err(|e| format!("Failed to query level progress: {}", e))?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row.map_err(|e| format!("Failed to map level progress: {}", e))?);
+            }
+            out
+        };
+
+        let purchase_progress: Vec<(i64, i32, i32, bool, Option<String>, Option<String>)> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT purchase_event_id, days_offset, time_spent, is_completed, target_date, completed_at
+                     FROM account_purchase_event_progress WHERE account_id = ?1",
+                )
+                .map_err(|e| format!("Failed to prepare purchase progress query: {}", e))?;
+            let rows = stmt
+                .query_map(params![account_id], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i32>(1)?,
+                        row.get::<_, i32>(2)?,
+                        row.get::<_, i32>(3)? != 0,
+                        row.get::<_, Option<String>>(4).ok().flatten(),
+                        row.get::<_, Option<String>>(5).ok().flatten(),
+                    ))
+                })
+                .map_err(|e| format!("Failed to query purchase progress: {}", e))?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row.map_err(|e| format!("Failed to map purchase progress: {}", e))?);
+            }
+            out
+        };
+
+        // Build source level_id → event_token map
+        let source_level_token_map: std::collections::HashMap<i64, &str> = source_levels
+            .iter()
+            .map(|(id, token)| (*id, token.as_str()))
+            .collect();
+
+        let source_pe_token_map: std::collections::HashMap<i64, &str> = source_purchase_events
+            .iter()
+            .map(|(id, token)| (*id, token.as_str()))
+            .collect();
+
+        let mut warnings: Vec<String> = Vec::new();
+        let mut transferred_levels: usize = 0;
+        let mut transferred_purchase_events: usize = 0;
+
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+        // Transfer level progress
+        for (old_level_id, time_spent, is_completed, target_date, completed_at) in &level_progress
+        {
+            let token = match source_level_token_map.get(old_level_id) {
+                Some(t) => *t,
+                None => {
+                    warnings.push(format!(
+                        "Level ID {} not found in source branch, skipping",
+                        old_level_id
+                    ));
+                    continue;
+                }
+            };
+
+            match target_level_map.get(token) {
+                Some(&new_level_id) => {
+                    tx.execute(
+                        "INSERT INTO account_level_progress (account_id, level_id, is_completed, time_spent, target_date, completed_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                         ON CONFLICT(account_id, level_id) DO UPDATE SET
+                           is_completed = excluded.is_completed,
+                           time_spent = excluded.time_spent,
+                           target_date = excluded.target_date,
+                           completed_at = COALESCE(excluded.completed_at, account_level_progress.completed_at)",
+                        params![
+                            account_id,
+                            new_level_id,
+                            if *is_completed { 1 } else { 0 },
+                            time_spent,
+                            target_date,
+                            completed_at,
+                        ],
+                    )
+                    .map_err(|e| format!("Failed to upsert level progress: {}", e))?;
+
+                    tx.execute(
+                        "DELETE FROM account_level_progress WHERE account_id = ?1 AND level_id = ?2",
+                        params![account_id, old_level_id],
+                    )
+                    .map_err(|e| format!("Failed to delete old level progress: {}", e))?;
+
+                    transferred_levels += 1;
+                }
+                None => {
+                    warnings.push(format!(
+                        "No matching level found in target branch for event token '{}'",
+                        token
+                    ));
+                }
+            }
+        }
+
+        // Transfer purchase event progress
+        for (
+            old_pe_id,
+            days_offset,
+            time_spent,
+            is_completed,
+            target_date,
+            completed_at,
+        ) in &purchase_progress
+        {
+            let token = match source_pe_token_map.get(old_pe_id) {
+                Some(t) => *t,
+                None => {
+                    warnings.push(format!(
+                        "Purchase event ID {} not found in source branch, skipping",
+                        old_pe_id
+                    ));
+                    continue;
+                }
+            };
+
+            match target_pe_map.get(token) {
+                Some(&new_pe_id) => {
+                    tx.execute(
+                        "INSERT INTO account_purchase_event_progress (account_id, purchase_event_id, days_offset, time_spent, is_completed, target_date, completed_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                         ON CONFLICT(account_id, purchase_event_id) DO UPDATE SET
+                           days_offset = excluded.days_offset,
+                           time_spent = excluded.time_spent,
+                           is_completed = excluded.is_completed,
+                           target_date = excluded.target_date,
+                           completed_at = COALESCE(excluded.completed_at, account_purchase_event_progress.completed_at)",
+                        params![
+                            account_id,
+                            new_pe_id,
+                            days_offset,
+                            time_spent,
+                            if *is_completed { 1 } else { 0 },
+                            target_date,
+                            completed_at,
+                        ],
+                    )
+                    .map_err(|e| format!("Failed to upsert purchase event progress: {}", e))?;
+
+                    tx.execute(
+                        "DELETE FROM account_purchase_event_progress WHERE account_id = ?1 AND purchase_event_id = ?2",
+                        params![account_id, old_pe_id],
+                    )
+                    .map_err(|e| format!("Failed to delete old purchase event progress: {}", e))?;
+
+                    transferred_purchase_events += 1;
+                }
+                None => {
+                    warnings.push(format!(
+                        "No matching purchase event found in target branch for event token '{}'",
+                        token
+                    ));
+                }
+            }
+        }
+
+        // Update account's branch
+        tx.execute(
+            "UPDATE accounts SET branch_id = ?1 WHERE id = ?2",
+            params![target_branch_id, account_id],
+        )
+        .map_err(|e| format!("Failed to update account branch: {}", e))?;
+
+        tx.commit().map_err(|e| format!("Failed to commit transaction: {}", e))?;
+
+        Ok(AccountBranchTransferResult {
+            account_id,
+            account_name: account.name,
+            source_branch_id: Some(sb_id),
+            source_branch_name: Some(source_branch_name),
+            target_branch_id,
+            target_branch_name,
+            transferred_levels,
+            transferred_purchase_events,
+            warnings,
+        })
     }
 
     pub fn is_account_completed(&self, conn: &Connection, account_id: i64) -> Result<bool, String> {

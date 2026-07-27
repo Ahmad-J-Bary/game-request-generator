@@ -120,7 +120,30 @@
     "pickTime": "Pick a time",
     "country": "Country",
     "rangeFillOn": "Range Fill: On",
-    "rangeFillOff": "Range Fill: Off"
+    "rangeFillOff": "Range Fill: Off",
+    "branchTransfer": {
+      "title": "Transfer Branch",
+      "description": "Move this account to a different branch, preserving progress",
+      "currentBranch": "Current Branch",
+      "selectTargetBranch": "Target Branch",
+      "selectBranchPlaceholder": "Select a branch",
+      "transfer": "Transfer",
+      "warningTitle": "This action will transfer progress",
+      "warningDescription": "Completed levels and purchase events will be moved to the target branch. This cannot be undone.",
+      "completed": "Transfer completed successfully",
+      "success": "Branch transfer successful",
+      "error": "Failed to transfer branch",
+      "sourceBranch": "Source Branch",
+      "targetBranch": "Target Branch",
+      "transferredLevels": "Levels Transferred",
+      "transferredPurchaseEvents": "Purchase Events Transferred",
+      "matchedLevels": "Levels Matched",
+      "matchedPurchaseEvents": "Purchase Events Matched",
+      "missingTokens": "{{count}} event tokens missing in target branch",
+      "level": "Level",
+      "purchase": "Purchase",
+      "noSourceHint": "Account has no source branch. It will be assigned to the selected branch."
+    }
   },
   "levels": {
     "title": "Levels",

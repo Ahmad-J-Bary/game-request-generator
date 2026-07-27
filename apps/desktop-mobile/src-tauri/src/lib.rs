@@ -8,7 +8,10 @@ use chrono::Datelike;
 use grq_engine::db::Database;
 use serde::{Deserialize, Serialize};
 
-use grq_engine::models::account::{Account, CreateAccountRequest, UpdateAccountRequest};
+use grq_engine::models::account::{
+    Account, AccountBranchTransferResult, CreateAccountRequest, TransferPreview,
+    UpdateAccountRequest,
+};
 use grq_engine::models::game::{
     CreateBranchRequest, CreateGameRequest, Game, GameBranch, UpdateBranchRequest,
     UpdateGameRequest,
@@ -726,6 +729,30 @@ fn delete_account(state: tauri::State<AppState>, id: i64) -> Result<bool, String
     let conn = db_guard.get_connection();
     let service = AccountService::new();
     service.delete_account(conn, id)
+}
+
+#[tauri::command]
+fn transfer_account_branch(
+    state: tauri::State<AppState>,
+    account_id: i64,
+    target_branch_id: i64,
+) -> Result<AccountBranchTransferResult, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = AccountService::new();
+    service.transfer_account_branch(conn, account_id, target_branch_id)
+}
+
+#[tauri::command]
+fn preview_transfer_account_branch(
+    state: tauri::State<AppState>,
+    account_id: i64,
+    target_branch_id: i64,
+) -> Result<TransferPreview, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = AccountService::new();
+    service.preview_transfer_account_branch(conn, account_id, target_branch_id)
 }
 
 // ==================== أوامر أحداث الشراء ====================
@@ -1841,6 +1868,8 @@ pub fn run() {
             get_account_by_id,
             update_account,
             delete_account,
+            transfer_account_branch,
+            preview_transfer_account_branch,
             add_purchase_event,
             get_game_purchase_events,
             get_purchase_event_by_id,

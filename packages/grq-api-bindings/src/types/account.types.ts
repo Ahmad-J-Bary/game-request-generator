@@ -35,3 +35,26 @@ export interface UpdateAccountRequest {
   request_template?: string;
   proxy_state?: string;
 }
+
+export interface AccountBranchTransferResult {
+  accountId: number;
+  accountName: string;
+  sourceBranchId: number | null;
+  sourceBranchName: string | null;
+  targetBranchId: number;
+  targetBranchName: string;
+  transferredLevels: number;
+  transferredPurchaseEvents: number;
+  warnings: string[];
+}
+
+export interface TransferPreview {
+  matchedLevels: string[];
+  missingLevels: string[];
+  matchedPurchaseEvents: string[];
+  missingPurchaseEvents: string[];
+  totalSourceLevels: number;
+  totalTargetLevels: number;
+  totalSourcePurchaseEvents: number;
+  totalTargetPurchaseEvents: number;
+}

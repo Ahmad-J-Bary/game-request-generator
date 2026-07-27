@@ -17,6 +17,7 @@ import {
   ArrowRight,
   MoreVertical,
   User,
+  GitBranch,
 } from "lucide-react";
 import type {
   TimelineColumnData as ColumnData,
@@ -29,6 +30,7 @@ import { ExportDialog } from "@grq/ui/molecules/ExportDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@grq/ui/atoms/popover";
 import { Label } from "@grq/ui/atoms/label";
 import { Button } from "@grq/ui/atoms/button";
+import { BranchTransferDialog } from "@grq/ui/organisms/BranchTransferDialog";
 import { Level, Account } from "@grq/api-bindings";
 import { useAccounts } from "@grq/core/hooks/useAccounts";
 import { useLevels } from "@grq/core/hooks/useLevels";
@@ -144,6 +146,7 @@ export default function AccountDetailPage() {
   const selectedGameId = state.selectedGameId;
 
   const [fetchedAccount, setFetchedAccount] = useState<Account | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!stateAccount && id) {
@@ -151,7 +154,20 @@ export default function AccountDetailPage() {
         .then(setFetchedAccount)
         .catch(console.error);
     }
-  }, [id, stateAccount]);
+  }, [id, stateAccount, refreshKey]);
+
+  useEffect(() => {
+    const handler = () => {
+      if (id) {
+        TauriService.getAccountById(parseInt(id, 10))
+          .then(setFetchedAccount)
+          .catch(console.error);
+        setRefreshKey(k => k + 1);
+      }
+    };
+    window.addEventListener('data-changed', handler);
+    return () => window.removeEventListener('data-changed', handler);
+  }, [id]);
 
   const account = stateAccount ?? fetchedAccount;
   const branchId = account?.branch_id ?? undefined;
@@ -203,6 +219,7 @@ export default function AccountDetailPage() {
   const [mode, setMode] = useState<Mode>("event-only");
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showBranchTransferDialog, setShowBranchTransferDialog] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [rangeFillMode, setRangeFillMode] = useState(false);
   const [completeAllChecked, setCompleteAllChecked] = useState(false);
@@ -1188,6 +1205,18 @@ export default function AccountDetailPage() {
                       {t("accounts.editAccount", "Edit Account")}
                     </span>
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowBranchTransferDialog(true)}
+                    className="flex items-center gap-2 h-9"
+                    title={t("accounts.branchTransfer.title")}
+                  >
+                    <GitBranch className="h-4 w-4" />
+                    <span className="hidden xs:inline">
+                      {t("accounts.branchTransfer.title")}
+                    </span>
+                  </Button>
                 </>
               )}
             </div>
@@ -1249,6 +1278,15 @@ export default function AccountDetailPage() {
           data={exportData}
           levelsProgress={levelsProgress}
           purchaseProgress={purchaseProgress}
+        />
+        <BranchTransferDialog
+          open={showBranchTransferDialog}
+          onOpenChange={setShowBranchTransferDialog}
+          accountId={accountId}
+          accountName={account.name}
+          currentBranchId={account.branch_id}
+          currentBranchName={account.branch_name}
+          gameId={account.game_id}
         />
       </div>
       {(prevAccount || nextAccount) && (
