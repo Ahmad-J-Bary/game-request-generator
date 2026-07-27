@@ -85,16 +85,12 @@ function AppContent() {
                         element={<SettingsPage section="appearance" />}
                       />
                       <Route
-                        path="/settings/database"
-                        element={<SettingsPage section="database" />}
+                        path="/settings/storage"
+                        element={<SettingsPage section="storage" />}
                       />
                       <Route
                         path="/settings/telegram"
                         element={<SettingsPage section="telegram" />}
-                      />
-                      <Route
-                        path="/settings/sync"
-                        element={<SettingsPage section="sync" />}
                       />
                     </Routes>
                   </MainLayout>

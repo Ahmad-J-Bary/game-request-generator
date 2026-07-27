@@ -466,6 +466,10 @@
       "arabic": "العربية",
       "select": "Select Language"
     },
+    "storage": {
+      "title": "Database & Backup",
+      "subtitle": "Manage database location, backups, and restore"
+    },
     "database": {
       "title": "Database Settings",
       "description": "Your database is stored securely in the app's internal storage. You can import a backup or export a copy without moving the file.",

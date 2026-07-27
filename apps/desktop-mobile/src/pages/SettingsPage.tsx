@@ -4,13 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Settings, Database, MessageSquare, Palette } from 'lucide-react';
 import { cn } from '@grq/ui/lib/utils';
-import { DatabaseSettingsPanel } from '@grq/ui/molecules/DatabaseSettingsPanel';
+import { StorageSettingsPanel } from '@grq/ui/molecules/StorageSettingsPanel';
 import { TelegramSettingsPanel } from '@grq/ui/molecules/TelegramSettingsPanel';
 import { AppearanceSettingsPanel } from '@grq/ui/molecules/AppearanceSettingsPanel';
 
-import { SyncSettingsPanel } from '@grq/ui/molecules/SyncSettingsPanel';
-
-type SettingTab = 'appearance' | 'database' | 'telegram' | 'sync';
+type SettingTab = 'appearance' | 'storage' | 'telegram';
 
 interface SettingsPageProps {
   section?: SettingTab;
@@ -22,18 +20,16 @@ export default function SettingsPage({ section }: SettingsPageProps) {
   const activeTab: SettingTab = section ?? 'appearance';
 
   const tabs = [
-    { id: 'appearance' as const, label: t('settings.appearance.title', 'Appearance'),   icon: Palette,       href: '/settings/appearance', color: 'text-violet-500' },
-    { id: 'database'   as const, label: t('settings.database.title', 'Database'),     icon: Database,      href: '/settings/database',   color: 'text-sky-500'    },
-    { id: 'telegram'   as const, label: t('settings.telegram.title', 'Telegram Bot'), icon: MessageSquare, href: '/settings/telegram',   color: 'text-amber-500'  },
-    { id: 'sync'       as const, label: t('settings.sync.title',     'Sync Bot'),      icon: Database,      href: '/settings/sync',       color: 'text-sky-500'    },
+    { id: 'appearance' as const, label: t('settings.appearance.title', 'Appearance'),     icon: Palette,       href: '/settings/appearance', color: 'text-violet-500' },
+    { id: 'storage'    as const, label: t('settings.storage.title', 'Database & Backup'), icon: Database,      href: '/settings/storage',    color: 'text-emerald-500' },
+    { id: 'telegram'   as const, label: t('settings.telegram.title', 'Telegram Bot'),     icon: MessageSquare, href: '/settings/telegram',   color: 'text-amber-500'  },
   ];
 
   const renderActivePanel = () => {
     switch (activeTab) {
       case 'appearance': return <AppearanceSettingsPanel />;
-      case 'database':   return <DatabaseSettingsPanel />;
+      case 'storage':    return <StorageSettingsPanel />;
       case 'telegram':   return <TelegramSettingsPanel />;
-      case 'sync':       return <SyncSettingsPanel />;
     }
   };
 

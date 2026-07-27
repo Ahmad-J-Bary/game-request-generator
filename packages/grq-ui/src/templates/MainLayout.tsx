@@ -44,9 +44,8 @@ const navigation = [
 
 const settingsNavigation = [
   { name: 'appearance', href: '/settings/appearance', icon: Palette,      labelKey: 'settings.appearance.title' },
-  { name: 'database',   href: '/settings/database',   icon: Database,     labelKey: 'settings.database.title'   },
+  { name: 'storage',    href: '/settings/storage',    icon: Database,     labelKey: 'settings.storage.title'    },
   { name: 'telegram',   href: '/settings/telegram',   icon: MessageSquare,labelKey: 'settings.telegram.title'   },
-  { name: 'sync',       href: '/settings/sync',       icon: Database,     labelKey: 'settings.sync.title' },
 ];
 
 export function MainLayout({ children }: MainLayoutProps) {
