@@ -22,26 +22,6 @@ pub struct AppConfig {
     pub telegram_sync_bot_token: Option<String>,
     pub telegram_sync_chat_id: Option<String>,
     pub telegram_sync_enabled: bool,
-
-    // Proxy Settings
-    pub proxy_enabled: bool,
-    pub proxy_type: Option<String>, // "http", "socks5", "mtproxy"
-    pub proxy_host: Option<String>,
-    pub proxy_port: Option<u16>,
-    pub proxy_username: Option<String>,
-    pub proxy_password: Option<String>,
-    pub proxy_secret: Option<String>,
-
-    // Proxy Metadata (for reminders/display)
-    pub proxy_package_name: Option<String>,
-    pub proxy_expiry: Option<String>,
-    pub proxy_created: Option<String>,
-    pub proxy_status: Option<String>,
-    pub proxy_country: Option<String>,
-    pub proxy_provider: Option<String>,
-    pub proxy_rotation_time: Option<String>,
-    pub proxy_remaining_time: Option<String>,
-    pub proxy_reminder_sent: bool,
 }
 
 impl Default for AppConfig {
@@ -56,22 +36,6 @@ impl Default for AppConfig {
             telegram_sync_bot_token: None,
             telegram_sync_chat_id: None,
             telegram_sync_enabled: false,
-            proxy_enabled: false,
-            proxy_type: None,
-            proxy_host: None,
-            proxy_port: None,
-            proxy_username: None,
-            proxy_password: None,
-            proxy_secret: None,
-            proxy_package_name: None,
-            proxy_expiry: None,
-            proxy_created: None,
-            proxy_status: None,
-            proxy_country: None,
-            proxy_provider: None,
-            proxy_rotation_time: None,
-            proxy_remaining_time: None,
-            proxy_reminder_sent: false,
         }
     }
 }

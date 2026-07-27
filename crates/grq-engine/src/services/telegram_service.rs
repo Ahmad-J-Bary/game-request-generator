@@ -18,34 +18,10 @@ pub struct TelegramImportPreview {
 pub struct TelegramService;
 
 impl TelegramService {
-    fn build_client(config: &AppConfig) -> reqwest::Client {
-        let mut builder = reqwest::Client::builder();
-
-        if config.proxy_enabled {
-            if let (Some(proxy_type), Some(host), Some(port)) =
-                (&config.proxy_type, &config.proxy_host, config.proxy_port)
-            {
-                let proxy_scheme = if proxy_type == "socks5" {
-                    "socks5h"
-                } else {
-                    "http"
-                };
-                let url = format!("{}://{}:{}", proxy_scheme, host, port);
-
-                if let Ok(mut proxy) = reqwest::Proxy::all(&url) {
-                    if let (Some(user), Some(pass)) =
-                        (&config.proxy_username, &config.proxy_password)
-                    {
-                        proxy = proxy.basic_auth(user.as_str(), pass.as_str());
-                    }
-                    builder = builder.proxy(proxy);
-                }
-            }
-        } else {
-            builder = builder.no_proxy();
-        }
-
-        builder.build().unwrap_or_else(|_| reqwest::Client::new())
+    fn build_client(_config: &AppConfig) -> reqwest::Client {
+        reqwest::Client::builder()
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
     }
 
     pub async fn send_message(app: &AppHandle, message: &str) -> Result<(), String> {
@@ -318,45 +294,6 @@ impl TelegramService {
         }
 
         content_res.text().await.map_err(|e| e.to_string())
-    }
-
-    pub async fn test_proxy(
-        proxy_type: Option<String>,
-        host: Option<String>,
-        port: Option<u16>,
-        username: Option<String>,
-        password: Option<String>,
-    ) -> Result<String, String> {
-        let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10));
-
-        if let (Some(ptype), Some(h), Some(p)) = (&proxy_type, &host, port) {
-            let scheme = if ptype == "socks5" { "socks5h" } else { "http" };
-            let url = format!("{}://{}:{}", scheme, h, p);
-            if let Ok(mut proxy) = reqwest::Proxy::all(&url) {
-                if let (Some(u), Some(pw)) = (&username, &password) {
-                    if !u.is_empty() && !pw.is_empty() {
-                        proxy = proxy.basic_auth(u, pw);
-                    }
-                }
-                builder = builder.proxy(proxy);
-            } else {
-                return Err("Failed to build proxy URL".to_string());
-            }
-        } else {
-            return Err("Missing proxy host or port".to_string());
-        }
-
-        let client = builder
-            .build()
-            .map_err(|e| format!("Client builder error: {}", e))?;
-
-        match client.get("https://api.telegram.org").send().await {
-            Ok(res) => Ok(format!(
-                "Proxy linked successfully! (Status: {})",
-                res.status()
-            )),
-            Err(e) => Err(format!("Proxy connection failed: {}", e)),
-        }
     }
 
     pub async fn backup_db(app: &AppHandle) -> Result<(), String> {

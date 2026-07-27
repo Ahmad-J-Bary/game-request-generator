@@ -1,7 +1,6 @@
 import React from 'react';
 import { BatchHeader } from './BatchHeader';
 import { BatchTasks } from './BatchTasks';
-import { ProxyChangeNotice } from './ProxyChangeNotice';
 import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, RepeaterResponse } from '@grq/api-bindings/types/daily-tasks.types';
 
 interface BatchDisplayProps {
@@ -15,8 +14,6 @@ interface BatchDisplayProps {
   onCopyRequest: (content: string, eventToken?: string, timeSpent?: number) => void;
   completedTasks?: any[];
   deferredTasks?: DailyTask[];
-  showProxyNotice?: boolean;
-  isLastBatch?: boolean;
   enableVirtualization?: boolean;
 }
 
@@ -31,8 +28,6 @@ export const BatchDisplay = React.memo(({
   onCopyRequest,
   completedTasks = [],
   deferredTasks = [],
-  showProxyNotice = false,
-  isLastBatch = false,
   enableVirtualization = false,
 }: BatchDisplayProps) => {
   return (
@@ -58,14 +53,6 @@ export const BatchDisplay = React.memo(({
         deferredTasks={deferredTasks}
         enableVirtualization={enableVirtualization}
       />
-
-      {/* Separator and proxy change notice */}
-      {showProxyNotice && !isLastBatch && (
-        <div className="mt-8 mb-8">
-          <div className="border-t-2 border-dashed border-muted-foreground/30 my-4"></div>
-          <ProxyChangeNotice />
-        </div>
-      )}
     </div>
   );
 });

@@ -96,7 +96,7 @@ export default function DailyTasksPage() {
           {/* Ready Batches */}
           <div className="space-y-6">
             <AnimatePresence mode="popLayout" initial={false}>
-              {readyBatches.map((batch, idx) => (
+              {readyBatches.map((batch) => (
                 <motion.div
                   key={`ready-batch-${batch.batchIndex}-${batch.tasks[0]?.account?.id || "unknown"}`}
                   layout
@@ -114,8 +114,6 @@ export default function DailyTasksPage() {
                     onCopyRequest={copyToClipboard}
                     completedTasks={completedTasks}
                     deferredTasks={hookDeferredTasks}
-                    showProxyNotice={idx < readyBatches.length - 1}
-                    isLastBatch={idx === readyBatches.length - 1}
                   />
                 </motion.div>
               ))}

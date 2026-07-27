@@ -16,19 +16,14 @@ import {
   Settings,
   SlidersHorizontal,
   Database,
-  Network,
   MessageSquare,
   Palette,
-  Pin,
-  PinOff,
   History,
 } from 'lucide-react';
 import { cn } from '@grq/ui/lib/utils';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
 import { Button } from '@grq/ui/atoms/button';
 import { CompletedTasksSidebar } from '@grq/ui/organisms/CompletedTasksSidebar';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@grq/ui/atoms/sheet';
-import { ProxySettingsPanel } from '@grq/ui/molecules/ProxySettingsPanel';
 import { TelegramImportDialog } from '@grq/ui/organisms/TelegramImportDialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@grq/ui/atoms/dropdown-menu';
 import { TauriService } from '@grq/core/services/tauri.service';
@@ -50,7 +45,6 @@ const navigation = [
 const settingsNavigation = [
   { name: 'appearance', href: '/settings/appearance', icon: Palette,      labelKey: 'settings.appearance.title' },
   { name: 'database',   href: '/settings/database',   icon: Database,     labelKey: 'settings.database.title'   },
-  { name: 'proxy',      href: '/settings/proxy',      icon: Network,      labelKey: 'settings.proxy.title' },
   { name: 'telegram',   href: '/settings/telegram',   icon: MessageSquare,labelKey: 'settings.telegram.title'   },
   { name: 'sync',       href: '/settings/sync',       icon: Database,     labelKey: 'settings.sync.title' },
 ];
@@ -60,8 +54,6 @@ export function MainLayout({ children }: MainLayoutProps) {
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar, completedSidebarOpen, toggleCompletedSidebar } = useSettings();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [proxySheetOpen, setProxySheetOpen] = useState(false);
-  const [proxyPinned, setProxyPinned] = useState(false);
   const [telegramImportOpen, setTelegramImportOpen] = useState(false);
   const [pendingImportsCount, setPendingImportsCount] = useState(0);
 
@@ -109,11 +101,6 @@ export function MainLayout({ children }: MainLayoutProps) {
     };
   }, []);
 
-  const handlePinProxy = () => {
-    setProxyPinned(true);
-    setProxySheetOpen(false);
-  };
-
   const isSettingsActive = location.pathname.startsWith('/settings');
   // When sidebar is expanded, auto-expand settings group if on any settings page
   const [settingsOpen, setSettingsOpen] = useState(isSettingsActive);
@@ -149,17 +136,8 @@ export function MainLayout({ children }: MainLayoutProps) {
           </span>
         </div>
 
-        {/* Header right actions: Proxy shortcut + Completed shortcut + Drawer trigger */}
+        {/* Header right actions: Completed shortcut + Drawer trigger */}
         <div className="flex items-center gap-1.5">
-          {/* Quick Proxy button */}
-          <button
-            onClick={() => setProxySheetOpen(true)}
-            className="relative h-9 w-9 flex items-center justify-center rounded-xl hover:bg-emerald-500/10 transition-colors group"
-            title={t('settings.proxy.title')}
-          >
-            <Network className="h-4.5 w-4.5 text-emerald-500 group-hover:scale-110 transition-transform" />
-          </button>
-
           {/* Quick Completed Tasks button */}
           <button
             onClick={toggleCompletedSidebar}
@@ -438,31 +416,17 @@ export function MainLayout({ children }: MainLayoutProps) {
                       <DropdownMenuSeparator className="bg-border/40 mb-1" />
                       {settingsNavigation.map((item) => {
                         const Icon = item.icon;
-                        const isProxy = item.name === 'proxy';
                         const isActive = location.pathname === item.href;
                         
                         return (
-                          <DropdownMenuItem
-                            key={item.name}
-                            onClick={() => isProxy ? setProxySheetOpen(true) : undefined}
-                            asChild={!isProxy}
-                            className={cn(
+                          <DropdownMenuItem key={item.name} asChild>
+                            <Link to={item.href} className={cn(
                               "flex items-center gap-2.5 px-2.5 py-2 rounded-md cursor-pointer text-xs font-semibold transition-all",
                               isActive ? "bg-primary/10 text-primary" : "text-muted-foreground focus:bg-accent/50 focus:text-foreground"
-                            )}
-                          >
-                            {isProxy ? (
-                              <div className="w-full flex items-center gap-2.5">
-                                <Icon className="h-4 w-4 text-emerald-500" />
-                                <span className="flex-1 ltr:text-left rtl:text-right">{t(item.labelKey, item.name)}</span>
-                                <span className="text-[8px] font-bold text-emerald-500 bg-emerald-500/10 px-1 py-0.5 rounded-full border border-emerald-500/20">{t('common.live')}</span>
-                              </div>
-                            ) : (
-                              <Link to={item.href} className="w-full h-full flex items-center gap-2.5">
-                                <Icon className="h-4 w-4" />
-                                <span className="flex-1 ltr:text-left rtl:text-right">{t(item.labelKey, item.name)}</span>
-                              </Link>
-                            )}
+                            )}>
+                              <Icon className="h-4 w-4" />
+                              <span className="flex-1 ltr:text-left rtl:text-right">{t(item.labelKey, item.name)}</span>
+                            </Link>
                           </DropdownMenuItem>
                         );
                       })}
@@ -483,11 +447,10 @@ export function MainLayout({ children }: MainLayoutProps) {
                         <div className="space-y-1">
                           {settingsNavigation.map(item => {
                             const Icon = item.icon;
-                            const isProxy = item.name === 'proxy';
                             const isActive = location.pathname === item.href;
                             
-                            const ItemContent = (
-                              <>
+                            return (
+                              <NavLink key={item.name} to={item.href} className={({ isActive }) => cn('group flex items-center gap-3 rounded-xl p-1.5 transition-all outline-none active:scale-[0.98]', isActive ? 'bg-primary/5' : 'hover:bg-white/5')}>
                                 <div className={cn(
                                   "h-8 w-8 rounded-lg flex items-center justify-center shrink-0 transition-all border shadow-sm",
                                   isActive 
@@ -503,21 +466,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                                   )}>
                                     {t(item.labelKey, item.name)}
                                   </span>
-                                  {isProxy && <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
                                 </div>
-                              </>
-                            );
-
-                            if (isProxy) {
-                              return (
-                                <button key={item.name} onClick={() => setProxySheetOpen(true)} className="w-full group flex items-center gap-3 rounded-xl p-1.5 transition-all hover:bg-white/5 outline-none active:scale-[0.98]">
-                                  {ItemContent}
-                                </button>
-                              );
-                            }
-                            return (
-                              <NavLink key={item.name} to={item.href} className={({ isActive }) => cn('group flex items-center gap-3 rounded-xl p-1.5 transition-all outline-none active:scale-[0.98]', isActive ? 'bg-primary/5' : 'hover:bg-white/5')}>
-                                {ItemContent}
                               </NavLink>
                             );
                           })}
@@ -564,67 +513,13 @@ export function MainLayout({ children }: MainLayoutProps) {
       <CompletedTasksSidebar isOpen={completedSidebarOpen} onClose={toggleCompletedSidebar} />
 
       {/* ═══════════════════════════════════════════════
-          PROXY PINNED PANEL  (desktop only, split-view)
-      ══════════════════════════════════════════════════*/}
-      <div
-        className={cn(
-          'hidden lg:flex fixed inset-y-0 z-40 flex-col bg-card/95 backdrop-blur-xl border-inline-start border-border/40 shadow-2xl transition-all duration-300',
-          'w-[26rem] xl:w-[30rem] 2xl:w-[34rem]',
-          'end-0',
-          proxyPinned ? 'translate-x-0' : 'ltr:translate-x-full rtl:-translate-x-full'
-        )}
-      >
-        {/* Pinned panel header */}
-        <div className="flex flex-col border-b border-border/40 bg-card/80 backdrop-blur-md">
-          {/* Title row */}
-          <div className="flex items-center gap-3 px-5 pt-4 pb-3">
-            <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
-              <Network className="h-4.5 w-4.5 text-emerald-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold leading-tight truncate">{t('settings.proxy.title')}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">{t('settings.proxy.subtitle')}</p>
-            </div>
-          </div>
-
-          {/* Action buttons row — clearly separated */}
-          <div className="flex items-center gap-2 px-5 pb-3">
-            <button
-              onClick={() => setProxyPinned(false)}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors"
-            >
-              <PinOff className="h-3.5 w-3.5" />
-              {t('settings.proxy.unpin')}
-            </button>
-            <div className="h-4 w-px bg-border/60" />
-            <button
-              onClick={() => { setProxyPinned(false); setProxySheetOpen(true); }}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X className="h-3.5 w-3.5" />
-              {t('common.close')}
-            </button>
-          </div>
-        </div>
-
-        {/* Pinned panel content — scrollable */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 pb-8">
-          <ProxySettingsPanel />
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════
           MAIN CONTENT
       ══════════════════════════════════════════════════*/}
       <main
         className={cn(
           'transition-all duration-300 min-h-screen flex flex-col',
           sidebarCollapsed ? 'lg:ps-16' : 'lg:ps-64',
-          completedSidebarOpen
-            ? 'lg:pe-96'
-            : proxyPinned
-              ? 'lg:pe-[26rem] xl:pe-[30rem] 2xl:pe-[34rem]'
-              : ''
+          completedSidebarOpen ? 'lg:pe-96' : ''
         )}
         style={{
           paddingTop:    'calc(3.5rem + env(safe-area-inset-top))',   // below mobile header
@@ -683,46 +578,6 @@ export function MainLayout({ children }: MainLayoutProps) {
           );
         })}
       </nav>
-
-      {/* ═══════════════════════════════════════════════
-          PROXY QUICK-ACCESS SHEET
-      ══════════════════════════════════════════════════*/}
-      <Sheet open={proxySheetOpen} onOpenChange={setProxySheetOpen}>
-        <SheetContent side="right" className="flex flex-col w-full sm:max-w-lg p-0">
-          <SheetHeader>
-            <div className="flex items-center gap-3 pr-8">
-              <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
-                <Network className="h-4.5 w-4.5 text-emerald-500" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <SheetTitle className="text-base font-bold ltr:text-left rtl:text-right">
-                  {t('settings.proxy.title')}
-                </SheetTitle>
-                <SheetDescription className="ltr:text-left rtl:text-right">
-                  {t('settings.proxy.subtitle')}
-                </SheetDescription>
-              </div>
-            </div>
-
-            {/* Pin action — desktop only, placed below title clearly */}
-            <div className="hidden lg:flex items-center mt-3 pt-3 border-t border-border/40">
-              <button
-                onClick={handlePinProxy}
-                className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors group"
-              >
-                <Pin className="h-3.5 w-3.5 group-hover:scale-110 transition-transform ltr:rotate-0 rtl:-rotate-90" />
-                {t('settings.proxy.pinToScreen')}
-              </button>
-              <p className="mx-3 text-[10px] text-muted-foreground">{t('settings.proxy.splitScreen')}</p>
-            </div>
-          </SheetHeader>
-
-          {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 pb-8">
-            <ProxySettingsPanel />
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {/* Import Accounts Dialog */}
       <TelegramImportDialog 

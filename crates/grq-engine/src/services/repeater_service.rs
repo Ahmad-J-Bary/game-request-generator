@@ -3,8 +3,6 @@ use specta::Type;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::Url;
 use std::str::FromStr;
-use crate::db::config::AppConfig;
-
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct RepeaterResponse {
     pub status: u16,
@@ -17,7 +15,7 @@ pub struct RepeaterResponse {
 pub struct RepeaterService;
 
 impl RepeaterService {
-    pub async fn send_raw_request(raw_request: &str, config: &AppConfig) -> Result<RepeaterResponse, String> {
+    pub async fn send_raw_request(raw_request: &str) -> Result<RepeaterResponse, String> {
         let raw_request = raw_request.replace("\r\n", "\n");
         let mut parts = raw_request.splitn(2, "\n\n");
         let header_block = parts.next().unwrap_or("");
@@ -92,27 +90,11 @@ impl RepeaterService {
         };
 
         // Do not verify certs just in case people test on broken endpoints
-        let mut builder = reqwest::Client::builder()
+        let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
-            .danger_accept_invalid_certs(true);
-
-        if config.proxy_enabled {
-            if let (Some(proxy_type), Some(p_host), Some(p_port)) = (&config.proxy_type, &config.proxy_host, config.proxy_port) {
-                let proxy_scheme = if proxy_type == "socks5" { "socks5h" } else { "http" };
-                let proxy_url = format!("{}://{}:{}", proxy_scheme, p_host, p_port);
-                
-                if let Ok(mut proxy) = reqwest::Proxy::all(&proxy_url) {
-                    if let (Some(user), Some(pass)) = (&config.proxy_username, &config.proxy_password) {
-                        if !user.is_empty() && !pass.is_empty() {
-                            proxy = proxy.basic_auth(user.as_str(), pass.as_str());
-                        }
-                    }
-                    builder = builder.proxy(proxy);
-                }
-            }
-        }
-
-        let client = builder.build().map_err(|e| format!("Failed to build client: {}", e))?;
+            .danger_accept_invalid_certs(true)
+            .build()
+            .map_err(|e| format!("Failed to build client: {}", e))?;
 
         let method = reqwest::Method::from_str(method_str).map_err(|_| "Invalid HTTP Method")?;
 
@@ -128,16 +110,10 @@ impl RepeaterService {
             Ok(r) => r,
             Err(e) => {
                 let err_str = e.to_string();
-                let clean_err = if err_str.contains("SOCKS5 authentication failed") {
-                    "Proxy SOCKS5 Authentication Failed (Check your Username/Password)".to_string()
-                } else if err_str.contains("authentication failed") {
-                    "Proxy Authentication Failed".to_string()
-                } else if err_str.contains("timed out") || err_str.contains("timeout") {
-                    "Connection Timed Out: The proxy server or gaming server took too long to respond".to_string()
+                let clean_err = if err_str.contains("timed out") || err_str.contains("timeout") {
+                    "Connection Timed Out: The server took too long to respond".to_string()
                 } else if err_str.contains("dns") || err_str.contains("resolve") {
-                    "DNS Resolution Failed: The host could not be resolved, check proxy settings".to_string()
-                } else if err_str.contains("proxy") || err_str.contains("SOCKS") {
-                    format!("Proxy Connection Error: {}", err_str)
+                    "DNS Resolution Failed: The host could not be resolved".to_string()
                 } else {
                     format!("Network Error: {}", err_str)
                 };

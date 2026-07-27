@@ -136,10 +136,6 @@ function AppContent() {
                         element={<SettingsPage section="database" />}
                       />
                       <Route
-                        path="/settings/proxy"
-                        element={<SettingsPage section="proxy" />}
-                      />
-                      <Route
                         path="/settings/telegram"
                         element={<SettingsPage section="telegram" />}
                       />
