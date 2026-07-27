@@ -15,7 +15,14 @@ import { DataTableCell } from "./DataTableCell";
 import { Popover, PopoverContent, PopoverTrigger } from "@grq/ui/atoms/popover";
 import { SimpleCalendar } from "@grq/ui/atoms/simple-calendar";
 import { Button } from "@grq/ui/atoms/button";
-import { CalendarIcon, Eye, Edit3 } from "lucide-react";
+import { CalendarIcon, Eye, Edit3, MoreVertical, GitBranch, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@grq/ui/atoms/dropdown-menu";
 import { format } from "date-fns";
 
 export type ColumnData = LevelColumn | PurchaseColumn;
@@ -67,6 +74,9 @@ interface Account {
   name: string;
   start_date: string;
   start_time: string;
+  branch_id?: number | null;
+  branch_name?: string | null;
+  game_id: number;
 }
 
 interface AccountsDataTableProps {
@@ -95,6 +105,8 @@ interface AccountsDataTableProps {
   onPurchaseDateChange?: (purchaseId: number, date: Date | null) => void;
   onAccountClick?: (account: Account) => void;
   onAccountEdit?: (account: Account) => void;
+  onAccountTransfer?: (account: Account) => void;
+  onAccountDelete?: (account: Account) => void;
 }
 
 export function AccountsDataTable({
@@ -112,6 +124,8 @@ export function AccountsDataTable({
   onPurchaseDateChange,
   onAccountClick,
   onAccountEdit,
+  onAccountTransfer,
+  onAccountDelete,
 }: AccountsDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
@@ -726,41 +740,60 @@ export function AccountsDataTable({
         {accounts.map((acc, accIdx) => (
           <TableRow key={acc.id}>
             <TableCell style={dataRowStyle}>
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{acc.name}</span>
-                {(onAccountClick || onAccountEdit) && (
-                  <div className="flex items-center gap-1 ml-1">
-                    {onAccountClick && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onAccountClick(acc)}
-                        className="h-6 w-6 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                        title={t("accounts.viewDetails", "View Details")}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                    {onAccountEdit && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onAccountEdit(acc)}
-                        className="h-6 w-6 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                        title={t("accounts.editAccount", "Edit Account")}
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
+              <span className="font-medium">{acc.name}</span>
             </TableCell>
             <TableCell style={dataRowStyle}>
               {formatDateShort(acc.start_date)}
             </TableCell>
             <TableCell style={dataRowStyle}>
-              {formatTimeAMPM(acc.start_time)}
+              <div className="flex items-center justify-between gap-2">
+                <span>{formatTimeAMPM(acc.start_time)}</span>
+                {(onAccountClick || onAccountEdit || onAccountTransfer || onAccountDelete) && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-[140px]">
+                      {onAccountClick && (
+                        <DropdownMenuItem onClick={() => onAccountClick(acc)}>
+                          <Eye className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+                          {t("accounts.viewDetails")}
+                        </DropdownMenuItem>
+                      )}
+                      {onAccountEdit && (
+                        <DropdownMenuItem onClick={() => onAccountEdit(acc)}>
+                          <Edit3 className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+                          {t("accounts.editAccount")}
+                        </DropdownMenuItem>
+                      )}
+                      {onAccountTransfer && (
+                        <DropdownMenuItem onClick={() => onAccountTransfer(acc)}>
+                          <GitBranch className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+                          {t("accounts.branchTransfer.title")}
+                        </DropdownMenuItem>
+                      )}
+                      {onAccountDelete && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => onAccountDelete(acc)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+                            {t("accounts.deleteAccount")}
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
             </TableCell>
 
             {columns.map((c, colIdx) => {

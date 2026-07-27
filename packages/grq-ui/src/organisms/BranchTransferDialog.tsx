@@ -18,6 +18,12 @@ interface BranchTransferDialogProps {
   currentBranchId: number | null;
   currentBranchName: string | null;
   gameId: number;
+  /** If provided, pre-selects the target branch and hides the branch selector */
+  defaultTargetBranchId?: number;
+  /** Called after successful transfer (with result) instead of dispatching events internally */
+  onTransferComplete?: (result: AccountBranchTransferResult) => void;
+  /** Called when user cancels without completing transfer */
+  onCancel?: () => void;
 }
 
 export function BranchTransferDialog({
@@ -28,10 +34,15 @@ export function BranchTransferDialog({
   currentBranchId,
   currentBranchName,
   gameId,
+  defaultTargetBranchId,
+  onTransferComplete,
+  onCancel,
 }: BranchTransferDialogProps) {
   const { t } = useTranslation();
   const [branches, setBranches] = useState<GameBranch[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<string>('');
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(
+    defaultTargetBranchId ? defaultTargetBranchId.toString() : '',
+  );
   const [loading, setLoading] = useState(false);
   const [transferring, setTransferring] = useState(false);
   const [result, setResult] = useState<AccountBranchTransferResult | null>(null);
@@ -40,12 +51,16 @@ export function BranchTransferDialog({
 
   useEffect(() => {
     if (open) {
-      setSelectedBranchId('');
+      if (defaultTargetBranchId) {
+        setSelectedBranchId(defaultTargetBranchId.toString());
+      } else {
+        setSelectedBranchId('');
+      }
       setResult(null);
       setPreview(null);
       loadBranches();
     }
-  }, [open]);
+  }, [open, defaultTargetBranchId]);
 
   const loadBranches = async () => {
     setLoading(true);
@@ -108,9 +123,20 @@ export function BranchTransferDialog({
 
   const handleClose = () => {
     if (result) {
-      window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
-      window.dispatchEvent(new CustomEvent('data-changed'));
+      if (onTransferComplete) {
+        onTransferComplete(result);
+      } else {
+        window.dispatchEvent(new CustomEvent('progress-updated', { detail: { accountId } }));
+        window.dispatchEvent(new CustomEvent('data-changed'));
+      }
+    } else if (!result && !transferring && onCancel) {
+      onCancel();
     }
+    onOpenChange(false);
+  };
+
+  const handleCancel = () => {
+    if (onCancel) onCancel();
     onOpenChange(false);
   };
 
@@ -195,21 +221,33 @@ export function BranchTransferDialog({
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
-                  <GitBranch className="h-3.5 w-3.5" /> {t('accounts.branchTransfer.selectTargetBranch')}
-                </label>
-                <Select value={selectedBranchId} onValueChange={setSelectedBranchId} disabled={loading}>
-                  <SelectTrigger className="rounded-xl bg-background border-border/40">
-                    <SelectValue placeholder={loading ? t('common.loading') : t('accounts.branchTransfer.selectBranchPlaceholder')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {branches.map(branch => (
-                      <SelectItem key={branch.id} value={branch.id.toString()}>{branch.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!defaultTargetBranchId && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                    <GitBranch className="h-3.5 w-3.5" /> {t('accounts.branchTransfer.selectTargetBranch')}
+                  </label>
+                  <Select value={selectedBranchId} onValueChange={setSelectedBranchId} disabled={loading}>
+                    <SelectTrigger className="rounded-xl bg-background border-border/40">
+                      <SelectValue placeholder={loading ? t('common.loading') : t('accounts.branchTransfer.selectBranchPlaceholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {branches.map(branch => (
+                        <SelectItem key={branch.id} value={branch.id.toString()}>{branch.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {defaultTargetBranchId && selectedBranch && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-muted-foreground">
+                    {t('accounts.branchTransfer.targetBranch')}
+                  </label>
+                  <div className="text-sm font-medium px-3 py-2 rounded-xl bg-accent/20 border border-border/40">
+                    {selectedBranch.name}
+                  </div>
+                </div>
+              )}
 
               {selectedBranch && (
                 <>
@@ -306,7 +344,7 @@ export function BranchTransferDialog({
                   variant="ghost"
                   size="sm"
                   className="text-xs text-muted-foreground"
-                  onClick={() => onOpenChange(false)}
+                  onClick={handleCancel}
                   disabled={transferring}
                 >
                   {t('common.cancel')}

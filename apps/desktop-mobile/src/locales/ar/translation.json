@@ -24,6 +24,7 @@
     "noData": "لا توجد بيانات متاحة",
     "selectDate": "اختر التاريخ",
     "actions": "الإجراءات",
+    "accounts": "الحسابات",
     "seconds": "ثانية",
     "yes": "نعم",
     "no": "لا",
@@ -143,6 +144,20 @@
       "level": "مستوى",
       "purchase": "شراء",
       "noSourceHint": "الحساب ليس لديه فرع مصدر. سيتم تعيينه للفرع المحدد."
+    },
+    "bulkTransfer": {
+      "title": "نقل جماعي للحسابات",
+      "description": "اختر حسابات من أي فرع وانقلها إلى فرع آخر",
+      "selectTargetBranch": "الفرع الهدف",
+      "selectBranchPlaceholder": "اختر فرعاً...",
+      "selectAccounts": "الحسابات",
+      "selectAll": "تحديد الكل",
+      "deselectAll": "إلغاء تحديد الكل",
+      "transferSelected": "نقل {{count}} محدد",
+      "transferring": "جارٍ النقل {{current}}/{{total}}...",
+      "result": "اكتمل: {{success}} نجح، {{failed}} فشل",
+      "results": "النتائج",
+      "noAccounts": "لا توجد حسابات متاحة"
     }
   },
   "levels": {

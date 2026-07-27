@@ -1,6 +1,6 @@
 // src/pages/accounts/AccountFormPage.tsx
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Calendar, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
@@ -12,10 +12,11 @@ import { Textarea } from '@grq/ui/atoms/textarea';
 import { Card, CardContent } from '@grq/ui/atoms/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 import { BackButton } from '@grq/ui/molecules/BackButton';
-import { CreateAccountRequest, UpdateAccountRequest, GameBranch } from '@grq/api-bindings';
+import { CreateAccountRequest, UpdateAccountRequest, GameBranch, AccountBranchTransferResult } from '@grq/api-bindings';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { useGames } from '@grq/core/hooks/useGames';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@grq/ui/atoms/select';
+import { BranchTransferDialog } from '@grq/ui/organisms/BranchTransferDialog';
 
 // Simple Calendar Component
 const SimpleCalendar = ({
@@ -357,6 +358,16 @@ export default function AccountFormPage() {
   const { fetchBranches } = useGames();
   const [branches, setBranches] = useState<GameBranch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(account?.branch_id || null);
+  const originalBranchIdRef = useRef<number | null>(account?.branch_id ?? null);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [pendingBranchId, setPendingBranchId] = useState<number | null>(null);
+
+  // Keep originalBranchIdRef in sync with account data
+  useEffect(() => {
+    if (account) {
+      originalBranchIdRef.current = account.branch_id ?? null;
+    }
+  }, [account]);
 
   const currentGameId = account ? account.game_id : gameId;
 
@@ -512,7 +523,15 @@ export default function AccountFormPage() {
               <Label>{t('branches.branch')}</Label>
               <Select 
                 value={selectedBranchId?.toString() || ""} 
-                onValueChange={(val) => setSelectedBranchId(val === "" ? null : parseInt(val, 10))}
+                onValueChange={(val) => {
+                  const newId = val === "" ? null : parseInt(val, 10);
+                  if (isEditMode && account && newId !== originalBranchIdRef.current) {
+                    setPendingBranchId(newId);
+                    setShowTransferDialog(true);
+                  } else {
+                    setSelectedBranchId(newId);
+                  }
+                }}
               >
                 <SelectTrigger
                   dir={i18n.dir()}
@@ -623,6 +642,30 @@ export default function AccountFormPage() {
           </form>
         </CardContent>
       </Card>
+
+      {account && (
+        <BranchTransferDialog
+          open={showTransferDialog}
+          onOpenChange={(open) => {
+            if (!open) setShowTransferDialog(false);
+          }}
+          accountId={account.id}
+          accountName={account.name}
+          currentBranchId={originalBranchIdRef.current}
+          currentBranchName={branches.find(b => b.id === originalBranchIdRef.current)?.name ?? null}
+          gameId={account.game_id}
+          defaultTargetBranchId={pendingBranchId ?? undefined}
+          onTransferComplete={(result: AccountBranchTransferResult) => {
+            setSelectedBranchId(result.targetBranchId);
+            originalBranchIdRef.current = result.targetBranchId;
+            setShowTransferDialog(false);
+          }}
+          onCancel={() => {
+            setSelectedBranchId(originalBranchIdRef.current);
+            setShowTransferDialog(false);
+          }}
+        />
+      )}
     </div>
   );
 }

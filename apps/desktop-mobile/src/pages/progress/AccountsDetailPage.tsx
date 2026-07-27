@@ -10,6 +10,8 @@ import { BackButton } from "@grq/ui/molecules/BackButton";
 import { AccountsDataTable } from "@grq/ui/organisms/tables/AccountsDataTable";
 import { ImportDialog } from "@grq/ui/molecules/ImportDialog";
 import { ExportDialog } from "@grq/ui/molecules/ExportDialog";
+import { BranchTransferDialog } from "@grq/ui/organisms/BranchTransferDialog";
+import { BranchBulkTransferDialog } from "@grq/ui/organisms/BranchBulkTransferDialog";
 import { Button } from "@grq/ui/atoms/button";
 import {
   DropdownMenu,
@@ -26,6 +28,7 @@ import {
   X,
   MoreVertical,
   Search,
+  GitBranch,
 } from "lucide-react";
 
 import { useAccounts } from "@grq/core/hooks/useAccounts";
@@ -154,7 +157,7 @@ export default function AccountsDetailPage() {
     "game",
   );
 
-  const { accounts = [] } = useAccounts(selectedGameId);
+  const { accounts = [], deleteAccount, refreshAccounts } = useAccounts(selectedGameId);
   const { games, fetchBranches } = useGames();
   const [branches, setBranches] = useState<GameBranch[]>([]);
 
@@ -217,6 +220,8 @@ export default function AccountsDetailPage() {
             exportType={exportType}
             setExportType={setExportType}
             onCreateGame={handleCreateGameAsync}
+            deleteAccount={deleteAccount}
+            refreshAccounts={refreshAccounts}
           />
         )}
       </ProgressProvider>
@@ -246,6 +251,8 @@ interface AccountsDetailContentProps {
   exportType: "game" | "account" | "all";
   setExportType: (type: "game" | "account" | "all") => void;
   onCreateGame: (name: string) => Promise<void>;
+  deleteAccount: (id: number) => Promise<boolean>;
+  refreshAccounts: () => Promise<void>;
 }
 
 function AccountsDetailContent({
@@ -270,6 +277,8 @@ function AccountsDetailContent({
   exportType,
   setExportType,
   onCreateGame,
+  deleteAccount,
+  refreshAccounts,
 }: AccountsDetailContentProps) {
   const [selectedBranchId, setSelectedBranchId] = useState<
     number | undefined
@@ -997,6 +1006,9 @@ function AccountsDetailContent({
               }}
               rangeFillMode={rangeFillMode}
               selectedGameId={selectedGameId}
+              deleteAccount={deleteAccount}
+              refreshAccounts={refreshAccounts}
+              branches={branches}
             />
           ))
         )}
@@ -1061,6 +1073,9 @@ interface BranchSectionProps {
   onExport: () => void;
   rangeFillMode: boolean;
   selectedGameId?: number;
+  deleteAccount: (id: number) => Promise<boolean>;
+  refreshAccounts: () => Promise<void>;
+  branches: GameBranch[];
 }
 
 function BranchSection({
@@ -1079,6 +1094,9 @@ function BranchSection({
   onExport,
   rangeFillMode,
   selectedGameId,
+  deleteAccount,
+  refreshAccounts,
+  branches,
 }: BranchSectionProps) {
   const navigate = useNavigate();
   const { levels = [] } = useLevels(branch.id);
@@ -1092,6 +1110,19 @@ function BranchSection({
     navigate(`/accounts/edit/${account.id}`, {
       state: { account, selectedGameId },
     });
+  };
+
+  const [transferTarget, setTransferTarget] = useState<Account | null>(null);
+  const [showBulkTransfer, setShowBulkTransfer] = useState(false);
+
+  const handleAccountTransfer = (account: Account) => {
+    setTransferTarget(account);
+  };
+
+  const handleAccountDelete = async (account: Account) => {
+    if (window.confirm(t("accounts.deleteConfirm"))) {
+      await deleteAccount(account.id);
+    }
   };
 
   const columns = useMemo(() => {
@@ -1382,7 +1413,7 @@ function BranchSection({
             variant="secondary"
             className="font-mono text-[10px] px-2 py-0"
           >
-            {accounts.length} {t("common.accounts", "Accounts")}
+            {accounts.length} {t("common.accounts")}
           </Badge>
         </h3>
         <Button
@@ -1392,6 +1423,14 @@ function BranchSection({
           className="h-8 px-2 text-muted-foreground hover:text-primary"
         >
           <Download className="h-4 w-4 mr-1" /> {t("common.export", "Export")}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowBulkTransfer(true)}
+          className="h-8 px-2 text-muted-foreground hover:text-primary"
+        >
+          <GitBranch className="h-4 w-4 mr-1" /> {t("accounts.bulkTransfer.title")}
         </Button>
       </div>
       <Card className="overflow-hidden border-border/50 shadow-2xl shadow-black/5 bg-background/40 backdrop-blur-sm rounded-t-none">
@@ -1422,9 +1461,40 @@ function BranchSection({
             onPurchaseDateChange={onPurchaseDateChange}
             onAccountClick={handleAccountClick}
             onAccountEdit={handleAccountEdit}
+            onAccountTransfer={handleAccountTransfer}
+            onAccountDelete={handleAccountDelete}
           />
         </CardContent>
       </Card>
+
+      {transferTarget && (
+        <BranchTransferDialog
+          open={!!transferTarget}
+          onOpenChange={(open) => { if (!open) setTransferTarget(null); }}
+          accountId={transferTarget.id}
+          accountName={transferTarget.name}
+          currentBranchId={transferTarget.branch_id ?? null}
+          currentBranchName={transferTarget.branch_name ?? null}
+          gameId={transferTarget.game_id}
+          onTransferComplete={() => {
+            setTransferTarget(null);
+            refreshAccounts();
+          }}
+          onCancel={() => setTransferTarget(null)}
+        />
+      )}
+
+      <BranchBulkTransferDialog
+        open={showBulkTransfer}
+        onOpenChange={setShowBulkTransfer}
+        accounts={accounts}
+        branches={branches}
+        onTransferComplete={() => {
+          setShowBulkTransfer(false);
+          refreshAccounts();
+        }}
+        onCancel={() => setShowBulkTransfer(false)}
+      />
     </section>
   );
 }

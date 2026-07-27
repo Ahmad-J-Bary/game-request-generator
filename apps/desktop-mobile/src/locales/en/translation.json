@@ -24,6 +24,7 @@
     "noData": "No data available",
     "selectDate": "Select Date",
     "actions": "Actions",
+    "accounts": "Accounts",
     "seconds": "seconds",
     "yes": "Yes",
     "no": "No",
@@ -143,6 +144,20 @@
       "level": "Level",
       "purchase": "Purchase",
       "noSourceHint": "Account has no source branch. It will be assigned to the selected branch."
+    },
+    "bulkTransfer": {
+      "title": "Bulk Transfer Accounts",
+      "description": "Select accounts from any branch and transfer them to a target branch",
+      "selectTargetBranch": "Target Branch",
+      "selectBranchPlaceholder": "Select a branch...",
+      "selectAccounts": "Accounts",
+      "selectAll": "Select All",
+      "deselectAll": "Deselect All",
+      "transferSelected": "Transfer {{count}} Selected",
+      "transferring": "Transferring {{current}}/{{total}}...",
+      "result": "Completed: {{success}} succeeded, {{failed}} failed",
+      "results": "Results",
+      "noAccounts": "No accounts available"
     }
   },
   "levels": {
