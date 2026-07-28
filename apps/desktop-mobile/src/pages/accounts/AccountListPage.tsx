@@ -137,7 +137,7 @@ export default function AccountListPage() {
                       {t('export.toExcel', 'Export to Excel (.xlsx)')}
                     </DropdownMenuLabel>
                     <DropdownMenuItem onClick={() => setShowExportDialog(true)}>
-                      {t('export.gameAccounts', 'Export All Game Accounts')}
+                      {t('export.thisGame', 'Export This Game')} ({currentGameName})
                     </DropdownMenuItem>
 
                     <DropdownMenuSeparator />
@@ -147,13 +147,13 @@ export default function AccountListPage() {
                       {t('export.requestTemplates', 'Request Templates (.txt)')}
                     </DropdownMenuLabel>
                     <DropdownMenuItem onClick={() => handleExportTemplates()}>
-                      {t('export.allGames', 'All Games')}
+                      {t('export.allGames', 'Export All Games')}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => selectedGameId && handleExportTemplates(selectedGameId)}
                       disabled={!selectedGameId}
                     >
-                      {currentGameName || t('common.currentGame', 'Current Game')}
+                      {t('export.thisGame', 'Export This Game')} ({currentGameName})
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -176,11 +176,11 @@ export default function AccountListPage() {
                       </Button>
                       <Button variant="ghost" size="sm" className="justify-start w-full" onClick={() => setShowExportDialog(true)}>
                         <FileText className="mr-2 h-4 w-4" />
-                        {t('export.toExcel', 'Export to Excel')}
-                      </Button>
-                      <Button variant="ghost" size="sm" className="justify-start w-full" onClick={() => handleExportTemplates()}>
-                        <Download className="mr-2 h-4 w-4" />
-                        {t('export.requestTemplates', 'Export Templates')}
+                      {t('export.thisGame', 'Export This Game')} ({currentGameName})
+                    </Button>
+                    <Button variant="ghost" size="sm" className="justify-start w-full" onClick={() => handleExportTemplates()}>
+                      <Download className="mr-2 h-4 w-4" />
+                      {t('export.requestTemplates', 'Export Templates')}
                       </Button>
                       {selectedGameId && (
                         <Button variant="ghost" size="sm" className="justify-start w-full" onClick={() => handleExportTemplates(selectedGameId)}>

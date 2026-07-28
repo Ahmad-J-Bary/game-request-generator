@@ -14,7 +14,7 @@ import { useTheme } from "@grq/ui/contexts/ThemeContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@grq/ui/atoms/popover";
 import { SimpleCalendar } from "@grq/ui/atoms/simple-calendar";
 import { Button } from "@grq/ui/atoms/button";
-import { CalendarIcon, Eye, Edit3, MoreVertical, GitBranch, Trash2 } from "lucide-react";
+import { CalendarIcon, Eye, Edit3, MoreVertical, GitBranch, Trash2, Plus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -105,6 +105,7 @@ interface AccountsDataTableProps {
   onAccountEdit?: (account: Account) => void;
   onAccountTransfer?: (account: Account) => void;
   onAccountDelete?: (account: Account) => void;
+  onAddAccount?: () => void;
 }
 
 export function AccountsDataTable({
@@ -123,6 +124,7 @@ export function AccountsDataTable({
   onAccountEdit,
   onAccountTransfer,
   onAccountDelete,
+  onAddAccount,
 }: AccountsDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
@@ -659,7 +661,22 @@ export function AccountsDataTable({
         <TableRow>
           <TableHead style={headerStyle}>{t("accounts.account")}</TableHead>
           <TableHead style={headerStyle}>{t("accounts.startDate")}</TableHead>
-          <TableHead style={headerStyle}>{t("accounts.startTime")}</TableHead>
+          <TableHead style={headerStyle}>
+            <div className="flex items-center justify-between gap-2">
+              <span>{t("accounts.startTime")}</span>
+              {onAddAccount && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onAddAccount}
+                  className="h-7 w-7 p-0"
+                  title={t("accounts.addAccount")}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </TableHead>
           {columns.map((col) => (
             <TableHead key={col.id} />
           ))}

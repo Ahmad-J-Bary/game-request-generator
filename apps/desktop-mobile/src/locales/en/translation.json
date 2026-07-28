@@ -34,7 +34,6 @@
     "eventOnly": "Event Only",
     "import": "Import",
     "export": "Export",
-    "filter": "Filter",
     "data": "Data",
     "none": "None",
     "default": "Default",
@@ -429,8 +428,10 @@
     "confirm": "Export",
     "success": "Data exported successfully",
     "failed": "Export failed",
-    "gameAccounts": "Export Game Accounts",
-    "allGames": "Export All Games"
+    "allGames": "Export All Games",
+    "thisGame": "Export This Game",
+    "toExcel": "Export to Excel (.xlsx)",
+    "requestTemplates": "Request Templates (.txt)"
   },
   "errors": {
     "required": "This field is required",

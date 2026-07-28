@@ -34,7 +34,6 @@
     "eventOnly": "حدث فقط",
     "import": "استيراد",
     "export": "تصدير",
-    "filter": "تصفية",
     "data": "البيانات",
     "none": "لا يوجد",
     "default": "افتراضي",
@@ -430,8 +429,10 @@
     "confirm": "تصدير",
     "success": "تم تصدير البيانات بنجاح",
     "failed": "فشل في التصدير",
-    "gameAccounts": "تصدير حسابات اللعبة",
-    "allGames": "تصدير جميع الألعاب"
+    "allGames": "تصدير جميع الألعاب",
+    "thisGame": "تصدير هذه اللعبة",
+    "toExcel": "تصدير إلى Excel (.xlsx)",
+    "requestTemplates": "قوالب الطلبات (.txt)"
   },
   "errors": {
     "required": "هذا الحقل مطلوب",

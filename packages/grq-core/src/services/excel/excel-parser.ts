@@ -522,10 +522,9 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
 
     if (!accountName) continue;
 
-    const account: Partial<Account> & { lastCompletedToken?: string } = {
+    const account: Partial<Account> = {
       name: accountName,
       request_template: 'Needs to be filled in - imported from Excel export',
-      lastCompletedToken: row[3] ? row[3].toString().trim() : undefined,
     };
 
     // Parse start date - handle various formats and store in standardized YYYY-MM-DD format

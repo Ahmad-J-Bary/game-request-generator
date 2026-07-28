@@ -235,18 +235,18 @@ export class ExcelService {
     // Add Branch Title if provided
     if (branchName) {
       wsData.push([`Branch: ${branchName}`]);
-      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 3 + columns.length } });
+      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 2 + columns.length } });
     }
 
     const rowOffset = wsData.length;
 
     if (layout === 'vertical') {
       // Vertical layout: Accounts as rows, Levels as columns
-      const headerRow1 = ['Event Token', '', '', ''];
-      const headerRow2 = ['Level Name', '', '', ''];
-      const headerRow3 = ['Days Offset', '', '', ''];
-      const headerRow4 = ['Time Spent (1000 seconds)', '', '', ''];
-      const headerRow5 = ['Account', 'Start Date', 'Start Time', 'Last Completed Token'];
+      const headerRow1 = ['Event Token', '', ''];
+      const headerRow2 = ['Level Name', '', ''];
+      const headerRow3 = ['Days Offset', '', ''];
+      const headerRow4 = ['Time Spent (1000 seconds)', '', ''];
+      const headerRow5 = ['Account', 'Start Date', 'Start Time'];
 
       columns.forEach((col) => {
         headerRow1.push(col.token);
@@ -259,22 +259,8 @@ export class ExcelService {
       wsData.push(headerRow1, headerRow2, headerRow3, headerRow4, headerRow5);
 
       accounts.forEach((acc, accIdx) => {
-        // Find last completed token
-        let lastCompletedToken = '';
         const matrixRow = matrix[accIdx];
-        
-        // Iterate backwards from columns to find the last completed one
-        for (let colIdx = columns.length - 1; colIdx >= 0; colIdx--) {
-          const col = columns[colIdx];
-          const progressKey = `${acc.id}_${col.id}`;
-          const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
-          if (progress?.is_completed) {
-            lastCompletedToken = col.uniqueKey;
-            break;
-          }
-        }
-
-        const row: any[] = [acc.name, formatDateWithYear(acc.start_date), formatTimeAMPM(acc.start_time), lastCompletedToken];
+        const row: any[] = [acc.name, formatDateWithYear(acc.start_date), formatTimeAMPM(acc.start_time)];
         matrixRow.forEach((date, colIdx) => {
           const col = columns[colIdx];
           const progressKey = `${acc.id}_${col.id}`;
@@ -298,10 +284,10 @@ export class ExcelService {
 
       // Apply merging relative to rowOffset
       merges.push(
-        { s: { r: rowOffset + 0, c: 0 }, e: { r: rowOffset + 0, c: 3 } },
-        { s: { r: rowOffset + 1, c: 0 }, e: { r: rowOffset + 1, c: 3 } },
-        { s: { r: rowOffset + 2, c: 0 }, e: { r: rowOffset + 2, c: 3 } },
-        { s: { r: rowOffset + 3, c: 0 }, e: { r: rowOffset + 3, c: 3 } },
+        { s: { r: rowOffset + 0, c: 0 }, e: { r: rowOffset + 0, c: 2 } },
+        { s: { r: rowOffset + 1, c: 0 }, e: { r: rowOffset + 1, c: 2 } },
+        { s: { r: rowOffset + 2, c: 0 }, e: { r: rowOffset + 2, c: 2 } },
+        { s: { r: rowOffset + 3, c: 0 }, e: { r: rowOffset + 3, c: 2 } },
       );
 
       // Apply styling directly to cell content in wsData
@@ -321,17 +307,17 @@ export class ExcelService {
           const cellObj = typeof val === 'object' && val !== null && 'v' in val ? val : { v: val };
           
           if (localRowIdx < 5) {
-            if (c < 4) {
+            if (c < 3) {
               cellObj.s = headerStyle;
             } else {
-              const col = columns[c - 4];
+              const col = columns[c - 3];
               cellObj.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, true);
             }
           } else {
-            if (c < 4) {
+            if (c < 3) {
               cellObj.s = dataRowStyle;
             } else {
-              const col = columns[c - 4];
+              const col = columns[c - 3];
               const acc = accounts[localRowIdx - 5];
               const progressKey = `${acc.id}_${col.id}`;
               const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
@@ -345,7 +331,7 @@ export class ExcelService {
       }
 
       const cols = [
-        { wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 25 },
+        { wch: 20 }, { wch: 12 }, { wch: 12 },
         ...columns.map(() => ({ wch: 12 }))
       ];
 

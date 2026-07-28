@@ -14,7 +14,6 @@ import {
   AlertDialogTitle,
 } from "@grq/ui/atoms/alert-dialog";
 import { Card, CardContent } from "@grq/ui/atoms/card";
-import { GameSelector } from "@grq/ui/molecules/GameSelector";
 import { BackButton } from "@grq/ui/molecules/BackButton";
 import { AccountsDataTable } from "@grq/ui/organisms/tables/AccountsDataTable";
 import { ImportDialog } from "@grq/ui/molecules/ImportDialog";
@@ -287,6 +286,12 @@ function AccountsDetailContent({
   deleteAccount,
   refreshAccounts,
 }: AccountsDetailContentProps) {
+  useEffect(() => {
+    if (games.length > 0 && !selectedGameId) {
+      setSelectedGameId(games[0].id);
+    }
+  }, [games, selectedGameId, setSelectedGameId]);
+
   const [selectedBranchId, setSelectedBranchId] = useState<
     number | undefined
   >();
@@ -815,20 +820,20 @@ function AccountsDetailContent({
                 </DropdownMenuLabel>
                 <DropdownMenuItem
                   onClick={() => {
-                    setExportType("game");
-                    setSelectedBranchId(undefined);
-                    setShowExportDialog(true);
-                  }}
-                >
-                  {t("export.gameAccounts", "Export All Game Accounts")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
                     setExportType("all");
                     setShowExportDialog(true);
                   }}
                 >
                   {t("export.allGames", "Export All Games")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setExportType("game");
+                    setSelectedBranchId(undefined);
+                    setShowExportDialog(true);
+                  }}
+                >
+                  {t("export.thisGame", "Export This Game")} ({currentGameName})
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
@@ -838,23 +843,16 @@ function AccountsDetailContent({
                   {t("export.requestTemplates", "Request Templates (.txt)")}
                 </DropdownMenuLabel>
                 <DropdownMenuItem onClick={() => handleExportTemplates()}>
-                  {t("export.allGames", "All Games")}
+                  {t("export.allGames", "Export All Games")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => selectedGameId && handleExportTemplates(selectedGameId)}
                   disabled={!selectedGameId}
                 >
-                  {currentGameName || t("common.currentGame", "Current Game")}
+                  {t("export.thisGame", "Export This Game")} ({currentGameName})
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            <div className="h-9 min-w-[140px]">
-              <GameSelector
-                selectedGameId={selectedGameId}
-                onGameChange={setSelectedGameId}
-              />
-            </div>
 
             <div className="flex items-center gap-1 p-1 border rounded-lg h-9 bg-accent/30 shadow-inner">
               <button
@@ -910,16 +908,6 @@ function AccountsDetailContent({
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">
-                    {t("common.filter")}
-                  </Label>
-                  <GameSelector
-                    selectedGameId={selectedGameId}
-                    onGameChange={setSelectedGameId}
-                  />
-                </div>
-
                 {isEditMode && (
                   <div className="space-y-2 pt-2 border-t">
                     <Label className="text-[10px] uppercase text-muted-foreground font-bold">
@@ -969,20 +957,6 @@ function AccountsDetailContent({
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        setExportType("game");
-                        setSelectedBranchId(undefined);
-                        setShowExportDialog(true);
-                      }}
-                      className="flex items-center justify-start gap-2 h-9 w-full"
-                    >
-                      <Download className="h-4 w-4" />{" "}
-                      {t("export.gameAccounts", "Export All Game Accounts")}
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
                         setExportType("all");
                         setShowExportDialog(true);
                       }}
@@ -990,6 +964,20 @@ function AccountsDetailContent({
                     >
                       <Download className="h-4 w-4" />{" "}
                       {t("export.allGames", "Export All Games")}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setExportType("game");
+                        setSelectedBranchId(undefined);
+                        setShowExportDialog(true);
+                      }}
+                      className="flex items-center justify-start gap-2 h-9 w-full"
+                    >
+                      <Download className="h-4 w-4" />{" "}
+                      {t("export.thisGame", "Export This Game")} ({currentGameName})
                     </Button>
                   </div>
                 </div>
@@ -1504,6 +1492,7 @@ function BranchSection({
             onAccountEdit={handleAccountEdit}
             onAccountTransfer={handleAccountTransfer}
             onAccountDelete={confirmDeleteAccount}
+            onAddAccount={() => navigate(`/accounts/new?gameId=${selectedGameId}`)}
           />
         </CardContent>
       </Card>
