@@ -16,9 +16,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@grq/ui/atoms/alert-dialog';
-import { Plus, Pencil, Trash2, Eye, Download, Upload, MoreVertical } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, Download, Upload, MoreVertical, FileText, ChevronDown } from 'lucide-react';
 import { ImportDialog } from '@grq/ui/molecules/ImportDialog';
 import { ExportDialog } from '@grq/ui/molecules/ExportDialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@grq/ui/atoms/dropdown-menu';
 import {
   Popover,
   PopoverContent,
@@ -26,6 +34,9 @@ import {
 } from '@grq/ui/atoms/popover';
 import { Label } from '@grq/ui/atoms/label';
 import { Account } from '@grq/api-bindings';
+import { exportRequestTemplates } from '@grq/core/services/export-templates.service';
+import { NotificationService } from '@grq/core/utils/notifications';
+import { useGames } from '@grq/core/hooks/useGames';
 
 export default function AccountListPage() {
   const { t } = useTranslation();
@@ -54,6 +65,20 @@ export default function AccountListPage() {
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+
+  const { games } = useGames();
+  const currentGameName = games.find((g) => g.id === selectedGameId)?.name || '';
+
+  const handleExportTemplates = async (gameId?: number) => {
+    const result = await exportRequestTemplates(gameId);
+    if (result.success) {
+      NotificationService.success(
+        t('export.templatesExportSuccess', 'Exported {{count}} template files', { count: result.count ?? 0 }),
+      );
+    } else {
+      NotificationService.error(t('export.templatesExportFailed', 'Failed to export request templates'));
+    }
+  };
 
   const handleEditNavigate = (account: Account) => {
     navigate(`/accounts/edit/${account.id}`, { state: { account, selectedGameId } });
@@ -98,10 +123,40 @@ export default function AccountListPage() {
                     <Upload className="mr-2 h-4 w-4" />
                     {t('common.import', 'Import')}
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)}>
-                    <Download className="mr-2 h-4 w-4" />
-                    {t('common.export', 'Export')}
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Download className="mr-2 h-4 w-4" />
+                      {t('common.export', 'Export')}
+                      <ChevronDown className="ml-1 h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="min-w-[180px]">
+                    <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
+                      <FileText className="h-3.5 w-3.5 inline mr-1.5" />
+                      {t('export.toExcel', 'Export to Excel (.xlsx)')}
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => setShowExportDialog(true)}>
+                      {t('export.gameAccounts', 'Export All Game Accounts')}
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
+
+                    <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
+                      <FileText className="h-3.5 w-3.5 inline mr-1.5" />
+                      {t('export.requestTemplates', 'Request Templates (.txt)')}
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => handleExportTemplates()}>
+                      {t('export.allGames', 'All Games')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => selectedGameId && handleExportTemplates(selectedGameId)}
+                      disabled={!selectedGameId}
+                    >
+                      {currentGameName || t('common.currentGame', 'Current Game')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
 
               {/* Mobile More Actions */}
@@ -120,9 +175,19 @@ export default function AccountListPage() {
                         {t('common.import')}
                       </Button>
                       <Button variant="ghost" size="sm" className="justify-start w-full" onClick={() => setShowExportDialog(true)}>
-                        <Download className="mr-2 h-4 w-4" />
-                        {t('common.export')}
+                        <FileText className="mr-2 h-4 w-4" />
+                        {t('export.toExcel', 'Export to Excel')}
                       </Button>
+                      <Button variant="ghost" size="sm" className="justify-start w-full" onClick={() => handleExportTemplates()}>
+                        <Download className="mr-2 h-4 w-4" />
+                        {t('export.requestTemplates', 'Export Templates')}
+                      </Button>
+                      {selectedGameId && (
+                        <Button variant="ghost" size="sm" className="justify-start w-full" onClick={() => handleExportTemplates(selectedGameId)}>
+                          <Download className="mr-2 h-4 w-4" />
+                          {currentGameName}
+                        </Button>
+                      )}
                     </div>
                   </PopoverContent>
                 </Popover>

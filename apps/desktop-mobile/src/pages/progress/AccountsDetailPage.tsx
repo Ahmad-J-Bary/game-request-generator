@@ -14,12 +14,13 @@ import {
   AlertDialogTitle,
 } from "@grq/ui/atoms/alert-dialog";
 import { Card, CardContent } from "@grq/ui/atoms/card";
-import { LayoutToggle, Layout } from "@grq/ui/molecules/LayoutToggle";
 import { GameSelector } from "@grq/ui/molecules/GameSelector";
 import { BackButton } from "@grq/ui/molecules/BackButton";
 import { AccountsDataTable } from "@grq/ui/organisms/tables/AccountsDataTable";
 import { ImportDialog } from "@grq/ui/molecules/ImportDialog";
 import { ExportDialog } from "@grq/ui/molecules/ExportDialog";
+import { exportRequestTemplates } from "@grq/core/services/export-templates.service";
+import { NotificationService } from "@grq/core/utils/notifications";
 import { BranchTransferDialog } from "@grq/ui/organisms/BranchTransferDialog";
 import { BranchBulkTransferDialog } from "@grq/ui/organisms/BranchBulkTransferDialog";
 import { Button } from "@grq/ui/atoms/button";
@@ -27,6 +28,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@grq/ui/atoms/dropdown-menu";
 import {
@@ -39,6 +42,7 @@ import {
   MoreVertical,
   Search,
   GitBranch,
+  FileText,
 } from "lucide-react";
 
 import { useAccounts } from "@grq/core/hooks/useAccounts";
@@ -142,7 +146,6 @@ export default function AccountsDetailPage() {
   const { colors } = useSettings();
   const { theme } = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [layout, setLayout] = useState<Layout>("vertical");
 
   // Read gameId from URL query params
   const urlGameId = searchParams.get("gameId");
@@ -216,8 +219,6 @@ export default function AccountsDetailPage() {
             setSelectedGameId={setSelectedGameId}
             mode={mode}
             setMode={setMode}
-            layout={layout}
-            setLayout={setLayout}
             colors={colors}
             theme={theme}
             t={t}
@@ -247,8 +248,6 @@ interface AccountsDetailContentProps {
   setSelectedGameId: (id?: number) => void;
   mode: Mode;
   setMode: (mode: Mode) => void;
-  layout: Layout;
-  setLayout: (layout: Layout) => void;
   colors: ColorSettings;
   theme: "light" | "dark";
   t: TFunction;
@@ -273,8 +272,6 @@ function AccountsDetailContent({
   setSelectedGameId,
   mode,
   setMode,
-  layout,
-  setLayout,
   colors,
   theme,
   t,
@@ -306,6 +303,22 @@ function AccountsDetailContent({
   const [tempPurchaseDates, setTempPurchaseDates] = useState<
     Record<number, Date | null>
   >({});
+
+  const currentGameName =
+    games.find((g) => g.id === selectedGameId)?.name || "";
+
+  const handleExportTemplates = async (gameId?: number) => {
+    const result = await exportRequestTemplates(gameId);
+    if (result.success) {
+      NotificationService.success(
+        t("export.templatesExportSuccess", "Exported {{count}} template files", {
+          count: result.count ?? 0,
+        }),
+      );
+    } else {
+      NotificationService.error(t("export.templatesExportFailed", "Failed to export request templates"));
+    }
+  };
 
   const ensureSyntheticLevel = async (
     account: Account,
@@ -795,7 +808,11 @@ function AccountsDetailContent({
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent>
+              <DropdownMenuContent className="min-w-[200px]">
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
+                  <FileText className="h-3.5 w-3.5 inline mr-1.5" />
+                  {t("export.toExcel", "Export to Excel (.xlsx)")}
+                </DropdownMenuLabel>
                 <DropdownMenuItem
                   onClick={() => {
                     setExportType("game");
@@ -813,11 +830,25 @@ function AccountsDetailContent({
                 >
                   {t("export.allGames", "Export All Games")}
                 </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
+                  <FileText className="h-3.5 w-3.5 inline mr-1.5" />
+                  {t("export.requestTemplates", "Request Templates (.txt)")}
+                </DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => handleExportTemplates()}>
+                  {t("export.allGames", "All Games")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => selectedGameId && handleExportTemplates(selectedGameId)}
+                  disabled={!selectedGameId}
+                >
+                  {currentGameName || t("common.currentGame", "Current Game")}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <div className="h-8 w-px bg-border/50 mx-1" />
-            <LayoutToggle layout={layout} onLayoutChange={setLayout} />
             <div className="h-9 min-w-[140px]">
               <GameSelector
                 selectedGameId={selectedGameId}
@@ -858,27 +889,24 @@ function AccountsDetailContent({
                     {t("common.view")}
                   </Label>
                   <div className="flex flex-col gap-2 p-2 border rounded bg-accent/20">
-                    <LayoutToggle layout={layout} onLayoutChange={setLayout} />
-                    <div className="flex flex-col gap-2 pt-2 border-t">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="accounts-mode-mobile"
-                          checked={mode === "event-only"}
-                          onChange={() => setMode("event-only")}
-                        />
-                        <span className="text-sm">{t("common.eventOnly")}</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="accounts-mode-mobile"
-                          checked={mode === "all"}
-                          onChange={() => setMode("all")}
-                        />
-                        <span className="text-sm">{t("common.all")}</span>
-                      </label>
-                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="accounts-mode-mobile"
+                        checked={mode === "event-only"}
+                        onChange={() => setMode("event-only")}
+                      />
+                      <span className="text-sm">{t("common.eventOnly")}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="accounts-mode-mobile"
+                        checked={mode === "all"}
+                        onChange={() => setMode("all")}
+                      />
+                      <span className="text-sm">{t("common.all")}</span>
+                    </label>
                   </div>
                 </div>
 
@@ -1006,7 +1034,6 @@ function AccountsDetailContent({
               onProgressChange={handleProgressChange}
               tempPurchaseDates={tempPurchaseDates}
               onPurchaseDateChange={handlePurchaseDateChange}
-              layout={layout}
               mode={mode}
               t={t}
               onExport={() => {
@@ -1035,7 +1062,6 @@ function AccountsDetailContent({
         gameId={selectedGameId}
         branchId={selectedBranchId}
         exportType={exportType}
-        layout={layout}
         colorSettings={colors}
         theme={theme}
         source="accounts-detail"
@@ -1077,7 +1103,6 @@ interface BranchSectionProps {
   ) => void;
   tempPurchaseDates: Record<number, Date | null>;
   onPurchaseDateChange: (compositeId: number, date: Date | null) => void;
-  layout: Layout;
   mode: Mode;
   t: TFunction;
   onExport: () => void;
@@ -1098,7 +1123,6 @@ function BranchSection({
   onProgressChange,
   tempPurchaseDates,
   onPurchaseDateChange,
-  layout,
   mode,
   t,
   onExport,
@@ -1457,7 +1481,6 @@ function BranchSection({
             accounts={sortedAccounts}
             columns={columns}
             matrix={matrix}
-            layout={layout}
             levelsProgress={levelsProgress}
             purchaseProgress={purchaseProgress}
             isEditMode={isEditMode}

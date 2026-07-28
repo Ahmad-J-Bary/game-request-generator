@@ -23,7 +23,6 @@ import type {
   TimelineColumnData as ColumnData,
   ColumnData as ExportColumnData,
 } from "@grq/ui/organisms/tables/AccountDataTable";
-import { LayoutToggle, Layout } from "@grq/ui/molecules/LayoutToggle";
 import { BackButton } from "@grq/ui/molecules/BackButton";
 import { ImportDialog } from "@grq/ui/molecules/ImportDialog";
 import { ExportDialog } from "@grq/ui/molecules/ExportDialog";
@@ -215,7 +214,6 @@ export default function AccountDetailPage() {
   // Ignore stateLevels as they might be from a different branch if navigated from AccountListPage.
   const levels = fetchedLevels;
 
-  const [layout, setLayout] = useState<Layout>("vertical");
   const [mode, setMode] = useState<Mode>("event-only");
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -984,7 +982,6 @@ export default function AccountDetailPage() {
                   <span className="text-xs">{t("common.all")}</span>
                 </label>
               </div>
-              <LayoutToggle layout={layout} onLayoutChange={setLayout} />
             </div>
 
             {/* Mobile More Actions Popover */}
@@ -1001,32 +998,24 @@ export default function AccountDetailPage() {
                       {t("common.view")}
                     </Label>
                     <div className="flex flex-col gap-2 p-2 border rounded bg-accent/20">
-                      <LayoutToggle
-                        layout={layout}
-                        onLayoutChange={setLayout}
-                      />
-                      <div className="flex flex-col gap-2 pt-2 border-t">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="account-detail-mode-mobile"
-                            checked={mode === "event-only"}
-                            onChange={() => setMode("event-only")}
-                          />
-                          <span className="text-sm">
-                            {t("common.eventOnly")}
-                          </span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="account-detail-mode-mobile"
-                            checked={mode === "all"}
-                            onChange={() => setMode("all")}
-                          />
-                          <span className="text-sm">{t("common.all")}</span>
-                        </label>
-                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="account-detail-mode-mobile"
+                          checked={mode === "event-only"}
+                          onChange={() => setMode("event-only")}
+                        />
+                        <span className="text-sm">{t("common.eventOnly")}</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="account-detail-mode-mobile"
+                          checked={mode === "all"}
+                          onChange={() => setMode("all")}
+                        />
+                        <span className="text-sm">{t("common.all")}</span>
+                      </label>
                     </div>
                   </div>
 
@@ -1243,7 +1232,6 @@ export default function AccountDetailPage() {
               <AccountDataTable
                 columns={columns}
                 computedLevelDates={computedLevelDates}
-                layout={layout}
                 levelsProgress={levelsProgress}
                 purchaseProgress={purchaseProgress}
                 isEditMode={isEditMode}
@@ -1271,7 +1259,6 @@ export default function AccountDetailPage() {
           branchId={account?.branch_id}
           accountId={accountId}
           exportType="account"
-          layout={layout}
           colorSettings={colors}
           theme={theme}
           source="account-detail"

@@ -5,7 +5,6 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Card, CardContent } from "@grq/ui/atoms/card";
-import { LayoutToggle, Layout } from "@grq/ui/molecules/LayoutToggle";
 import { BackButton } from "@grq/ui/molecules/BackButton";
 import { GameDataTable } from "@grq/ui/organisms/tables/GameDataTable";
 import { ImportDialog } from "@grq/ui/molecules/ImportDialog";
@@ -60,10 +59,8 @@ type Mode = "all" | "event-only";
 
 export default function GameDetailPage({
   gameId: propGameId,
-  forcedLayout,
 }: {
   gameId?: number;
-  forcedLayout?: Layout;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -107,29 +104,6 @@ export default function GameDetailPage({
     window.addEventListener("branches-updated", handler);
     return () => window.removeEventListener("branches-updated", handler);
   }, [gameId, fetchBranches]);
-
-  // Parse layout from query params if present
-  const queryParams = new URLSearchParams(location.search);
-  const forceLayout = queryParams.get("layout") as Layout | null;
-
-  const [layout, setLayout] = useState<Layout>(
-    forcedLayout || forceLayout || "vertical",
-  );
-  const [prevForceLayout, setPrevForceLayout] = useState(forceLayout);
-  const [prevForcedLayoutProp, setPrevForcedLayoutProp] =
-    useState(forcedLayout);
-
-  if (
-    forceLayout !== prevForceLayout ||
-    forcedLayout !== prevForcedLayoutProp
-  ) {
-    setPrevForceLayout(forceLayout);
-    setPrevForcedLayoutProp(forcedLayout);
-    const newLayout = forcedLayout || forceLayout;
-    if (newLayout) {
-      setLayout(newLayout);
-    }
-  }
 
   const [mode, setMode] = useState<Mode>("event-only");
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -620,8 +594,6 @@ export default function GameDetailPage({
                 {t("common.export", "Export")}
               </Button>
 
-              <LayoutToggle layout={layout} onLayoutChange={setLayout} />
-
               <div className="flex items-center gap-2 px-2 py-1 border rounded h-9">
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <input
@@ -661,37 +633,29 @@ export default function GameDetailPage({
                 <PopoverContent className="w-56 p-3 space-y-4" align="end">
                   <div className="space-y-2">
                     <Label className="text-[10px] uppercase text-muted-foreground font-bold">
-                      {t("common.view", "View Options")}
+                      {t("common.view")}
                     </Label>
-                    <div className="flex flex-col gap-2">
-                      <LayoutToggle
-                        layout={layout}
-                        onLayoutChange={setLayout}
-                      />
-                      <div className="flex flex-col gap-2 p-2 border rounded bg-accent/20">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="game-detail-mode-mobile"
-                            checked={mode === "event-only"}
-                            onChange={() => setMode("event-only")}
-                            className="accent-primary"
-                          />
-                          <span className="text-sm">
-                            {t("common.eventOnly")}
-                          </span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="game-detail-mode-mobile"
-                            checked={mode === "all"}
-                            onChange={() => setMode("all")}
-                            className="accent-primary"
-                          />
-                          <span className="text-sm">{t("common.all")}</span>
-                        </label>
-                      </div>
+                    <div className="flex flex-col gap-2 p-2 border rounded bg-accent/20">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="game-detail-mode-mobile"
+                          checked={mode === "event-only"}
+                          onChange={() => setMode("event-only")}
+                          className="accent-primary"
+                        />
+                        <span className="text-sm">{t("common.eventOnly")}</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="game-detail-mode-mobile"
+                          checked={mode === "all"}
+                          onChange={() => setMode("all")}
+                          className="accent-primary"
+                        />
+                        <span className="text-sm">{t("common.all")}</span>
+                      </label>
                     </div>
                   </div>
 
@@ -774,7 +738,6 @@ export default function GameDetailPage({
               key={branch.id}
               gameId={gameId!}
               branch={branch}
-              layout={layout}
               mode={mode}
               isEditMode={isEditMode}
               editedLevels={editedLevels}
@@ -815,7 +778,6 @@ export default function GameDetailPage({
           onOpenChange={setShowExportDialog}
           gameId={gameId}
           exportType="game"
-          layout={layout}
           colorSettings={colors}
           theme={theme}
           source="game-detail"
@@ -947,7 +909,6 @@ export default function GameDetailPage({
 interface GameBranchSectionProps {
   gameId: number;
   branch: GameBranch;
-  layout: Layout;
   mode: Mode;
   isEditMode: boolean;
   editedLevels: Level[];
@@ -970,7 +931,6 @@ interface GameBranchSectionProps {
 function GameBranchSection({
   gameId,
   branch,
-  layout,
   mode,
   isEditMode,
   editedLevels,
@@ -1249,7 +1209,6 @@ function GameBranchSection({
         <CardContent className="p-0 overflow-auto">
           <GameDataTable
             columns={columns}
-            layout={layout}
             isEditMode={isEditMode}
             onDeleteLevel={onDeleteLevel}
             onDeletePurchaseEvent={onDeletePurchaseEvent}

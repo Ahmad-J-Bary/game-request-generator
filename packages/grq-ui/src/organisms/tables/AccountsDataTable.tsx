@@ -11,7 +11,6 @@ import {
 } from "@grq/ui/atoms/table";
 import { useSettings, useColorStyle } from "@grq/ui/contexts/SettingsContext";
 import { useTheme } from "@grq/ui/contexts/ThemeContext";
-import { DataTableCell } from "./DataTableCell";
 import { Popover, PopoverContent, PopoverTrigger } from "@grq/ui/atoms/popover";
 import { SimpleCalendar } from "@grq/ui/atoms/simple-calendar";
 import { Button } from "@grq/ui/atoms/button";
@@ -83,7 +82,6 @@ interface AccountsDataTableProps {
   accounts: Account[];
   columns: TimelineColumnData[];
   matrix: TimelineCell[][];
-  layout: "horizontal" | "vertical";
   levelsProgress?: Record<string, { level_id: number; is_completed: boolean }>;
   purchaseProgress?: Record<
     string,
@@ -113,7 +111,6 @@ export function AccountsDataTable({
   accounts,
   columns,
   matrix,
-  layout,
   levelsProgress = {},
   purchaseProgress = {},
   isEditMode = false,
@@ -179,25 +176,14 @@ export function AccountsDataTable({
     if (typeof cell === "string") return cell;
     if (cell.event === undefined || cell.event === cell.session)
       return cell.session;
-    if (layout === "vertical") {
-      return (
-        <div className="flex items-center justify-center gap-1 whitespace-nowrap">
-          <span className="text-xs">{cell.session}</span>
-          {cell.event !== undefined && (
-            <>
-              <span className="text-xs opacity-60">/</span>
-              <span className="text-xs">{cell.event}</span>
-            </>
-          )}
-        </div>
-      );
-    }
-
     return (
-      <div className="flex flex-col items-center leading-tight">
+      <div className="flex items-center justify-center gap-1 whitespace-nowrap">
         <span className="text-xs">{cell.session}</span>
         {cell.event !== undefined && (
-          <span className="text-xs mt-0.5">{cell.event}</span>
+          <>
+            <span className="text-xs opacity-60">/</span>
+            <span className="text-xs">{cell.event}</span>
+          </>
         )}
       </div>
     );
@@ -274,10 +260,7 @@ export function AccountsDataTable({
         ? colors.completeScheduledStyle
         : colors.incompleteScheduledStyle;
     return {
-      backgroundImage:
-        layout === "vertical"
-          ? `linear-gradient(to right, ${leftBg} 0 50%, ${rightBg} 50% 100%)`
-          : `linear-gradient(to bottom, ${leftBg} 0 50%, ${rightBg} 50% 100%)`,
+      backgroundImage: `linear-gradient(to right, ${leftBg} 0 50%, ${rightBg} 50% 100%)`,
       color: theme === "dark" ? "rgb(0, 0, 0)" : "rgb(0, 0, 0)",
       fontStyle: "italic",
       opacity: 0.8,
@@ -588,59 +571,6 @@ export function AccountsDataTable({
 
     return renderTimelineCell(matrix[accIdx][colIdx]);
   };
-
-  if (layout === "horizontal") {
-    return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead style={headerStyle}>{t("levels.eventToken")}</TableHead>
-            <TableHead style={headerStyle}>{t("levels.levelName")}</TableHead>
-            <TableHead style={headerStyle}>{t("levels.daysOffset")}</TableHead>
-            <TableHead style={headerStyle}>{t("levels.timeSpent")}</TableHead>
-            <TableHead style={headerStyle}>{t("accounts.account")}</TableHead>
-            <TableHead style={headerStyle}>{t("accounts.startDate")}</TableHead>
-            <TableHead style={headerStyle}>{t("accounts.startTime")}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {columns.map((col, colIdx) => {
-            const columnStyle = getColumnSpecificStyle(col);
-            const combinedStyle = { ...dataRowStyle, ...columnStyle };
-
-            return (
-              <TableRow key={`${col.kind}-${col.id}`}>
-                <TableCell className="font-mono" style={combinedStyle}>
-                  {renderCellContent(col, "token")}
-                </TableCell>
-                <DataTableCell style={combinedStyle}>
-                  {renderCellContent(col, "name")}
-                </DataTableCell>
-                <DataTableCell style={combinedStyle}>
-                  {renderCellContent(col, "daysOffset")}
-                </DataTableCell>
-                <DataTableCell style={combinedStyle}>
-                  {renderCellContent(col, "timeSpent")}
-                </DataTableCell>
-
-                {accounts.map((acc, accIdx) => {
-                  return (
-                    <TableCell
-                      key={acc.id}
-                      className="text-center"
-                      style={getDateCellStyle(acc.id, col)}
-                    >
-                      {renderCell(acc, col, colIdx, accIdx)}
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    );
-  }
 
   // Vertical layout
   return (

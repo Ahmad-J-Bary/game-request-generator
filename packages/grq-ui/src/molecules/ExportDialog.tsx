@@ -24,7 +24,6 @@ interface ExportDialogProps {
   branchId?: number;
   accountId?: number;
   exportType: 'game' | 'account' | 'all';
-  layout?: 'horizontal' | 'vertical';
   colorSettings?: ColorSettings;
   theme?: 'light' | 'dark';
   source?: 'game-detail' | 'account-detail' | 'accounts-detail';
@@ -34,7 +33,7 @@ interface ExportDialogProps {
   purchaseProgress?: any;
 }
 
-export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, exportType, layout = 'vertical', colorSettings, theme = 'light', source, mode = 'event-only', data, levelsProgress, purchaseProgress }: ExportDialogProps) {
+export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, exportType, colorSettings, theme = 'light', source, mode = 'event-only', data, levelsProgress, purchaseProgress }: ExportDialogProps) {
   const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
 
@@ -44,12 +43,6 @@ export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, 
         return t('export.gameDetailDescription', 'Export levels and purchase events for this game.');
       case 'account-detail':
         return t('export.accountDetailDescription', 'Export account data with level and purchase event dates.');
-      case 'accounts-detail':
-        if (exportType === 'game') {
-          return t('export.gameAccountsDescription', 'Export all accounts for this game with progress data.');
-        } else if (exportType === 'all') {
-          return t('export.allGamesDescription', 'Export all accounts from all games with full details (levels, purchase events, and account progress).');
-        }
         break;
       default:
         // Legacy behavior
@@ -73,23 +66,23 @@ export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, 
       switch (source) {
         case 'game-detail':
           if (gameId) {
-            success = await ExcelService.exportGameDetailData(gameId, layout, colorSettings, theme, data);
+            success = await ExcelService.exportGameDetailData(gameId, "vertical", colorSettings, theme, data);
           }
           break;
         case 'account-detail':
           if (accountId) {
-            success = await ExcelService.exportAccountDetailData(accountId, layout, colorSettings, theme, data, levelsProgress, purchaseProgress);
+            success = await ExcelService.exportAccountDetailData(accountId, "vertical", colorSettings, theme, data, levelsProgress, purchaseProgress);
           }
           break;
         case 'accounts-detail':
           switch (exportType) {
             case 'game':
               if (gameId) {
-                success = await ExcelService.exportGameData(gameId, layout, colorSettings, theme, data, levelsProgress, purchaseProgress, branchId, mode);
+                success = await ExcelService.exportGameData(gameId, "vertical", colorSettings, theme, data, levelsProgress, purchaseProgress, branchId, mode);
               }
               break;
             case 'all':
-              success = await ExcelService.exportAllGamesData(layout, colorSettings, theme, mode);
+              success = await ExcelService.exportAllGamesData("vertical", colorSettings, theme, mode);
               break;
           }
           break;
@@ -98,16 +91,16 @@ export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, 
           switch (exportType) {
             case 'game':
               if (gameId) {
-                success = await ExcelService.exportGameData(gameId, layout, colorSettings, theme, undefined, undefined, undefined, undefined, mode);
+                success = await ExcelService.exportGameData(gameId, "vertical", colorSettings, theme, undefined, undefined, undefined, undefined, mode);
               }
               break;
             case 'account':
               if (accountId) {
-                success = await ExcelService.exportAccountData(accountId, layout, colorSettings, theme);
+                success = await ExcelService.exportAccountData(accountId, "vertical", colorSettings, theme);
               }
               break;
             case 'all':
-              success = await ExcelService.exportAllGamesData(layout, colorSettings, theme, mode);
+              success = await ExcelService.exportAllGamesData("vertical", colorSettings, theme, mode);
               break;
           }
       }
@@ -138,7 +131,7 @@ export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, 
 
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground">
-            {t('export.format', 'Data will be exported as an Excel file (.xlsx) with separate sheets for different data types.')}
+            {t('export.format')}
           </div>
         </div>
 

@@ -31,7 +31,7 @@ function GamesTablePage() {
   const { games, loading } = useGames();
   if (loading) return null;
   const firstGameId = games.length > 0 ? games[0].id : undefined;
-  return <GameDetailPage gameId={firstGameId} forcedLayout="vertical" />;
+  return <GameDetailPage gameId={firstGameId} />;
 }
 
 // Wrapper ensures GameDetailPage remounts when navigating to a different game,

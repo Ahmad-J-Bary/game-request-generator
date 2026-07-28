@@ -30,7 +30,6 @@ import { useState } from 'react';
 
 interface GameDataTableProps {
   columns: ColumnData[];
-  layout: 'horizontal' | 'vertical';
   isEditMode?: boolean;
   onDeleteLevel?: (levelId: number) => void;
   onDeletePurchaseEvent?: (eventId: number) => void;
@@ -43,7 +42,6 @@ interface GameDataTableProps {
 
 export function GameDataTable({
   columns,
-  layout,
   isEditMode = false,
   onDeleteLevel,
   onDeletePurchaseEvent,
@@ -215,138 +213,6 @@ export function GameDataTable({
   };
 
   // Remove the empty check to allow the Plus button to always show in the header
-
-  if (layout === 'horizontal') {
-    return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead style={headerStyle}>{t('levels.eventToken')}</TableHead>
-            <TableHead style={headerStyle}>{t('levels.levelName')}</TableHead>
-            <TableHead style={headerStyle}>{t('levels.daysOffset')}</TableHead>
-            <TableHead style={headerStyle}>{t('levels.timeSpent')}</TableHead>
-            {isEditMode && columns.some(col => !col.synthetic) && (
-              <TableHead style={headerStyle} className="w-16">{t('common.actions', 'Actions')}</TableHead>
-            )}
-            <TableHead style={headerStyle} className="w-12 p-0">
-                <Popover open={isAdding} onOpenChange={setIsAdding}>
-                    <PopoverTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-full w-full hover:bg-black/10">
-                            <Plus className="h-4 w-4" />
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80 p-4" side="bottom" align="end">
-                        <form onSubmit={handleAddSubmit} className="space-y-4">
-                            <div className="flex items-center gap-4 mb-2">
-                                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                    <input type="radio" checked={addKind === 'level'} onChange={() => setAddKind('level')} name="addKind" />
-                                    {t('levels.title', 'Level')}
-                                </label>
-                                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                    <input type="radio" checked={addKind === 'purchase'} onChange={() => setAddKind('purchase')} name="addKind" />
-                                    {t('purchaseEvents.title', 'Purchase')}
-                                </label>
-                            </div>
-
-                            {addKind === 'level' ? (
-                                <div className="space-y-3">
-                                    <div className="grid gap-1">
-                                        <Label className="text-xs">{t('levels.levelName')}</Label>
-                                        <Input value={newLevel.level_name} onChange={e => setNewLevel({...newLevel, level_name: e.target.value})} className="h-8" />
-                                    </div>
-                                    <div className="grid gap-1">
-                                        <Label className="text-xs">{t('levels.eventToken')}</Label>
-                                        <Input value={newLevel.event_token} onChange={e => setNewLevel({...newLevel, event_token: e.target.value})} className="h-8" />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="grid gap-1">
-                                            <Label className="text-xs">{t('levels.daysOffset')}</Label>
-                                            <Input type="number" value={newLevel.days_offset} onChange={e => setNewLevel({...newLevel, days_offset: Number(e.target.value)})} className="h-8" />
-                                        </div>
-                                        <div className="grid gap-1">
-                                            <Label className="text-xs">{t('levels.timeSpent')}</Label>
-                                            <Input type="number" value={newLevel.time_spent} onChange={e => setNewLevel({...newLevel, time_spent: Number(e.target.value)})} className="h-8" />
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    <div className="grid gap-1">
-                                        <Label className="text-xs">{t('levels.eventToken')}</Label>
-                                        <Input value={newPurchase.event_token} onChange={e => setNewPurchase({...newPurchase, event_token: e.target.value})} className="h-8" />
-                                    </div>
-                                    <div className="grid gap-1">
-                                        <Label className="text-xs">{t('levels.daysOffset')}</Label>
-                                        <Input type="number" value={newPurchase.days_offset} onChange={e => setNewPurchase({...newPurchase, days_offset: Number(e.target.value)})} className="h-8" />
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <input type="checkbox" checked={newPurchase.is_restricted} onChange={e => setNewPurchase({...newPurchase, is_restricted: e.target.checked})} />
-                                        <Label className="text-xs cursor-pointer">{t('purchaseEvents.isRestricted')}</Label>
-                                    </div>
-                                </div>
-                            )}
-
-                            <Button type="submit" size="sm" className="w-full bg-green-600 hover:bg-green-700">
-                                {t('common.add', 'Add Column')}
-                            </Button>
-                        </form>
-                    </PopoverContent>
-                </Popover>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {columns.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={6} className="py-8 text-center text-muted-foreground italic">
-                {t('games.noDetails', 'No levels or events yet. Click + to add.')}
-              </TableCell>
-            </TableRow>
-          )}
-          {columns.map((col) => {
-            const columnStyle = getColumnSpecificStyle(col);
-            const combinedStyle = { ...dataRowStyle, ...columnStyle };
-
-            return (
-              <TableRow key={`${col.kind}-${col.id}`}>
-                <TableCell className="font-mono" style={combinedStyle}>
-                  {renderCellContent(col, 'token')}
-                </TableCell>
-                <DataTableCell style={combinedStyle}>
-                  {renderCellContent(col, 'name')}
-                </DataTableCell>
-                <DataTableCell style={combinedStyle}>
-                  {renderCellContent(col, 'daysOffset')}
-                </DataTableCell>
-                <DataTableCell style={combinedStyle}>
-                  {renderCellContent(col, 'timeSpent')}
-                </DataTableCell>
-                {isEditMode && !col.synthetic && (
-                  <TableCell style={combinedStyle} className="text-center">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (col.kind === 'level' && onDeleteLevel) {
-                          onDeleteLevel(col.id as number);
-                        } else if (col.kind === 'purchase' && onDeletePurchaseEvent) {
-                          onDeletePurchaseEvent(col.id as number);
-                        }
-                      }}
-                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                )}
-                <TableCell style={dataRowStyle} />
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    );
-  }
 
   // Vertical layout
   return (

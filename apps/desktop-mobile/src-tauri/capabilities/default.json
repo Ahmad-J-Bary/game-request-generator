@@ -9,10 +9,36 @@
         "core:default",
         "dialog:default",
         "dialog:allow-save",
+        "dialog:allow-open",
         "fs:default",
-        "fs:allow-write-file",
         "fs:allow-mkdir",
         "fs:allow-write",
+        {
+            "identifier": "fs:allow-write-file",
+            "allow": [
+                {
+                    "path": "$HOME/**"
+                },
+                {
+                    "path": "$HOME/GameRequestGenerator"
+                },
+                {
+                    "path": "$DESKTOP/**"
+                },
+                {
+                    "path": "$DOWNLOAD/**"
+                },
+                {
+                    "path": "$DOCUMENT/**"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator/**"
+                },
+                {
+                    "path": "/home/dell/GameRequestGenerator"
+                }
+            ]
+        },
         {
             "identifier": "fs:allow-read",
             "allow": [
@@ -46,6 +72,9 @@
                     "path": "$HOME/GameRequestGenerator"
                 },
                 {
+                    "path": "$DESKTOP/**"
+                },
+                {
                     "path": "$DOWNLOAD/**"
                 },
                 {
@@ -67,6 +96,9 @@
                 },
                 {
                     "path": "$HOME/GameRequestGenerator"
+                },
+                {
+                    "path": "$DESKTOP/**"
                 },
                 {
                     "path": "$DOWNLOAD/**"
@@ -92,6 +124,9 @@
                     "path": "$HOME/GameRequestGenerator"
                 },
                 {
+                    "path": "$DESKTOP/**"
+                },
+                {
                     "path": "$DOWNLOAD/**"
                 },
                 {
@@ -113,6 +148,9 @@
                 },
                 {
                     "path": "$HOME/GameRequestGenerator"
+                },
+                {
+                    "path": "$DESKTOP/**"
                 },
                 {
                     "path": "$DOWNLOAD/**"

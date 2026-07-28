@@ -1927,6 +1927,15 @@ fn run_legacy_config_cleanup_once(app: tauri::AppHandle) -> Result<(), String> {
     ConfigService::cleanup_legacy_config_once(&app)
 }
 
+#[tauri::command]
+fn write_export_file(path: String, content: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {e}"))?;
+    }
+    std::fs::write(&path, &content).map_err(|e| format!("Failed to write file: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2017,6 +2026,7 @@ pub fn run() {
             accept_current_as_latest,
             get_pointer_info,
             list_backup_files,
+            write_export_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

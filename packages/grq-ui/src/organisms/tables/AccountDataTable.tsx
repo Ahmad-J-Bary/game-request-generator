@@ -6,7 +6,6 @@ import { format } from "date-fns";
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -61,7 +60,6 @@ export type TimelineCell = string | { session: string; event?: string };
 interface AccountDataTableProps {
   columns: TimelineColumnData[];
   computedLevelDates: TimelineCell[];
-  layout: "horizontal" | "vertical";
   levelsProgress?: { level_id: number; is_completed: boolean }[];
   purchaseProgress?: { purchase_event_id: number; is_completed: boolean }[];
   isEditMode?: boolean;
@@ -85,7 +83,6 @@ interface AccountDataTableProps {
 export function AccountDataTable({
   columns,
   computedLevelDates,
-  layout,
   levelsProgress = [],
   purchaseProgress = [],
   isEditMode = false,
@@ -168,25 +165,14 @@ export function AccountDataTable({
     if (typeof cell === "string") return cell;
     if (cell.event === undefined || cell.event === cell.session)
       return cell.session;
-    if (layout === "vertical") {
-      return (
-        <div className="flex items-center justify-center gap-1 whitespace-nowrap">
-          <span className="text-xs">{cell.session}</span>
-          {cell.event !== undefined && (
-            <>
-              <span className="text-xs opacity-60">/</span>
-              <span className="text-xs">{cell.event}</span>
-            </>
-          )}
-        </div>
-      );
-    }
-
     return (
-      <div className="flex flex-col items-center leading-tight">
+      <div className="flex items-center justify-center gap-1 whitespace-nowrap">
         <span className="text-xs">{cell.session}</span>
         {cell.event !== undefined && (
-          <span className="text-xs mt-0.5">{cell.event}</span>
+          <>
+            <span className="text-xs opacity-60">/</span>
+            <span className="text-xs">{cell.event}</span>
+          </>
         )}
       </div>
     );
@@ -341,10 +327,7 @@ export function AccountDataTable({
         ? colors.completeScheduledStyle
         : colors.incompleteScheduledStyle;
     return {
-      backgroundImage:
-        layout === "vertical"
-          ? `linear-gradient(to right, ${leftBg} 0 50%, ${rightBg} 50% 100%)`
-          : `linear-gradient(to bottom, ${leftBg} 0 50%, ${rightBg} 50% 100%)`,
+      backgroundImage: `linear-gradient(to right, ${leftBg} 0 50%, ${rightBg} 50% 100%)`,
       color: theme === "dark" ? "rgb(0, 0, 0)" : "rgb(0, 0, 0)",
       fontStyle: "italic",
       opacity: 0.8,
@@ -373,203 +356,6 @@ export function AccountDataTable({
       <div className="py-8 text-center text-muted-foreground">
         No levels or purchase events
       </div>
-    );
-  }
-
-  if (layout === "horizontal") {
-    return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead style={headerStyle}>{t("levels.eventToken")}</TableHead>
-            <TableHead style={headerStyle}>{t("levels.levelName")}</TableHead>
-            <TableHead style={headerStyle}>{t("levels.daysOffset")}</TableHead>
-            <TableHead style={headerStyle}>{t("levels.timeSpent")}</TableHead>
-            <TableHead style={headerStyle}>{t("levels.accountDate")}</TableHead>
-            {isEditMode && (
-              <TableHead style={headerStyle}>
-                {t("common.edit", "Edit")}
-              </TableHead>
-            )}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {columns.map((col, idx) => {
-            const columnStyle = getColumnSpecificStyle(col);
-            const combinedStyle = { ...dataRowStyle, ...columnStyle };
-
-            return (
-              <TableRow key={`${col.kind}-${col.id}`}>
-                <TableCell className="font-mono" style={combinedStyle}>
-                  {renderCellContent(col, "token")}
-                </TableCell>
-                <DataTableCell style={combinedStyle}>
-                  {renderCellContent(col, "name")}
-                </DataTableCell>
-                <DataTableCell style={combinedStyle}>
-                  {renderCellContent(col, "daysOffset")}
-                </DataTableCell>
-                <DataTableCell style={combinedStyle}>
-                  {renderCellContent(col, "timeSpent")}
-                </DataTableCell>
-                <DataTableCell
-                  style={
-                    col.kind === "split"
-                      ? getSplitCellStyle(
-                          getSplitCompletion(col).sessionCompleted,
-                          getSplitCompletion(col).eventCompleted,
-                        )
-                      : isSingleCompleted(col)
-                        ? completeScheduledStyle
-                        : incompleteScheduledStyle
-                  }
-                >
-                  {renderCellContent(col, "accountDate", idx)}
-                </DataTableCell>
-                {isEditMode && (
-                  <DataTableCell style={dataRowStyle}>
-                    {col.kind === "split" ? (
-                      <div className="flex flex-col items-center gap-1">
-                        <input
-                          type="checkbox"
-                          checked={getSplitCompletion(col).sessionCompleted}
-                          onChange={(e) =>
-                            onProgressChange?.(
-                              "level",
-                              col.session.id,
-                              e.target.checked,
-                              {
-                                rangeFromStart:
-                                  rangeFillMode ||
-                                  !!(e.nativeEvent as unknown as MouseEvent)
-                                    .shiftKey,
-                                rangeId: col.session.id,
-                              },
-                            )
-                          }
-                          className="w-4 h-4"
-                        />
-                        {col.event && (
-                          <input
-                            type="checkbox"
-                            checked={
-                              getSplitCompletion(col).eventCompleted ?? false
-                            }
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              onProgressChange?.(
-                                col.event!.kind,
-                                col.event!.id,
-                                checked,
-                                {
-                                  rangeFromStart:
-                                    rangeFillMode ||
-                                    !!(e.nativeEvent as unknown as MouseEvent)
-                                      .shiftKey,
-                                  rangeId: col.event!.id,
-                                },
-                              );
-                            }}
-                            className="w-4 h-4"
-                          />
-                        )}
-
-                        {col.event?.kind === "purchase" &&
-                          onPurchaseDateChange && (
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!tempPurchaseDates[col.event.id as number] && "text-muted-foreground"}`}
-                                >
-                                  <Calendar className="h-3 w-3 mr-1" />
-                                  {tempPurchaseDates[col.event.id as number]
-                                    ? format(
-                                        tempPurchaseDates[
-                                          col.event.id as number
-                                        ] as Date,
-                                        "MMM d",
-                                      )
-                                    : "Pick"}
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent
-                                className="w-auto p-0"
-                                align="center"
-                              >
-                                <SimpleCalendar
-                                  selectedDate={
-                                    tempPurchaseDates[col.event.id as number] ||
-                                    null
-                                  }
-                                  onDateSelect={(date) =>
-                                    onPurchaseDateChange(
-                                      col.event!.id as number,
-                                      date,
-                                    )
-                                  }
-                                  onClose={() => {}}
-                                />
-                              </PopoverContent>
-                            </Popover>
-                          )}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-1">
-                        <input
-                          type="checkbox"
-                          checked={isSingleCompleted(col)}
-                          onChange={(e) =>
-                            handleCheckboxChange(col, e.target.checked, e)
-                          }
-                          className="w-4 h-4"
-                        />
-
-                        {col.kind === "purchase" && onPurchaseDateChange && (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className={`w-16 h-6 p-0 text-xs hover:bg-accent justify-center ${!tempPurchaseDates[col.id as number] && "text-muted-foreground"}`}
-                              >
-                                <Calendar className="h-3 w-3 mr-1" />
-                                {tempPurchaseDates[col.id as number]
-                                  ? format(
-                                      tempPurchaseDates[
-                                        col.id as number
-                                      ] as Date,
-                                      "MMM d",
-                                    )
-                                  : "Pick"}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-auto p-0"
-                              align="center"
-                            >
-                              <SimpleCalendar
-                                selectedDate={
-                                  tempPurchaseDates[col.id as number] || null
-                                }
-                                onDateSelect={(date) =>
-                                  onPurchaseDateChange(col.id as number, date)
-                                }
-                                onClose={() => {}}
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        )}
-                      </div>
-                    )}
-                  </DataTableCell>
-                )}
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
     );
   }
 
