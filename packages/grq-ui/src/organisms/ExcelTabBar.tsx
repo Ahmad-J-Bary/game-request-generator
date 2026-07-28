@@ -121,7 +121,7 @@ export function ExcelTabBar({
                 <Label htmlFor="name" className="sr-only">Name</Label>
                 <Input
                   id="name"
-                  placeholder="e.g. Server 82"
+                  placeholder="e.g. PUBG"
                   value={newGameName}
                   onChange={(e) => setNewGameName(e.target.value)}
                   className="h-9 text-sm"

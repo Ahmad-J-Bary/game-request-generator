@@ -482,7 +482,7 @@ export default function AccountFormPage() {
       window.dispatchEvent(new CustomEvent('account-updated', { detail: { accountId: account?.id } }));
       // Navigate back to accounts list with selected game preserved
       if (selectedGameId) {
-        navigate(`/accounts?gameId=${selectedGameId}`);
+        navigate(`/accounts/detail?gameId=${selectedGameId}`);
       } else {
         navigate(-1);
       }
@@ -632,7 +632,7 @@ export default function AccountFormPage() {
               </Button>
               <Button type="button" variant="outline" onClick={() => {
                 if (selectedGameId) {
-                  navigate(`/accounts?gameId=${selectedGameId}`);
+                  navigate(`/accounts/detail?gameId=${selectedGameId}`);
                 } else {
                   navigate(-1);
                 }

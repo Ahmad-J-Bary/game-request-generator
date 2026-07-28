@@ -6,13 +6,11 @@ import {
   LayoutDashboard,
   Gamepad2,
   Users,
-  FileText,
   Calendar,
   ChevronLeft,
   ChevronRight,
   CheckCircle,
   X,
-  Table,
   Settings,
   SlidersHorizontal,
   Database,
@@ -34,10 +32,8 @@ interface MainLayoutProps {
 
 const navigation = [
   { name: 'dashboard',      href: '/',               icon: LayoutDashboard },
-  { name: 'games',          href: '/games',           icon: Gamepad2 },
-  { name: 'gamesTable',     href: '/games-table',     icon: Table },
-  { name: 'accounts',       href: '/accounts',        icon: Users },
-  { name: 'accountsDetail', href: '/accounts/detail', icon: FileText },
+  { name: 'gamesTable',     href: '/games-table',     icon: Gamepad2 },
+  { name: 'accountsDetail', href: '/accounts/detail', icon: Users },
   { name: 'dailyTasks',     href: '/daily-tasks',     icon: Calendar },
   { name: 'history',        href: '/history',         icon: History },
 ];

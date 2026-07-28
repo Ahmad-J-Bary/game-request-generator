@@ -53,9 +53,7 @@
   },
   "nav": {
     "dashboard": "لوحة التحكم",
-    "games": "قائمة الألعاب",
     "gamesTable": "جدول الألعاب",
-    "accounts": "الحسابات",
     "accountsDetail": "تفاصيل الحسابات",
     "levels": "المستويات",
     "dailyTasks": "المهام اليومية",
@@ -68,14 +66,9 @@
     "history": "تقرير السجل"
   },
   "games": {
-    "title": "الألعاب",
     "newGame": "لعبة جديدة",
     "enterName": "أدخل الاسم",
     "addGame": "إضافة لعبة",
-    "editGame": "تعديل لعبة",
-    "deleteGame": "حذف لعبة",
-    "gameName": "اسم اللعبة",
-    "gameNamePlaceholder": "أدخل اسم اللعبة",
     "createdAt": "تاريخ الإنشاء",
     "deleteConfirm": "هل أنت متأكد من حذف هذه اللعبة؟",
     "deleteSuccess": "تم حذف اللعبة بنجاح",
@@ -432,7 +425,9 @@
     "allGames": "تصدير جميع الألعاب",
     "thisGame": "تصدير هذه اللعبة",
     "toExcel": "تصدير إلى Excel (.xlsx)",
-    "requestTemplates": "قوالب الطلبات (.txt)"
+    "requestTemplates": "قوالب الطلبات (.txt)",
+    "templatesExportSuccess": "تم تصدير {{count}} ملف قالب",
+    "templatesExportFailed": "فشل تصدير قوالب الطلبات"
   },
   "errors": {
     "required": "هذا الحقل مطلوب",

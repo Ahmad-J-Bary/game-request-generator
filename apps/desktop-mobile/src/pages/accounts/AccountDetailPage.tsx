@@ -211,7 +211,6 @@ export default function AccountDetailPage() {
   const { levelsProgress, purchaseProgress } = useProgress(accountId);
 
   // Use fetched levels directly to ensure branch isolation.
-  // Ignore stateLevels as they might be from a different branch if navigated from AccountListPage.
   const levels = fetchedLevels;
 
   const [mode, setMode] = useState<Mode>("event-only");
@@ -883,7 +882,7 @@ export default function AccountDetailPage() {
         <div className="mb-4">
           <BackButton
             to={
-              selectedGameId ? `/accounts?gameId=${selectedGameId}` : undefined
+              selectedGameId ? `/accounts/detail?gameId=${selectedGameId}` : undefined
             }
           />
         </div>
@@ -1213,7 +1212,7 @@ export default function AccountDetailPage() {
             <BackButton
               to={
                 selectedGameId
-                  ? `/accounts?gameId=${selectedGameId}`
+                  ? `/accounts/detail?gameId=${selectedGameId}`
                   : undefined
               }
             />

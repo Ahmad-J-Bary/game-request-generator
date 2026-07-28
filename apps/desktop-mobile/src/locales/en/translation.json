@@ -53,9 +53,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
-    "games": "Games List",
     "gamesTable": "Games Table",
-    "accounts": "Accounts",
     "accountsDetail": "Accounts Detail",
     "levels": "Levels",
     "dailyTasks": "Daily Tasks",
@@ -68,14 +66,9 @@
     "history": "History Report"
   },
   "games": {
-    "title": "Games",
     "newGame": "New Game",
     "enterName": "Enter Name",
     "addGame": "Add Game",
-    "editGame": "Edit Game",
-    "deleteGame": "Delete Game",
-    "gameName": "Game Name",
-    "gameNamePlaceholder": "Enter game name",
     "createdAt": "Created At",
     "deleteConfirm": "Are you sure you want to delete this game?",
     "deleteSuccess": "Game deleted successfully",
@@ -368,6 +361,7 @@
     "defaultBranch": "Default Branch",
     "title": "Manage Branches",
     "selectBranch": "Select Branch",
+    "manageTitle": "Manage Branches",
     "manageDescription": "Create, delete or duplicate branches for your game levels and events.",
     "existingBranches": "Existing Branches",
     "new": "New",
@@ -431,7 +425,9 @@
     "allGames": "Export All Games",
     "thisGame": "Export This Game",
     "toExcel": "Export to Excel (.xlsx)",
-    "requestTemplates": "Request Templates (.txt)"
+    "requestTemplates": "Request Templates (.txt)",
+    "templatesExportSuccess": "Exported {{count}} template files",
+    "templatesExportFailed": "Failed to export request templates"
   },
   "errors": {
     "required": "This field is required",

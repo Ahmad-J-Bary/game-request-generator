@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@grq/ui/atoms/sonner";
 import { TooltipProvider } from "@grq/ui/atoms/tooltip";
-import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useParams, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@grq/ui/contexts/ThemeContext";
 import { LanguageProvider } from "@grq/core/contexts/LanguageContext";
 import { SettingsProvider } from "@grq/ui/contexts/SettingsContext";
@@ -9,14 +9,12 @@ import { MainLayout } from "@grq/ui/templates/MainLayout";
 import { useGames } from "@grq/core/hooks/useGames";
 import Dashboard from "./pages/Dashboard";
 // Accounts
-import AccountListPage from "./pages/accounts/AccountListPage";
 import AccountDetailPage from "./pages/accounts/AccountDetailPage";
 import AccountFormPage from "./pages/accounts/AccountFormPage";
 // Games
-import GameListPage from "./pages/games/GameListPage";
 import GameDetailPage from "./pages/games/GameDetailPage";
 // Progress
-import AccountsDetailPage from "./pages/progress/AccountsDetailPage";
+import AccountsDetailPage from "./pages/accounts/AccountsDetailPage";
 // Daily Tasks
 import DailyTasksPage from "./pages/daily-tasks/DailyTasksPage";
 import HistoryReportPage from "./pages/daily-tasks/HistoryReportPage";
@@ -54,13 +52,13 @@ function AppContent() {
                   <MainLayout>
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
-                      <Route path="/games" element={<GameListPage />} />
+                      <Route path="/games" element={<Navigate to="/games-table" replace />} />
                       <Route path="/games-table" element={<GamesTablePage />} />
                       <Route
                         path="/games/:id"
                         element={<GameDetailPageWrapper />}
                       />
-                      <Route path="/accounts" element={<AccountListPage />} />
+                      <Route path="/accounts" element={<Navigate to="/accounts/detail" replace />} />
                       <Route
                         path="/accounts/:id"
                         element={<AccountDetailPage />}

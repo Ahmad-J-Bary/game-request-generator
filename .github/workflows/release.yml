@@ -123,7 +123,7 @@ jobs:
             else
               ABI=$(echo "$filename" | sed 's/app-//' | sed 's/-release.apk//')
             fi
-            NEW_NAME="GameRequestGenerator-$VERSION-$ABI.apk"
+            NEW_NAME="Game Request Generator-$VERSION-$ABI.apk"
             mv "$apk" "apps/desktop-mobile/src-tauri/gen/android/app/build/outputs/apk/release-unified/$NEW_NAME"
             echo "Renamed $filename to $NEW_NAME"
           done

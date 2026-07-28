@@ -32,7 +32,7 @@ export async function saveExcelFile(filename: string, buffer: any): Promise<bool
     console.error('Dialog save failed, attempting background save:', error);
 
     try {
-      const appDir = 'GameRequestGenerator';
+      const appDir = 'Game Request Generator';
       await mkdir(appDir, { recursive: true, baseDir: BaseDirectory.Download });
       const filePath = `${appDir}/${filename}`;
       await writeFile(filePath, uint8Array, { baseDir: BaseDirectory.Download });
