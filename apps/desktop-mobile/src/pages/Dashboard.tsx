@@ -4,6 +4,16 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useGames } from '@grq/core/hooks/useGames';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@grq/ui/atoms/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@grq/ui/atoms/card';
 import { Button } from '@grq/ui/atoms/button';
 import { 
@@ -31,6 +41,8 @@ export default function Dashboard() {
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [completedAccounts, setCompletedAccounts] = useState<CompletedAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletingAccountId, setDeletingAccountId] = useState<number | null>(null);
   const [isReporting, setIsReporting] = useState(false);
   
   const { colors } = useSettings();
@@ -52,11 +64,18 @@ export default function Dashboard() {
     }
   };
 
-  const handleDeleteCompletedAccount = async (id: number) => {
-    if (!window.confirm(t('dashboard.confirmDeleteAccount', 'Are you sure you want to delete this fully completed account?'))) return;
+  const confirmDeleteAccount = (id: number) => {
+    setDeletingAccountId(id);
+    setShowDeleteDialog(true);
+  };
+
+  const doDeleteAccount = async () => {
+    if (deletingAccountId == null) return;
     try {
-      await TauriService.deleteAccount(id);
+      await TauriService.deleteAccount(deletingAccountId);
       NotificationService.success(t('dashboard.accountDeleted', 'Account deleted successfully!'));
+      setShowDeleteDialog(false);
+      setDeletingAccountId(null);
       await loadData();
     } catch (e) {
       NotificationService.error(t('dashboard.deleteFailed', 'Failed to delete account.'));
@@ -378,7 +397,7 @@ export default function Dashboard() {
                       variant="destructive"
                       size="icon"
                       className="h-9 w-9 rounded-full shadow-lg"
-                      onClick={() => handleDeleteCompletedAccount(account.id)}
+                      onClick={() => confirmDeleteAccount(account.id)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -417,6 +436,25 @@ export default function Dashboard() {
           )}
         </div>
       </section>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('accounts.deleteAccount')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('dashboard.confirmDeleteAccount', 'Are you sure you want to delete this fully completed account?')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setShowDeleteDialog(false); setDeletingAccountId(null); }}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={doDeleteAccount} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {t('common.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

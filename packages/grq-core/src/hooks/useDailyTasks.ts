@@ -49,7 +49,8 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   const [accountStartStates, setAccountStartStates] = useState<{ [accountId: number]: AccountStartState }>({});
   const [completedTasks, setCompletedTasks] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(Date.now());
- 
+  const [regenerationTrigger, setRegenerationTrigger] = useState(0);
+  
   // Update current time every second for UI countdowns
   useEffect(() => {
     const timer = setInterval(() => {
@@ -67,6 +68,26 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
 
     window.addEventListener('daily-task-completed', handleTaskCompleted);
     return () => window.removeEventListener('daily-task-completed', handleTaskCompleted);
+  }, []);
+
+  // When an account is updated (template/start time changed), clear cached state and regenerate
+  useEffect(() => {
+    const handleAccountUpdated = (e: Event) => {
+      const { accountId } = (e as CustomEvent).detail;
+      if (accountId == null) return;
+
+      setAccountStartStates(prev => {
+        const next = { ...prev };
+        delete next[accountId];
+        asyncStorageService.set('accountStartStates', next);
+        return next;
+      });
+
+      setRegenerationTrigger(n => n + 1);
+    };
+
+    window.addEventListener('account-updated', handleAccountUpdated);
+    return () => window.removeEventListener('account-updated', handleAccountUpdated);
   }, []);
 
   // Load games on mount
@@ -201,8 +222,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       if (loading) return;
 
       try {
-        // We only save accountScheduledTime now. Batches and DeferredTasks are generated fresh on every mount.
-        await asyncStorageService.set(`dailyTasks_scheduledTime`, {
+        await asyncStorageService.set('dailyTasks_scheduledTime', {
           accountScheduledTime
         });
       } catch (error) {
@@ -255,6 +275,13 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       setIsGenerating(false);
     }
   }, [games, accountCompletionRecords, accountStartStates, isGenerating, isHydrated, batches.length, deferredTasks.length, completedTasks, t]);
+
+  // Regenerate tasks when an account is updated (template/start time changed)
+  useEffect(() => {
+    if (regenerationTrigger > 0 && isHydrated && !isGenerating) {
+      generateTodaysTasks();
+    }
+  }, [regenerationTrigger, isHydrated, isGenerating, generateTodaysTasks]);
 
   // Complete a task using the TaskCompletionHandler utility
   const completeTask = useCallback(async (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask) => {

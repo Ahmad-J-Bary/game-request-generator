@@ -3,6 +3,16 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@grq/ui/atoms/alert-dialog";
 import { Card, CardContent } from "@grq/ui/atoms/card";
 import { LayoutToggle, Layout } from "@grq/ui/molecules/LayoutToggle";
 import { GameSelector } from "@grq/ui/molecules/GameSelector";
@@ -1114,15 +1124,23 @@ function BranchSection({
 
   const [transferTarget, setTransferTarget] = useState<Account | null>(null);
   const [showBulkTransfer, setShowBulkTransfer] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
 
   const handleAccountTransfer = (account: Account) => {
     setTransferTarget(account);
   };
 
-  const handleAccountDelete = async (account: Account) => {
-    if (window.confirm(t("accounts.deleteConfirm"))) {
-      await deleteAccount(account.id);
-    }
+  const confirmDeleteAccount = (account: Account) => {
+    setDeletingAccount(account);
+    setShowDeleteDialog(true);
+  };
+
+  const doDeleteAccount = async () => {
+    if (!deletingAccount) return;
+    await deleteAccount(deletingAccount.id);
+    setShowDeleteDialog(false);
+    setDeletingAccount(null);
   };
 
   const columns = useMemo(() => {
@@ -1462,7 +1480,7 @@ function BranchSection({
             onAccountClick={handleAccountClick}
             onAccountEdit={handleAccountEdit}
             onAccountTransfer={handleAccountTransfer}
-            onAccountDelete={handleAccountDelete}
+            onAccountDelete={confirmDeleteAccount}
           />
         </CardContent>
       </Card>
@@ -1495,6 +1513,25 @@ function BranchSection({
         }}
         onCancel={() => setShowBulkTransfer(false)}
       />
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('accounts.deleteAccount')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('accounts.deleteConfirm')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setShowDeleteDialog(false); setDeletingAccount(null); }}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={doDeleteAccount} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {t('common.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

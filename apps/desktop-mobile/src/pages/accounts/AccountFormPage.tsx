@@ -479,6 +479,7 @@ export default function AccountFormPage() {
         await addAccount(request);
       }
       window.dispatchEvent(new CustomEvent('data-changed'));
+      window.dispatchEvent(new CustomEvent('account-updated', { detail: { accountId: account?.id } }));
       // Navigate back to accounts list with selected game preserved
       if (selectedGameId) {
         navigate(`/accounts?gameId=${selectedGameId}`);

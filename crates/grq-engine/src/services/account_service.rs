@@ -331,6 +331,11 @@ impl AccountService {
             values.push(proxy_state as &dyn rusqlite::ToSql);
         }
 
+        if let Some(request_template) = &request.request_template {
+            updates.push("request_template = ?");
+            values.push(request_template as &dyn rusqlite::ToSql);
+        }
+
         if updates.is_empty() {
             return Ok(false);
         }
