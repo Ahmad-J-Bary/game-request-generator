@@ -1,4 +1,4 @@
-{
+﻿{
   "common": {
     "add": "Add",
     "create": "Create",
@@ -349,7 +349,7 @@
     "noCompleted": "No accounts completed yet. Keep pushing!",
     "hallOfFame": "Hall of Fame",
     "hallOfFameDesc": "Legendary accounts that reached 100% completion",
-    "legends": "LEGENDS",
+    "legends": "Legends",
     "callingArchives": "Calling archives...",
     "emptyGallery": "Empty Gallery",
     "emptyGalleryDesc": "Complete an account to immortalize it in the hall of fame. Every journey begins with a single request.",
@@ -379,7 +379,9 @@
     "copyFrom": "Copy levels from (Optional)",
     "createAction": "Create Branch",
     "count_one": "{{count}} Branch",
-    "count_other": "{{count}} Branches"
+    "count_other": "{{count}} Branches",
+    "noBranches": "No branches found for this game.",
+    "pleaseAddBranch": "Please select a game or add a branch to see progress tables."
   },
   "import": {
     "comprehensiveTitle": "Import Data & Templates",

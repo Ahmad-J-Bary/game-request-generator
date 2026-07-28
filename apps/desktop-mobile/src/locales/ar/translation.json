@@ -380,7 +380,9 @@
     "copyFrom": "نسخ المستويات من (اختياري)",
     "createAction": "إنشاء فرع",
     "count_one": "فرع واحد",
-    "count_other": "{{count}} فروع"
+    "count_other": "{{count}} فروع",
+    "noBranches": "لا توجد فروع",
+    "pleaseAddBranch": "أضف فرعًا أولاً"
   },
   "import": {
     "comprehensiveTitle": "استيراد البيانات والقوالب",

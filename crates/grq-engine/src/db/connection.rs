@@ -1,4 +1,4 @@
-// src-tauri/src/db/connection.rs
+﻿// src-tauri/src/db/connection.rs
 
 use rusqlite::{params, Connection, Result as SqlResult};
 use std::collections::HashMap;
@@ -39,13 +39,35 @@ impl Database {
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(|e| format!("Failed to enable foreign keys: {}", e))?;
 
+        // Enable incremental auto_vacuum so pages freed by DELETE are automatically reclaimed.
+        // INCREMENTAL (1) avoids the overhead of a full VACUUM while still allowing the
+        // file to shrink over time.
+        conn.execute_batch("PRAGMA auto_vacuum = 1;")
+            .map_err(|e| format!("Failed to set auto_vacuum: {}", e))?;
+
         Ok(Database { connection: conn })
     }
 
     /// إنشاء الجداول اللازمة إن لم تكن موجودة
     pub fn init(&self) -> Result<(), String> {
         self.create_tables()
-            .map_err(|e| format!("Failed to create tables: {}", e))
+            .map_err(|e| format!("Failed to create tables: {}", e))?;
+
+        // One-time VACUUM to reclaim any free pages that accumulated before
+        // auto_vacuum was enabled. After this, incremental_vacuum handles it.
+        let freelist: i64 = self
+            .connection
+            .pragma_query_value(None, "freelist_count", |row| row.get(0))
+            .map_err(|e| format!("Failed to freelist_count for startup VACUUM: {}", e))?;
+
+        if freelist > 0 {
+            println!("[DB] Running startup VACUUM ({} free pages)...", freelist);
+            self.connection
+                .execute_batch("VACUUM")
+                .map_err(|e| format!("Failed to startup VACUUM: {}", e))?;
+        }
+
+        Ok(())
     }
 
     /// المرجع غير المتغير للاتصال
@@ -55,6 +77,34 @@ impl Database {
 
     pub fn get_connection_mut(&mut self) -> &mut Connection {
         &mut self.connection
+    }
+
+    /// Reclaim ALL free pages from the database file using incremental vacuum.
+    /// Always runs if freelist has any pages. Returns the number of pages reclaimed.
+    pub fn reclaim_space(&self) -> Result<i64, String> {
+        let freelist: i64 = self
+            .connection
+            .pragma_query_value(None, "freelist_count", |row| row.get(0))
+            .map_err(|e| format!("Failed to check freelist_count: {}", e))?;
+
+        if freelist == 0 {
+            return Ok(0);
+        }
+
+        self.connection
+            .execute_batch("PRAGMA incremental_vacuum(0)")
+            .map_err(|e| format!("Failed to reclaim space: {}", e))?;
+
+        Ok(freelist)
+    }
+
+    /// Full VACUUM — rewrites the entire database file to reclaim all free pages.
+    /// Expensive but thorough. Should only be called during maintenance operations
+    /// (e.g., backup/export), not on the hot path of individual deletes.
+    pub fn vacuum(&self) -> Result<(), String> {
+        self.connection
+            .execute_batch("VACUUM")
+            .map_err(|e| format!("Failed to vacuum database: {}", e))
     }
 
     /// وظيفة داخلية لإنشاء جداول المشروع

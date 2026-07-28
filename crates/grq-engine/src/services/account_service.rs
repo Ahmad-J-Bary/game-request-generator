@@ -9,6 +9,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct CompletedAccount {
     pub id: i64,
+    pub branch_id: Option<i64>,
     pub game_id: i64,
     pub name: String,
     pub start_date: String,
@@ -193,21 +194,24 @@ impl AccountService {
         conn: &Connection,
     ) -> Result<Vec<CompletedAccount>, String> {
         let mut stmt = conn.prepare("
-            SELECT a.id, a.game_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, g.name, a.package_id, a.proxy_state
+            SELECT a.id, a.branch_id, a.game_id, a.name, a.start_date, a.start_time,
+                   a.request_template, a.created_at, g.name, a.package_id, a.proxy_state
             FROM accounts a
             JOIN games g ON a.game_id = g.id
-            WHERE 
-                (SELECT COUNT(*) FROM levels l WHERE l.branch_id = a.branch_id) > 0
-                AND 
-                (SELECT COUNT(*) FROM levels l WHERE l.branch_id = a.branch_id) = 
-                (SELECT COUNT(*) FROM account_level_progress alp 
-                 JOIN levels l ON alp.level_id = l.id 
-                 WHERE alp.account_id = a.id AND alp.is_completed = 1)
-                AND
-                (SELECT COUNT(*) FROM purchase_events pe WHERE pe.branch_id = a.branch_id) =
-                (SELECT COUNT(*) FROM account_purchase_event_progress apep
-                 JOIN purchase_events pe ON apep.purchase_event_id = pe.id
-                 WHERE apep.account_id = a.id AND apep.is_completed = 1)
+            WHERE a.branch_id IS NULL
+               OR (
+                   COALESCE((SELECT COUNT(*) FROM levels l WHERE l.branch_id = a.branch_id), 0)
+                   =
+                   COALESCE((SELECT COUNT(*) FROM account_level_progress alp
+                             JOIN levels l ON alp.level_id = l.id
+                             WHERE alp.account_id = a.id AND l.branch_id = a.branch_id AND alp.is_completed = 1), 0)
+                   AND
+                   COALESCE((SELECT COUNT(*) FROM purchase_events pe WHERE pe.branch_id = a.branch_id), 0)
+                   =
+                   COALESCE((SELECT COUNT(*) FROM account_purchase_event_progress apep
+                             JOIN purchase_events pe ON apep.purchase_event_id = pe.id
+                             WHERE apep.account_id = a.id AND pe.branch_id = a.branch_id AND apep.is_completed = 1), 0)
+               )
             ORDER BY a.created_at DESC
         ").map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
@@ -215,15 +219,16 @@ impl AccountService {
             .query_map([], |row| {
                 Ok(CompletedAccount {
                     id: row.get(0)?,
-                    game_id: row.get(1)?,
-                    name: row.get(2)?,
-                    start_date: row.get(3)?,
-                    start_time: row.get(4)?,
-                    request_template: row.get(5)?,
-                    created_at: row.get(6).ok(),
-                    game_name: row.get(7)?,
-                    package_id: row.get(8).ok(),
-                    proxy_state: row.get(9).ok(),
+                    branch_id: row.get(1).ok(),
+                    game_id: row.get(2)?,
+                    name: row.get(3)?,
+                    start_date: row.get(4)?,
+                    start_time: row.get(5)?,
+                    request_template: row.get(6)?,
+                    created_at: row.get(7).ok(),
+                    game_name: row.get(8)?,
+                    package_id: row.get(9).ok(),
+                    proxy_state: row.get(10).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query completed accounts: {}", e))?;

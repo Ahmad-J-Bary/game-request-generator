@@ -412,7 +412,7 @@ export default function Dashboard() {
                       <Gamepad2 className="h-6 w-6" />
                     </div>
                     <div className="min-w-0">
-                      <h4 className="font-black text-lg truncate leading-tight uppercase" title={account.name}>{account.name}</h4>
+                      <h4 className="font-black text-lg truncate leading-tight" title={account.name}>{account.name}</h4>
                       <p className="text-xs text-muted-foreground font-bold tracking-tight truncate opacity-80" title={account.game_name}>{account.game_name}</p>
                     </div>
                   </div>
@@ -425,7 +425,7 @@ export default function Dashboard() {
                     <div className="flex flex-col text-right">
                       <span className="text-muted-foreground font-black uppercase tracking-widest text-[9px] mb-1">{t('dashboard.legacy')}</span>
                       <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-black text-sm italic">
-                        {t('dailyTasks.completed').toUpperCase()}
+                        {t('dailyTasks.completed')}
                         <CheckCircle className="h-4 w-4" />
                       </div>
                     </div>

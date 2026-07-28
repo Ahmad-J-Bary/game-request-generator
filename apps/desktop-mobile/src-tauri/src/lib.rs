@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs
+﻿// src-tauri/src/lib.rs
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -88,6 +88,8 @@ async fn execute_hall_of_fame_send_clear(
 
     tx.commit()
         .map_err(|e| format!("Failed to commit Hall of Fame cleanup: {}", e))?;
+
+    let _ = db.reclaim_space()?;
 
     Ok((completed_accounts.len(), completed_accounts.len()))
 }
@@ -484,7 +486,7 @@ fn set_backup_config(
 
 #[tauri::command]
 fn backup_database_local_now(app: tauri::AppHandle) -> Result<(), String> {
-    // Force backup even if identical — always create a new timestamped copy
+    // Force backup even if identical â€” always create a new timestamped copy
     let db_path = resolve_internal_db_path(&app)?;
     let backup_dir = resolve_backup_dir(&app)?;
     std::fs::create_dir_all(&backup_dir)
@@ -514,7 +516,7 @@ fn import_database_with_pointer(
     // Lock DB to prevent any operations during copy
     let _guard = state.db.lock().unwrap();
 
-    // If no pointer exists, the current DB is the "live" original — auto-backup it first
+    // If no pointer exists, the current DB is the "live" original â€” auto-backup it first
     if config.db_pointer_path.is_none() && config.db_auto_backup_path.is_none() {
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
         let auto_backup_name = format!("backup_auto_{}.sqlite", timestamp);
@@ -677,7 +679,9 @@ fn delete_game(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = GameService::new();
-    service.delete_game(conn, id)
+    let deleted = service.delete_game(conn, id)?;
+    let _ = db_guard.reclaim_space()?;
+    Ok(deleted)
 }
 
 // ==================== أوامر الأفرع ====================
@@ -716,7 +720,9 @@ fn delete_branch(state: tauri::State<AppState>, id: i64) -> Result<bool, String>
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = GameService::new();
-    service.delete_branch(conn, id)
+    let deleted = service.delete_branch(conn, id)?;
+    let _ = db_guard.reclaim_space()?;
+    Ok(deleted)
 }
 
 // ==================== أوامر المستويات ====================
@@ -762,7 +768,9 @@ fn delete_level(state: tauri::State<AppState>, id: i64) -> Result<bool, String> 
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = LevelService::new();
-    service.delete_level(conn, id)
+    let deleted = service.delete_level(conn, id)?;
+    let _ = db_guard.reclaim_space()?;
+    Ok(deleted)
 }
 
 // ==================== أوامر الحسابات ====================
@@ -825,7 +833,9 @@ fn delete_account(state: tauri::State<AppState>, id: i64) -> Result<bool, String
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = AccountService::new();
-    service.delete_account(conn, id)
+    let deleted = service.delete_account(conn, id)?;
+    let _ = db_guard.reclaim_space()?;
+    Ok(deleted)
 }
 
 #[tauri::command]
@@ -902,7 +912,9 @@ fn delete_purchase_event(state: tauri::State<AppState>, id: i64) -> Result<bool,
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = PurchaseEventService::new();
-    service.delete_purchase_event(conn, id)
+    let deleted = service.delete_purchase_event(conn, id)?;
+    let _ = db_guard.reclaim_space()?;
+    Ok(deleted)
 }
 
 // ==================== أوامر تقدم المستويات ====================
@@ -1807,7 +1819,9 @@ fn clear_task_history(state: tauri::State<AppState>) -> Result<(), String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = HistoryService::new();
-    service.clear_history(conn)
+    service.clear_history(conn)?;
+    let _ = db_guard.reclaim_space()?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -2011,3 +2025,4 @@ pub fn run() {
 #[cfg(test)]
 #[path = "backup_tests.rs"]
 mod backup_tests;
+
