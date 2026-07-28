@@ -1269,6 +1269,121 @@ export class ExcelService {
       return false;
     }
   }
+  /**
+   * Export all games in game-detail format (levels + purchase events only, no accounts/progress)
+   * Creates one sheet per game with the same vertical layout as exportGameDetailData
+   */
+  static async exportAllGamesDetailData(
+    layout: 'horizontal' | 'vertical',
+    colorSettings: ColorSettings,
+    theme: 'light' | 'dark',
+    allGamesData: Array<{ gameId: number; gameName: string; branches: Array<{ branchName: string; columns: any[] }> }>
+  ): Promise<boolean> {
+    try {
+      const workbook = XLSX.utils.book_new();
+
+      for (const gameData of allGamesData) {
+        const sheetName = gameData.gameName.substring(0, 31);
+        const wsData: any[][] = [];
+        const merges: any[] = [];
+
+        for (const group of gameData.branches) {
+          const currentOffset = wsData.length;
+          const { columns: groupCols, branchName } = group;
+
+          if (branchName) {
+            wsData.push([`Branch: ${branchName}`]);
+            merges.push({ s: { r: currentOffset, c: 0 }, e: { r: currentOffset, c: (layout === 'vertical' ? groupCols.length : 3) } });
+          }
+
+          const rowOffset = wsData.length;
+
+          if (layout === 'vertical') {
+            const row1 = ['Event Token'];
+            const row2 = ['Level Name'];
+            const row3 = ['Days Offset'];
+            const row4 = ['Time Spent (1000 seconds)'];
+
+            groupCols.forEach((item: any) => {
+              row1.push(item.token);
+              row2.push(item.name);
+              row3.push(item.daysOffset !== null && item.daysOffset !== undefined && item.daysOffset !== '' ? item.daysOffset.toString() : '-');
+              row4.push(item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-');
+            });
+            wsData.push(row1, row2, row3, row4);
+
+            for (let r = rowOffset; r < wsData.length; r++) {
+              for (let c = 0; c < wsData[r].length; c++) {
+                const cell = { v: wsData[r][c] } as any;
+                if (c === 0) {
+                  cell.s = this.getCellStyle(colorSettings.headerColor, theme, true);
+                } else {
+                  const item = groupCols[c - 1];
+                  let backgroundColor: string;
+                  if (item.kind === 'level') {
+                    backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
+                  } else {
+                    backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
+                  }
+                  cell.s = this.getCellStyle(backgroundColor, theme, true, item.synthetic);
+                }
+                wsData[r][c] = cell;
+              }
+            }
+          } else {
+            wsData.push(['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)']);
+            const headerRowIdx = rowOffset;
+            for (let c = 0; c < 4; c++) {
+              wsData[headerRowIdx][c] = { v: wsData[headerRowIdx][c], s: this.getCellStyle(colorSettings.headerColor, theme, true) };
+            }
+
+            groupCols.forEach((item: any) => {
+              const row = [
+                item.token,
+                item.name,
+                item.daysOffset !== null && item.daysOffset !== undefined && item.daysOffset !== '' ? item.daysOffset.toString() : '-',
+                item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-'
+              ];
+              let backgroundColor: string;
+              if (item.kind === 'level') {
+                backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
+              } else {
+                backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
+              }
+              const rowStyle = this.getCellStyle(backgroundColor, theme, false, item.synthetic);
+              wsData.push(row.map(v => ({ v, s: rowStyle })));
+            });
+          }
+
+          wsData.push([]);
+        }
+
+        if (wsData.length > 0 && wsData[wsData.length - 1].length === 0) {
+          wsData.pop();
+        }
+
+        const worksheet = XLSX.utils.aoa_to_sheet(wsData);
+        (worksheet as any)['!merges'] = merges;
+
+        worksheet['!cols'] = [
+          { wch: 15 },
+          { wch: 12 },
+          { wch: 12 },
+          { wch: 20 },
+          ...Array(Math.max(0, (layout === 'vertical' ? (wsData[0]?.length || 4) - 4 : 0))).fill({ wch: 12 })
+        ];
+
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      }
+
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      return await this.saveFile('All_Games_Details.xlsx', buffer);
+    } catch (error) {
+      console.error('Export all games detail data error:', error);
+      return false;
+    }
+  }
+
   // ===== Styling Methods (delegated to styling module) =====
 
   private static getCellStyle(backgroundColor: string, theme: 'light' | 'dark', isHeader: boolean = false, isSynthetic: boolean = false) {

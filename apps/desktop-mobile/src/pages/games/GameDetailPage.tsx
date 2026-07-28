@@ -5,7 +5,6 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Card, CardContent } from "@grq/ui/atoms/card";
-import { BackButton } from "@grq/ui/molecules/BackButton";
 import { GameDataTable } from "@grq/ui/organisms/tables/GameDataTable";
 import { ImportDialog } from "@grq/ui/molecules/ImportDialog";
 import { ExportDialog } from "@grq/ui/molecules/ExportDialog";
@@ -13,16 +12,26 @@ import type { ColumnData } from "@grq/ui/organisms/tables/AccountDataTable";
 import { ExcelTabBar } from "@grq/ui/organisms/ExcelTabBar";
 import { Button } from "@grq/ui/atoms/button";
 import { Label } from "@grq/ui/atoms/label";
+import { PageHeader } from "@grq/ui/molecules/PageHeader";
+import { ActionToolbar } from "@grq/ui/molecules/ActionToolbar";
 import {
-  Settings,
-  Trash2,
-  Upload,
-  Download,
-  Edit3,
-  Save,
-  X,
-  Plus,
-} from "lucide-react";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@grq/ui/atoms/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@grq/ui/atoms/alert-dialog";
+import { Settings, Trash2, Plus, Download, ChevronDown, FileText } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -39,7 +48,6 @@ import {
   DialogDescription,
 } from "@grq/ui/atoms/dialog";
 import { Input } from "@grq/ui/atoms/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@grq/ui/atoms/popover";
 
 import { useGames } from "@grq/core/hooks/useGames";
 import { useLevels } from "@grq/core/hooks/useLevels";
@@ -74,6 +82,7 @@ export default function GameDetailPage({
     useGames();
 
   const [branches, setBranches] = useState<GameBranch[]>([]);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showManageBranches, setShowManageBranches] = useState(false);
   const [newBranchName, setNewBranchName] = useState("");
   const [isCreatingBranch, setIsCreatingBranch] = useState(false);
@@ -108,6 +117,8 @@ export default function GameDetailPage({
   const [mode, setMode] = useState<Mode>("event-only");
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportType, setExportType] = useState<"game" | "all">("game");
+  const [exportSource, setExportSource] = useState<"game-detail" | "accounts-detail" | "game-detail-all">("game-detail");
   const [isEditMode, setIsEditMode] = useState(false);
 
   // Edit State
@@ -398,11 +409,12 @@ export default function GameDetailPage({
   const [allBranchData, setAllBranchData] = useState<
     Array<{ branchName: string; columns: ColumnData[] }>
   >([]);
-  const [isPreparingExport, setIsPreparingExport] = useState(false);
+  const [allGamesExportData, setAllGamesExportData] = useState<
+    Array<{ gameId: number; gameName: string; branches: Array<{ branchName: string; columns: ColumnData[] }> }>
+  >([]);
 
   const prepareExportData = async () => {
     if (!gameId || branches.length === 0) return;
-    setIsPreparingExport(true);
     try {
       const exportData: Array<{ branchName: string; columns: ColumnData[] }> =
         [];
@@ -473,20 +485,91 @@ export default function GameDetailPage({
       setShowExportDialog(true);
     } catch (err) {
       console.error("Failed to prepare export data:", err);
-    } finally {
-      setIsPreparingExport(false);
     }
   };
   // --------------------------------------------
 
-  const handleDeleteGame = async () => {
-    if (!gameId || !game) return;
-    if (window.confirm(t("games.deleteConfirm"))) {
-      const success = await deleteGame(gameId);
-      if (success) {
-        navigate("/games-table");
+  const currentGameName = game?.name || t("games.detailTitle");
+
+  const handleExportThisGame = async () => {
+    setExportType("game");
+    setExportSource("game-detail");
+    await prepareExportData();
+  };
+
+  const handleExportAllGames = async () => {
+    const allData: Array<{ gameId: number; gameName: string; branches: Array<{ branchName: string; columns: ColumnData[] }> }> = [];
+    for (const g of games) {
+      if (!g.id) continue;
+      const gBranches = await fetchBranches(g.id);
+      if (gBranches.length === 0) continue;
+      const branchData: Array<{ branchName: string; columns: ColumnData[] }> = [];
+      for (const branch of gBranches) {
+        const [lvls, evts] = await Promise.all([
+          TauriService.getGameLevels(branch.id),
+          TauriService.getGamePurchaseEvents(branch.id),
+        ]);
+        const levelCols = lvls.map((l) => ({
+          kind: "level" as const,
+          id: l.id,
+          token: l.event_token.split("_day")[0],
+          name: l.level_name,
+          daysOffset: l.days_offset,
+          timeSpent: l.time_spent,
+          isBonus: !!l.is_bonus,
+          synthetic: l.level_name === "-",
+        }));
+        const purchaseCols = evts.map((p) => {
+          const base = p.days_offset !== null && p.days_offset !== undefined ? String(p.days_offset) : "-";
+          let daysOffsetValue = base;
+          if (p.is_restricted && p.max_days_offset != null) {
+            daysOffsetValue = `${base} (${t("purchaseEvents.lessThan")} ${p.max_days_offset})`;
+          }
+          return {
+            kind: "purchase" as const,
+            id: p.id,
+            token: p.event_token,
+            name: "$$$",
+            daysOffset: daysOffsetValue,
+            maxDaysOffset: p.max_days_offset != null ? String(p.max_days_offset) : null,
+            isRestricted: !!p.is_restricted,
+            timeSpent: null,
+            synthetic: false,
+          };
+        });
+        let columns = [...levelCols, ...purchaseCols] as ColumnData[];
+        if (mode === "event-only") {
+          columns = columns.filter((c) => !c.synthetic);
+        }
+        columns.sort((a, b) => {
+          if (a.kind !== b.kind) return a.kind === "level" ? -1 : 1;
+          const aT = (a.timeSpent as number) ?? 0;
+          const bT = (b.timeSpent as number) ?? 0;
+          if (aT !== bT) return aT - bT;
+          return (a.daysOffset ?? 0) - (b.daysOffset ?? 0);
+        });
+        branchData.push({ branchName: branch.name, columns });
       }
+      allData.push({ gameId: g.id, gameName: g.name, branches: branchData });
     }
+    setAllGamesExportData(allData);
+    setExportType("all");
+    setExportSource("game-detail-all");
+    setShowExportDialog(true);
+  };
+
+  const handleDeleteGame = () => {
+    if (!gameId || !game) return;
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteGame = async () => {
+    if (!gameId) return;
+    const success = await deleteGame(gameId);
+    if (success) {
+      navigate("/games-table");
+    }
+    setShowDeleteDialog(false);
   };
 
   useEffect(() => {
@@ -534,203 +617,72 @@ export default function GameDetailPage({
     }
   };
 
+  const exportDropdown = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-2 h-9 shrink-0"
+          title={t("common.export")}
+        >
+          <Download className="h-4 w-4" />
+          <span className="hidden sm:inline">{t("common.export")}</span>
+          <ChevronDown className="h-4 w-4 hidden sm:inline" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="min-w-[200px]">
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
+          <FileText className="h-3.5 w-3.5 inline mr-1.5" />
+          {t("export.toExcel")}
+        </DropdownMenuLabel>
+        <DropdownMenuItem onClick={handleExportAllGames}>
+          {t("export.allGames")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleExportThisGame}>
+          {t("export.thisGame")} ({currentGameName})
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
       <div className="flex-1">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl md:text-3xl font-bold truncate">
-                {game ? game.name : t("games.detailTitle")}
-              </h1>
-
-              {branches.length > 0 && (
-                <div className="flex items-center gap-2 bg-accent/30 p-1 rounded-md border border-border/50">
-                  <span className="text-sm font-medium px-2 text-muted-foreground">
-                    {t("branches.count", { count: branches.length })}
-                  </span>
-
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => setShowManageBranches(true)}
-                  >
-                    <Settings className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              )}
-            </div>
-            <p className="text-xs md:text-sm text-muted-foreground">
-              {t("games.detailSubtitle")}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 md:gap-3 self-end lg:self-auto">
-            {/* Desktop Actions */}
-            <div className="hidden lg:flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowImportDialog(true)}
-                className="flex items-center gap-2"
-              >
-                <Upload className="h-4 w-4" />
-                {t("common.import", "Import")}
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={prepareExportData}
-                disabled={isPreparingExport}
-                className="flex items-center gap-2"
-              >
-                {isPreparingExport ? (
-                  <span className="animate-spin mr-2">...</span>
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                {t("common.export", "Export")}
-              </Button>
-
-              <div className="flex items-center gap-2 px-2 py-1 border rounded h-9">
-                <label className="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="game-detail-mode-desktop"
-                    checked={mode === "event-only"}
-                    onChange={() => setMode("event-only")}
-                    className="w-3 h-3"
-                  />
-                  <span className="text-xs">{t("common.eventOnly")}</span>
-                </label>
-                <label className="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="game-detail-mode-desktop"
-                    checked={mode === "all"}
-                    onChange={() => setMode("all")}
-                    className="w-3 h-3"
-                  />
-                  <span className="text-xs">{t("common.all")}</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Mobile More Actions Popover */}
-            <div className="lg:hidden">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 w-9 p-0">
-                    <div className="flex flex-col gap-0.5 items-center">
-                      <div className="w-1 h-1 bg-current rounded-full" />
-                      <div className="w-1 h-1 bg-current rounded-full" />
-                      <div className="w-1 h-1 bg-current rounded-full" />
-                    </div>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-56 p-3 space-y-4" align="end">
-                  <div className="space-y-2">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">
-                      {t("common.view")}
-                    </Label>
-                    <div className="flex flex-col gap-2 p-2 border rounded bg-accent/20">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="game-detail-mode-mobile"
-                          checked={mode === "event-only"}
-                          onChange={() => setMode("event-only")}
-                          className="accent-primary"
-                        />
-                        <span className="text-sm">{t("common.eventOnly")}</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="game-detail-mode-mobile"
-                          checked={mode === "all"}
-                          onChange={() => setMode("all")}
-                          className="accent-primary"
-                        />
-                        <span className="text-sm">{t("common.all")}</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">
-                      {t("common.actions")}
-                    </Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowImportDialog(true)}
-                        className="justify-start gap-2 h-9 text-xs px-2"
-                      >
-                        <Upload className="h-3.5 w-3.5" />
-                        {t("common.import")}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={prepareExportData}
-                        disabled={isPreparingExport}
-                        className="justify-start gap-2 h-9 text-xs px-2"
-                      >
-                        {isPreparingExport ? (
-                          <span className="animate-spin mr-2">...</span>
-                        ) : (
-                          <Download className="h-3.5 w-3.5" />
-                        )}
-                        {t("common.export")}
-                      </Button>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="h-9 w-[1px] bg-border mx-1" />
-
-            {!isEditMode ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleEditToggle}
-                className="flex items-center gap-2 h-9"
-              >
-                <Edit3 className="h-4 w-4" />
-                <span className="hidden xs:inline">{t("common.edit")}</span>
-              </Button>
-            ) : (
-              <div className="flex items-center gap-2">
+        <PageHeader
+          title={game ? game.name : t("games.detailTitle")}
+          subtitle={t("games.detailSubtitle")}
+          titleExtra={
+            branches.length > 0 && (
+              <div className="flex items-center gap-2 bg-accent/30 p-1 rounded-md border border-border/50">
+                <span className="text-sm font-medium px-2 text-muted-foreground">
+                  {t("branches.count", { count: branches.length })}
+                </span>
                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSaveChanges}
-                  className="flex items-center gap-2 h-9 bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => setShowManageBranches(true)}
                 >
-                  <Save className="h-4 w-4" />
-                  <span className="hidden xs:inline">{t("common.save")}</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCancelEdit}
-                  className="flex items-center gap-2 h-9"
-                >
-                  <X className="h-4 w-4" />
-                  <span className="hidden xs:inline">{t("common.cancel")}</span>
+                  <Settings className="h-3.5 w-3.5" />
                 </Button>
               </div>
-            )}
-
-            <BackButton />
-          </div>
-        </div>
+            )
+          }
+        >
+          <ActionToolbar
+            mode={mode}
+            onModeChange={setMode}
+            isEditMode={isEditMode}
+            onEditToggle={handleEditToggle}
+            onSave={handleSaveChanges}
+            onCancel={handleCancelEdit}
+            onImport={() => setShowImportDialog(true)}
+            onExport={handleExportThisGame}
+            exportDropdown={exportDropdown}
+            backTo="/games-table"
+          />
+        </PageHeader>
 
         <div className="flex flex-col gap-12 mt-6 pb-24">
           {branches.map((branch) => (
@@ -751,7 +703,7 @@ export default function GameDetailPage({
           ))}
         </div>
 
-        {!isEditMode && (
+        {gameId && game && !isEditMode && (
           <div className="flex flex-wrap gap-4 mt-6">
             <Button
               onClick={() =>
@@ -777,11 +729,13 @@ export default function GameDetailPage({
           open={showExportDialog}
           onOpenChange={setShowExportDialog}
           gameId={gameId}
-          exportType="game"
+          exportType={exportType}
           colorSettings={colors}
           theme={theme}
-          source="game-detail"
-          data={allBranchData}
+          source={exportSource}
+          data={exportSource === "game-detail" ? allBranchData : undefined}
+          allGamesExportData={exportSource === "game-detail-all" ? allGamesExportData : undefined}
+          mode={mode}
         />
       </div>
 
@@ -892,6 +846,24 @@ export default function GameDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Game Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("games.deleteTitle", "Delete Game")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("games.deleteConfirm")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteGame} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {t("common.delete", "Delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Excel-like Game Tabs Navigation */}
       <ExcelTabBar

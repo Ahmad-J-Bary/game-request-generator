@@ -14,7 +14,6 @@ import {
   AlertDialogTitle,
 } from "@grq/ui/atoms/alert-dialog";
 import { Card, CardContent } from "@grq/ui/atoms/card";
-import { BackButton } from "@grq/ui/molecules/BackButton";
 import { AccountsDataTable } from "@grq/ui/organisms/tables/AccountsDataTable";
 import { ImportDialog } from "@grq/ui/molecules/ImportDialog";
 import { ExportDialog } from "@grq/ui/molecules/ExportDialog";
@@ -31,14 +30,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@grq/ui/atoms/dropdown-menu";
+import { PageHeader } from "@grq/ui/molecules/PageHeader";
+import { ActionToolbar } from "@grq/ui/molecules/ActionToolbar";
 import {
   Download,
-  Upload,
   ChevronDown,
   Edit3,
-  Save,
-  X,
-  MoreVertical,
   Search,
   GitBranch,
   FileText,
@@ -53,8 +50,6 @@ import { useTheme } from "@grq/ui/contexts/ThemeContext";
 import { useGames } from "@grq/core/hooks/useGames";
 import { TauriService } from "@grq/core/services/tauri.service";
 import { ExcelTabBar } from "@grq/ui/organisms/ExcelTabBar";
-import { Popover, PopoverContent, PopoverTrigger } from "@grq/ui/atoms/popover";
-import { Label } from "@grq/ui/atoms/label";
 import { Badge } from "@grq/ui/atoms/badge";
 import {
   getRealTimelineLevels,
@@ -730,264 +725,112 @@ function AccountsDetailContent({
     );
   };
 
+  const exportDropdown = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-2 h-9 shrink-0"
+          title={t("common.export")}
+        >
+          <Download className="h-4 w-4" />
+          <span className="hidden sm:inline">{t("common.export")}</span>
+          <ChevronDown className="h-4 w-4 hidden sm:inline" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="min-w-[200px]">
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
+          <FileText className="h-3.5 w-3.5 inline mr-1.5" />
+          {t("export.toExcel")}
+        </DropdownMenuLabel>
+        <DropdownMenuItem
+          onClick={() => {
+            setExportType("all");
+            setShowExportDialog(true);
+          }}
+        >
+          {t("export.allGames")}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            setExportType("game");
+            setSelectedBranchId(undefined);
+            setShowExportDialog(true);
+          }}
+        >
+          {t("export.thisGame")} ({currentGameName})
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
+          <FileText className="h-3.5 w-3.5 inline mr-1.5" />
+          {t("export.requestTemplates")}
+        </DropdownMenuLabel>
+        <DropdownMenuItem onClick={() => handleExportTemplates()}>
+          {t("export.allGames")}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => selectedGameId && handleExportTemplates(selectedGameId)}
+          disabled={!selectedGameId}
+        >
+          {t("export.thisGame")} ({currentGameName})
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const rangeFillButton = (
+    <Button
+      type="button"
+      variant={rangeFillMode ? "default" : "outline"}
+      size="sm"
+      onClick={() => setRangeFillMode((prev) => !prev)}
+      className={`h-9 shrink-0 transition-all ${
+        rangeFillMode
+          ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+          : "text-muted-foreground hover:text-foreground"
+      }`}
+      title={t("accounts.rangeFillHint")}
+    >
+      <Edit3 className="h-4 w-4 mr-1" />
+      <span className="hidden xs:inline">
+        {rangeFillMode ? t("accounts.rangeFillOn") : t("accounts.rangeFillOff")}
+      </span>
+    </Button>
+  );
+
+  const mobilePopoverExtra = isEditMode ? (
+    <div className="space-y-2 pt-2 border-t">
+      <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">
+        {t("common.edit")}
+      </p>
+      {rangeFillButton}
+      <p className="text-[11px] text-muted-foreground px-1">
+        {t("accounts.rangeFillHint")}
+      </p>
+    </div>
+  ) : undefined;
+
   return (
     <div className="flex-1 flex flex-col h-full bg-background/50">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 sticky top-0 bg-background/80 backdrop-blur-md z-30 p-2 rounded-lg border border-border/50">
-        <h2 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent px-2">
-          {t("nav.accountsDetail")}
-        </h2>
-
-        <div className="flex items-center gap-2 self-end md:self-auto px-2">
-          {isEditMode ? (
-            <>
-              <Button
-                type="button"
-                variant={rangeFillMode ? "default" : "outline"}
-                size="sm"
-                onClick={() => setRangeFillMode((prev) => !prev)}
-                className={`h-9 px-3 text-xs font-semibold transition-all ${
-                  rangeFillMode
-                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                title={t(
-                  "accounts.rangeFillHint",
-                  "Tap any checkbox to fill from start to that point",
-                )}
-              >
-                {rangeFillMode
-                  ? t("accounts.rangeFillOn", "Range Fill: ON")
-                  : t("accounts.rangeFillOff", "Range Fill")}
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleSaveProgress}
-                className="flex items-center gap-2 h-9 shadow-lg shadow-primary/20"
-              >
-                <Save className="h-4 w-4" /> {t("common.save", "Save")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setRangeFillMode(false);
-                  setIsEditMode(false);
-                }}
-                className="flex items-center gap-2 h-9"
-              >
-                <X className="h-4 w-4" /> {t("common.cancel", "Cancel")}
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEditToggle}
-              className="flex items-center gap-2 h-9 group transition-all hover:border-primary/50"
-            >
-              <Edit3 className="h-4 w-4 transition-transform group-hover:rotate-12" />{" "}
-              {t("common.edit", "Edit")}
-            </Button>
-          )}
-
-          <div className="hidden lg:flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowImportDialog(true)}
-              className="flex items-center gap-2 h-9"
-            >
-              <Upload className="h-4 w-4" /> {t("common.import", "Import")}
-            </Button>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center gap-2 h-9"
-                >
-                  <Download className="h-4 w-4" />{" "}
-                  {t("common.export", "Export")}{" "}
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="min-w-[200px]">
-                <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
-                  <FileText className="h-3.5 w-3.5 inline mr-1.5" />
-                  {t("export.toExcel", "Export to Excel (.xlsx)")}
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setExportType("all");
-                    setShowExportDialog(true);
-                  }}
-                >
-                  {t("export.allGames", "Export All Games")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setExportType("game");
-                    setSelectedBranchId(undefined);
-                    setShowExportDialog(true);
-                  }}
-                >
-                  {t("export.thisGame", "Export This Game")} ({currentGameName})
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator />
-
-                <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
-                  <FileText className="h-3.5 w-3.5 inline mr-1.5" />
-                  {t("export.requestTemplates", "Request Templates (.txt)")}
-                </DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => handleExportTemplates()}>
-                  {t("export.allGames", "Export All Games")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => selectedGameId && handleExportTemplates(selectedGameId)}
-                  disabled={!selectedGameId}
-                >
-                  {t("export.thisGame", "Export This Game")} ({currentGameName})
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <div className="flex items-center gap-1 p-1 border rounded-lg h-9 bg-accent/30 shadow-inner">
-              <button
-                onClick={() => setMode("event-only")}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${mode === "event-only" ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {t("common.eventOnly")}
-              </button>
-              <button
-                onClick={() => setMode("all")}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${mode === "all" ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {t("common.all")}
-              </button>
-            </div>
-          </div>
-
-          <div className="lg:hidden">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 w-9 p-0 rounded-full"
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-3 space-y-4" align="end">
-                <div className="space-y-2">
-                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">
-                    {t("common.view")}
-                  </Label>
-                  <div className="flex flex-col gap-2 p-2 border rounded bg-accent/20">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="accounts-mode-mobile"
-                        checked={mode === "event-only"}
-                        onChange={() => setMode("event-only")}
-                      />
-                      <span className="text-sm">{t("common.eventOnly")}</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="accounts-mode-mobile"
-                        checked={mode === "all"}
-                        onChange={() => setMode("all")}
-                      />
-                      <span className="text-sm">{t("common.all")}</span>
-                    </label>
-                  </div>
-                </div>
-
-                {isEditMode && (
-                  <div className="space-y-2 pt-2 border-t">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">
-                      {t("common.edit")}
-                    </Label>
-                    <Button
-                      type="button"
-                      variant={rangeFillMode ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setRangeFillMode((prev) => !prev)}
-                      className={`w-full justify-start gap-2 h-9 ${
-                        rangeFillMode
-                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      <Edit3 className="h-4 w-4" />
-                      {rangeFillMode
-                        ? t("accounts.rangeFillOn", "Range Fill: ON")
-                        : t("accounts.rangeFillOff", "Range Fill")}
-                    </Button>
-                    <p className="text-[11px] text-muted-foreground px-1">
-                      {t(
-                        "accounts.rangeFillHint",
-                        "Tap any checkbox to fill from start to that point",
-                      )}
-                    </p>
-                  </div>
-                )}
-
-                <div className="space-y-2 pt-2 border-t font-semibold">
-                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">
-                    {t("common.actions")}
-                  </Label>
-                  <div className="grid grid-cols-1 gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowImportDialog(true)}
-                      className="flex items-center justify-start gap-2 h-9 w-full"
-                    >
-                      <Upload className="h-4 w-4" />{" "}
-                      {t("common.import", "Import")}
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setExportType("all");
-                        setShowExportDialog(true);
-                      }}
-                      className="flex items-center justify-start gap-2 h-9 w-full"
-                    >
-                      <Download className="h-4 w-4" />{" "}
-                      {t("export.allGames", "Export All Games")}
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setExportType("game");
-                        setSelectedBranchId(undefined);
-                        setShowExportDialog(true);
-                      }}
-                      className="flex items-center justify-start gap-2 h-9 w-full"
-                    >
-                      <Download className="h-4 w-4" />{" "}
-                      {t("export.thisGame", "Export This Game")} ({currentGameName})
-                    </Button>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <BackButton />
-        </div>
-      </div>
+      <PageHeader title={t("nav.accountsDetail")}>
+        <ActionToolbar
+          mode={mode}
+          onModeChange={setMode}
+          isEditMode={isEditMode}
+          onEditToggle={handleEditToggle}
+          onSave={handleSaveProgress}
+          onCancel={() => {
+            setRangeFillMode(false);
+            setIsEditMode(false);
+          }}
+          onImport={() => setShowImportDialog(true)}
+          onExport={() => {}}
+          exportDropdown={exportDropdown}
+          editModeExtra={rangeFillButton}
+          mobilePopoverExtra={mobilePopoverExtra}
+        />
+      </PageHeader>
 
       <div className="flex-1 space-y-12 pb-24">
         {branches.length === 0 ? (

@@ -342,18 +342,22 @@ export function isAccountsDetailFormat(rows: any[][]): boolean {
  */
 export function isVerticalGameDetailFormat(rows: any[][]): boolean {
   if (rows.length < 4) return false;
-  
-  // Heuristic: Check if row 2 mostly contains numbers (days offset) 
-  // and row 0 mostly contains strings (tokens)
+
+  let dataStart = 0;
+  while (dataStart < rows.length && String(rows[dataStart]?.[0] ?? '').toLowerCase().startsWith('branch:')) {
+    dataStart++;
+  }
+
+  if (dataStart + 4 > rows.length) return false;
+
   let numberCountRow2 = 0;
-  for (let i = 0; i < Math.min(10, rows[2].length); i++) {
-     const v = rows[2][i];
+  for (let i = 0; i < Math.min(10, rows[dataStart + 2].length); i++) {
+     const v = rows[dataStart + 2][i];
      if (v !== undefined && v !== null && String(v).trim() !== '' && (!isNaN(Number(v)) || String(v).toLowerCase().includes('less'))) {
          numberCountRow2++;
      }
   }
-  
-  // If we see at least 2 numbers/offsets in row 2, it's very likely the vertical layout.
+
   return numberCountRow2 >= 2;
 }
 
@@ -691,94 +695,116 @@ export function parseVerticalLayoutData(rows: any[][]): { levels: Partial<Level>
     return { levels, purchaseEvents };
   }
 
-  // Find the maximum number of columns
-  const maxCols = Math.max(...rows.slice(0, 4).map(row => row.length));
-
-  // Determine where actual data columns start (skipping label columns if present)
-  let startCol = 0;
-  for (let col = 0; col < Math.min(5, maxCols); col++) {
-    const valDayRaw = rows[2] && rows[2][col] !== undefined && rows[2][col] !== null ? rows[2][col] : '';
-    const valDay = valDayRaw.toString().trim();
-    const isDayNumeric = valDay !== '' && !isNaN(Number(valDay));
-    const isLess = valDay.toLowerCase().includes('less');
-    
-    const valTokenRaw = rows[0] && rows[0][col] !== undefined && rows[0][col] !== null ? rows[0][col] : '';
-    const valToken = valTokenRaw.toString().trim().toLowerCase();
-    const isLabelColumn = valToken === 'event token' || valToken === 'levels' || valToken === '' || valToken.includes(' ');
-    
-    if ((isDayNumeric || isLess) && !isLabelColumn) {
-       startCol = col;
-       break;
+  // Parse all branch groups (skip "Branch:" rows, find 4-row header blocks)
+  let i = 0;
+  while (i < rows.length) {
+    // Skip branch header rows
+    while (i < rows.length && String(rows[i]?.[0] ?? '').toLowerCase().startsWith('branch:')) {
+      i++;
     }
-  }
 
-  for (let col = startCol; col < maxCols; col++) {
-    const eventTokenRaw = rows[0] && rows[0][col] !== undefined && rows[0][col] !== null ? rows[0][col] : '';
-    const eventToken = eventTokenRaw.toString().trim();
-    const levelNameRaw = rows[1] && rows[1][col] !== undefined && rows[1][col] !== null ? rows[1][col] : '';
-    const levelName = levelNameRaw.toString().trim();
-    const daysOffsetRaw = rows[2] && rows[2][col] !== undefined && rows[2][col] !== null ? rows[2][col] : '';
-    const daysOffsetStr = daysOffsetRaw.toString().trim();
-    const timeSpentRaw = rows[3] && rows[3][col] !== undefined && rows[3][col] !== null ? rows[3][col] : '';
-    const timeSpentStr = timeSpentRaw.toString().trim();
+    if (i + 4 > rows.length) break;
 
-    if (!eventToken || eventToken.toLowerCase() === 'event token' || eventToken.toLowerCase() === 'levels') continue; // Skip empty/header columns
+    const groupRows = rows.slice(i, i + 4);
 
-    // Check if this is a purchase event ($$$ in level name)
-    if (levelName === '$$$') {
-      // This is a purchase event
-      const purchaseEvent: Partial<PurchaseEvent> = {
-        event_token: eventToken,
-        is_restricted: false, // Default to unrestricted
-      };
-
-      // Parse days offset - for purchase events it might be "Less Than X"
-      if (daysOffsetStr && daysOffsetStr.toLowerCase().includes('less than')) {
-        const match = daysOffsetStr.match(/less than (\d+)/i);
-        if (match) {
-          purchaseEvent.max_days_offset = parseInt(match[1]);
+    // Verify this looks like a valid header group (row 0 has tokens, row 2 has numbers)
+    const hasToken = groupRows[0]?.some((v: any) => v && String(v).trim() && !String(v).toLowerCase().includes('event token'));
+    let hasNumericOffset = false;
+    if (groupRows[2]) {
+      for (let c = 0; c < Math.min(10, groupRows[2].length); c++) {
+        const v = groupRows[2][c];
+        if (v !== undefined && v !== null && String(v).trim() !== '' && (!isNaN(Number(v)) || String(v).toLowerCase().includes('less'))) {
+          hasNumericOffset = true;
+          break;
         }
+      }
+    }
+    if (!hasToken || !hasNumericOffset) {
+      i++;
+      continue;
+    }
+
+    const maxCols = Math.max(...groupRows.map(row => row.length));
+
+    let startCol = 0;
+    for (let col = 0; col < Math.min(5, maxCols); col++) {
+      const valDayRaw = groupRows[2] && groupRows[2][col] !== undefined && groupRows[2][col] !== null ? groupRows[2][col] : '';
+      const valDay = valDayRaw.toString().trim();
+      const isDayNumeric = valDay !== '' && !isNaN(Number(valDay));
+      const isLess = valDay.toLowerCase().includes('less');
+
+      const valTokenRaw = groupRows[0] && groupRows[0][col] !== undefined && groupRows[0][col] !== null ? groupRows[0][col] : '';
+      const valToken = valTokenRaw.toString().trim().toLowerCase();
+      const isLabelColumn = valToken === 'event token' || valToken === 'levels' || valToken === '' || valToken.includes(' ');
+
+      if ((isDayNumeric || isLess) && !isLabelColumn) {
+         startCol = col;
+         break;
+      }
+    }
+
+    for (let col = startCol; col < maxCols; col++) {
+      const eventTokenRaw = groupRows[0] && groupRows[0][col] !== undefined && groupRows[0][col] !== null ? groupRows[0][col] : '';
+      const eventToken = eventTokenRaw.toString().trim();
+      const levelNameRaw = groupRows[1] && groupRows[1][col] !== undefined && groupRows[1][col] !== null ? groupRows[1][col] : '';
+      const levelName = levelNameRaw.toString().trim();
+      const daysOffsetRaw = groupRows[2] && groupRows[2][col] !== undefined && groupRows[2][col] !== null ? groupRows[2][col] : '';
+      const daysOffsetStr = daysOffsetRaw.toString().trim();
+      const timeSpentRaw = groupRows[3] && groupRows[3][col] !== undefined && groupRows[3][col] !== null ? groupRows[3][col] : '';
+      const timeSpentStr = timeSpentRaw.toString().trim();
+
+      if (!eventToken || eventToken.toLowerCase() === 'event token' || eventToken.toLowerCase() === 'levels') continue;
+
+      if (levelName === '$$$') {
+        const purchaseEvent: Partial<PurchaseEvent> = {
+          event_token: eventToken,
+          is_restricted: false,
+        };
+
+        if (daysOffsetStr && daysOffsetStr.toLowerCase().includes('less than')) {
+          const match = daysOffsetStr.match(/less than (\d+)/i);
+          if (match) {
+            purchaseEvent.max_days_offset = parseInt(match[1]);
+          }
+        } else {
+          const daysOffset = parseInt(daysOffsetStr);
+          if (!isNaN(daysOffset)) {
+            purchaseEvent.max_days_offset = daysOffset;
+          }
+        }
+
+        purchaseEvents.push(purchaseEvent);
       } else {
-        const daysOffset = parseInt(daysOffsetStr);
-        if (!isNaN(daysOffset)) {
-          purchaseEvent.max_days_offset = daysOffset;
+        const level: Partial<Level> = {
+          event_token: eventToken,
+          level_name: levelName,
+        };
+
+        if (daysOffsetStr !== '-' && daysOffsetStr !== '') {
+          const daysOffset = parseInt(daysOffsetStr);
+          if (!isNaN(daysOffset)) {
+            level.days_offset = daysOffset;
+          }
         }
-      }
 
-      purchaseEvents.push(purchaseEvent);
-    } else {
-      // This is a level
-      const level: Partial<Level> = {
-        event_token: eventToken,
-        level_name: levelName,
-      };
-
-      // Parse days offset
-      if (daysOffsetStr !== '-' && daysOffsetStr !== '') {
-        const daysOffset = parseInt(daysOffsetStr);
-        if (!isNaN(daysOffset)) {
-          level.days_offset = daysOffset;
+        if (timeSpentStr !== '-' && timeSpentStr !== '') {
+          const timeSpent = parseInt(timeSpentStr);
+          if (!isNaN(timeSpent)) {
+            level.time_spent = timeSpent;
+          }
         }
-      }
 
-      // Parse time spent
-      if (timeSpentStr !== '-' && timeSpentStr !== '') {
-        const timeSpent = parseInt(timeSpentStr);
-        if (!isNaN(timeSpent)) {
-          level.time_spent = timeSpent;
+        level.is_bonus = levelName.toLowerCase().includes('bonus') ||
+          levelName.toLowerCase().includes('extra') ||
+          levelName.match(/\+\d+/) !== null;
+
+        if (level.level_name) {
+          levels.push(level);
         }
-      }
-
-      // Determine if it's a bonus level (simple heuristic - check if level name contains bonus indicators)
-      level.is_bonus = levelName.toLowerCase().includes('bonus') ||
-        levelName.toLowerCase().includes('extra') ||
-        levelName.match(/\+\d+/) !== null; // Contains +number
-
-      // Only add levels that have meaningful data
-      if (level.level_name) {
-        levels.push(level);
       }
     }
+
+    i += 4;
   }
 
   return { levels, purchaseEvents };

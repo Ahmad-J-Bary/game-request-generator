@@ -24,10 +24,11 @@ export function BackButton({ to, variant = 'ghost', size, className, children }:
   };
 
   return (
-    <Button variant={variant} size={size} className={className} onClick={handleClick}>
+    <Button variant={variant} size={size} className={`shrink-0 ${className || ''}`} onClick={handleClick}>
       {children || (
         <>
-          <ArrowLeft className="mr-2 h-4 w-4" /> {t('common.back')}
+          <ArrowLeft className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+          <span className="hidden xs:inline">{t('common.back')}</span>
         </>
       )}
     </Button>

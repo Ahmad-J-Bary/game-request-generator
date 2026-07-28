@@ -17,6 +17,12 @@ import { NotificationService } from '@grq/core/utils/notifications';
 import type { ColorSettings } from '@grq/ui/contexts/SettingsContext';
 import type { ColumnData } from '../organisms/tables/AccountsDataTable';
 
+interface AllGamesExportData {
+  gameId: number;
+  gameName: string;
+  branches: Array<{ branchName: string; columns: ColumnData[] }>;
+}
+
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -26,14 +32,15 @@ interface ExportDialogProps {
   exportType: 'game' | 'account' | 'all';
   colorSettings?: ColorSettings;
   theme?: 'light' | 'dark';
-  source?: 'game-detail' | 'account-detail' | 'accounts-detail';
+  source?: 'game-detail' | 'account-detail' | 'accounts-detail' | 'game-detail-all';
   mode?: 'event-only' | 'all';
   data?: ColumnData[] | Array<{ branchName: string; columns: ColumnData[] }>;
   levelsProgress?: any;
   purchaseProgress?: any;
+  allGamesExportData?: AllGamesExportData[];
 }
 
-export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, exportType, colorSettings, theme = 'light', source, mode = 'event-only', data, levelsProgress, purchaseProgress }: ExportDialogProps) {
+export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, exportType, colorSettings, theme = 'light', source, mode = 'event-only', data, levelsProgress, purchaseProgress, allGamesExportData }: ExportDialogProps) {
   const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
 
@@ -41,6 +48,8 @@ export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, 
     switch (source) {
       case 'game-detail':
         return t('export.gameDetailDescription', 'Export levels and purchase events for this game.');
+      case 'game-detail-all':
+        return t('export.allGamesDetailDescription', 'Export levels and purchase events for all games.');
       case 'account-detail':
         return t('export.accountDetailDescription', 'Export account data with level and purchase event dates.');
         break;
@@ -67,6 +76,11 @@ export function ExportDialog({ open, onOpenChange, gameId, branchId, accountId, 
         case 'game-detail':
           if (gameId) {
             success = await ExcelService.exportGameDetailData(gameId, "vertical", colorSettings, theme, data);
+          }
+          break;
+        case 'game-detail-all':
+          if (allGamesExportData && allGamesExportData.length > 0) {
+            success = await ExcelService.exportAllGamesDetailData("vertical", colorSettings, theme, allGamesExportData);
           }
           break;
         case 'account-detail':
