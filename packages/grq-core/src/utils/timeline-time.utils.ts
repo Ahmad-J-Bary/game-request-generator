@@ -225,17 +225,12 @@ export function getLegacyPurchaseTimeSpent(
  * If token has dedicated anchors, use them; otherwise fallback to global anchors.
  */
 export function getSyntheticSessionTimeSpent(
-  token: string,
+  _token: string,
   day: number,
   allRealLevels: TimelineLevelPoint[],
   fallback = 243,
 ): number {
-  const tokenLevels = allRealLevels
-    .filter((l) => (l.token || "") === token)
-    .sort((a, b) => a.daysOffset - b.daysOffset);
-
-  const source = tokenLevels.length > 0 ? tokenLevels : allRealLevels;
-  return getProgressiveTimeSpentForDay(day, source, fallback);
+  return getProgressiveTimeSpentForDay(day, allRealLevels, fallback);
 }
 
 /**

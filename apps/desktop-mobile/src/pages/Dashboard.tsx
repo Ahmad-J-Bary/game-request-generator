@@ -110,8 +110,7 @@ export default function Dashboard() {
 
       await invoke('send_excel_to_telegram', { 
         bytes: Array.from(uint8Array), 
-        filename,
-        caption: t('dashboard.completeReportCaption', { date: new Date().toLocaleString() })
+        filename
       });
 
       NotificationService.success(t('settings.reportSent'));

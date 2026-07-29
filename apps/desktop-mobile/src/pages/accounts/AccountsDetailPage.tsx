@@ -340,43 +340,22 @@ function AccountsDetailContent({
       return existingLevel.id;
     }
 
-    const relatedRealLevels = branchLevels
-      .filter(
-        (level) =>
-          level.level_name !== "-" &&
-          (level.event_token || "").split("_day")[0] === syntheticMeta.token,
-      )
-      .sort((a, b) => a.days_offset - b.days_offset);
-
-    const searchLevels =
-      relatedRealLevels.length > 0
-        ? relatedRealLevels
-        : branchLevels.filter((l) => l.level_name !== "-");
-    const nextMatch = searchLevels.find(
-      (l) => l.days_offset > syntheticMeta.day,
+    const sharedRealLevels = getRealTimelineLevels(
+      branchLevels.map((l) => ({
+        daysOffset: l.days_offset,
+        timeSpent: l.time_spent || 0,
+        levelName: l.level_name,
+        token: (l.event_token || "").split("_day")[0],
+        synthetic: false,
+      })),
     );
 
-    const realLevels = searchLevels;
-    const firstRealDay = Number(realLevels[0]?.days_offset ?? 0);
-
-    let synthesizedTime = 0;
-    if (nextMatch && syntheticMeta.day < firstRealDay) {
-      synthesizedTime = Math.round(
-        (syntheticMeta.day + 1) *
-          ((nextMatch.time_spent || 0) / (firstRealDay + 1)),
-      );
-    } else if (nextMatch) {
-      const prevLevels = realLevels.filter(
-        (l) => l.days_offset < syntheticMeta.day,
-      );
-      const prevReal = prevLevels[prevLevels.length - 1];
-      synthesizedTime = prevReal?.time_spent || 0;
-    } else {
-      const prevReal = realLevels
-        .filter((l) => l.days_offset <= syntheticMeta.day)
-        .slice(-1)[0];
-      synthesizedTime = prevReal?.time_spent || 0;
-    }
+    const synthesizedTime = getSyntheticSessionTimeSpent(
+      syntheticMeta.token,
+      syntheticMeta.day,
+      sharedRealLevels,
+      0,
+    );
 
     return TauriService.addLevel({
       game_id: account.game_id,
