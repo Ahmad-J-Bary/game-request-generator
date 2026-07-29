@@ -258,16 +258,6 @@ export class TaskGenerator {
               validRequests.push(req);
             } else if (matchingPurchase) {
               const rawType = req.request_type as string;
-              // For compound purchase events, skip the session request entirely
-              if (rawType === "session") {
-                const hasCorrespondingPurchaseEvent = tempRequests.some(
-                  (r) =>
-                    r.event_token === req.event_token &&
-                    r !== req &&
-                    (r.request_type as string).toLowerCase() !== "session",
-                );
-                if (hasCorrespondingPurchaseEvent) continue;
-              }
 
               req.level_name = "$$$";
               req.level_id = matchingPurchase.id;
