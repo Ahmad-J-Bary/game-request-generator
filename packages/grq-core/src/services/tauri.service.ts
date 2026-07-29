@@ -406,6 +406,10 @@ export class TauriService {
   static async clearTaskHistory(): Promise<void> {
     return await invoke<void>("clear_task_history");
   }
+
+  static async deleteCompletedTask(id: string): Promise<void> {
+    return await invoke<void>("delete_completed_task", { id });
+  }
 }
 
 export const tauriService = new TauriService();

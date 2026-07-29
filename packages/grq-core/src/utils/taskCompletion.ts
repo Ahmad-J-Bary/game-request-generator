@@ -26,6 +26,108 @@ export interface TaskCompletionOptions {
   >;
 }
 
+export function generateRandomTimeSpentMs(baseSeconds?: number): number {
+  const base = baseSeconds && baseSeconds > 0 ? baseSeconds : 1000;
+  const jitter =
+    base < 25
+      ? Math.floor(Math.random() * 601) - 100
+      : Math.floor(Math.random() * 2251) - 750;
+  return Math.max(1, base * 1000 + jitter);
+}
+
+/** Format level name consistently for the History Report Task Detail column */
+export function formatTaskLevelName(
+  levelName: string | undefined | null,
+  isPurchase: boolean,
+): string {
+  if (isPurchase) return '$$$';
+  if (!levelName) return '-';
+  const trimmed = levelName.trim();
+  return trimmed || '-';
+}
+
+/** Precisely match the Rust backend's time_spent formula: base * 1000 + jitter */
+export function computeTaskDuration(baseSeconds: number): number {
+  return generateRandomTimeSpentMs(baseSeconds);
+}
+
+/**
+ * Unified execution layer — called by ALL completion entry points
+ * (Daily Tasks, Account Detail, Accounts Detail).
+ * Saves one row per account via `last_${accountId}` UPSERT.
+ */
+export async function recordTaskCompletion(params: {
+  accountId: number;
+  accountName: string;
+  gameId: number;
+  gameName: string;
+  eventToken: string;
+  durationMs: number;
+  levelId?: number;
+  levelName?: string;
+  requestType: string;
+  isPurchase: boolean;
+}): Promise<void> {
+  const cleanEventToken = (params.eventToken || '').replace(/_day\d+$/g, '');
+  const completedTask: CompletedDailyTask = {
+    id: `last_${params.accountId}`,
+    accountId: params.accountId,
+    accountName: params.accountName,
+    gameId: params.gameId,
+    gameName: params.gameName || 'Unknown',
+    eventToken: cleanEventToken,
+    timeSpent: Math.max(1, params.durationMs),
+    completionTime: Date.now(),
+    completionDate: new Date().toISOString().split('T')[0],
+    levelId: params.isPurchase ? undefined : params.levelId,
+    levelName: formatTaskLevelName(params.levelName, params.isPurchase),
+    requestType: params.requestType,
+    isPurchase: params.isPurchase,
+  };
+  try {
+    await TauriService.addCompletedTask(completedTask);
+    window.dispatchEvent(new CustomEvent("daily-task-completed"));
+  } catch (err) {
+    console.error("[recordTaskCompletion] Tauri error:", err, completedTask);
+    throw err;
+  }
+}
+
+/**
+ * @deprecated Use recordTaskCompletion instead.
+ *   Wrapper kept for backward compatibility during migration.
+ */
+export async function saveCompletionToHistory(params: {
+  id?: string;
+  accountId: number;
+  accountName: string;
+  gameId: number;
+  gameName: string;
+  eventToken: string;
+  timeSpent?: number;
+  levelId?: number;
+  levelName?: string;
+  requestType: string;
+  isPurchase: boolean;
+}): Promise<void> {
+  let durationMs = params.timeSpent || 0;
+  if (durationMs <= 0) {
+    durationMs = generateRandomTimeSpentMs(1000);
+  }
+  await recordTaskCompletion({
+    accountId: params.accountId,
+    accountName: params.accountName,
+    gameId: params.gameId,
+    gameName: params.gameName,
+    eventToken: params.eventToken,
+    durationMs,
+    levelId: params.levelId,
+    levelName: params.levelName,
+    requestType: params.requestType,
+    isPurchase: params.isPurchase,
+  });
+}
+
 export class TaskCompletionHandler {
   private options: TaskCompletionOptions;
 
@@ -380,8 +482,7 @@ export class TaskCompletionHandler {
         result = await TauriService.updatePurchaseEventProgress(updateRequest);
 
         // Record completed purchase event
-        const completedTask: CompletedDailyTask = {
-          id: `${accountId}_${request.event_token}_${finalRequestType.replace(/\s+/g, "_")}_${Date.now()}`,
+        await recordTaskCompletion({
           accountId,
           accountName: account.name,
           gameId: account.game_id,
@@ -389,20 +490,11 @@ export class TaskCompletionHandler {
             this.options.games.find((g) => g.id === account.game_id)?.name ||
             "Unknown",
           eventToken: request.event_token!,
-          timeSpent: request.time_spent || 0, // Use the request's time_spent
-          completionTime: Date.now(),
-          completionDate: new Date().toISOString().split("T")[0],
-          levelId: undefined,
+          durationMs: request.time_spent || computeTaskDuration(1000),
           levelName: request.level_name || "$$$",
           requestType: finalRequestType,
           isPurchase: true,
-        };
-
-        // Save to SQLite via History Service
-        await TauriService.addCompletedTask(completedTask);
-
-        // Dispatch event to update sidebar
-        window.dispatchEvent(new CustomEvent("daily-task-completed"));
+        });
       } else {
         let targetLevelId = request.level_id;
 
@@ -462,8 +554,7 @@ export class TaskCompletionHandler {
 
         // Create individual completion records for all level events
         if (!isPurchaseEvent) {
-          const levelCompletedTask: CompletedDailyTask = {
-            id: `${accountId}_level_${resolvedLevelId}_${finalRequestType.replace(/\s+/g, "_")}_${now}`,
+          await recordTaskCompletion({
             accountId,
             accountName: foundTask!.account.name,
             gameId: foundTask!.account.game_id,
@@ -472,20 +563,12 @@ export class TaskCompletionHandler {
                 (g) => g.id === foundTask!.account.game_id,
               )?.name || "Unknown",
             eventToken: request.event_token || "",
-            timeSpent: request.time_spent || 0,
-            completionTime: now,
-            completionDate: new Date().toISOString().split("T")[0],
+            durationMs: request.time_spent || computeTaskDuration(1000),
             levelId: resolvedLevelId,
-            levelName: request.level_name?.trim() || "" || "-",
+            levelName: isSessionOnly ? '-' : request.level_name,
             requestType: finalRequestType,
             isPurchase: false,
-          };
-
-          // Save to SQLite via History Service
-          await TauriService.addCompletedTask(levelCompletedTask);
-
-          // Dispatch event to update sidebar
-          window.dispatchEvent(new CustomEvent("daily-task-completed"));
+          });
         }
 
         // Update task completion status

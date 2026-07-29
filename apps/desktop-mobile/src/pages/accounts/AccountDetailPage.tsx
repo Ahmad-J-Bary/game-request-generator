@@ -36,6 +36,7 @@ import { useLevels } from "@grq/core/hooks/useLevels";
 import { usePurchaseEvents } from "@grq/core/hooks/usePurchaseEvents";
 import { useProgress } from "@grq/core/hooks/useProgress";
 import { TauriService } from "@grq/core/services/tauri.service";
+import { recordTaskCompletion, generateRandomTimeSpentMs } from "@grq/core/utils/taskCompletion";
 import { useSettings } from "@grq/ui/contexts/SettingsContext";
 import { useTheme } from "@grq/ui/contexts/ThemeContext";
 import { AccountDataTable } from "@grq/ui/organisms/tables/AccountDataTable";
@@ -146,6 +147,7 @@ export default function AccountDetailPage() {
 
   const [fetchedAccount, setFetchedAccount] = useState<Account | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [gameName, setGameName] = useState('');
 
   useEffect(() => {
     if (!stateAccount && id) {
@@ -170,6 +172,14 @@ export default function AccountDetailPage() {
 
   const account = stateAccount ?? fetchedAccount;
   const branchId = account?.branch_id ?? undefined;
+
+  useEffect(() => {
+    if (account?.game_id) {
+      TauriService.getGameById(account.game_id).then(g => {
+        if (g?.name) setGameName(g.name);
+      }).catch(console.error);
+    }
+  }, [account?.game_id]);
 
   const { accounts } = useAccounts(account?.game_id);
 
@@ -395,11 +405,25 @@ export default function AccountDetailPage() {
   };
 
   const handleSaveProgress = async () => {
+
+    // Phase 1: Update progress only (errors caught individually)
     try {
-      for (const [levelId, isCompleted] of Object.entries(
-        tempProgress.levels,
-      )) {
+      // Separate session levels from event levels; process sessions first so
+      // events overwrite them in history (one-row-per-account via INSERT OR REPLACE)
+      const sessionLevelEntries: [string, boolean][] = [];
+      const eventLevelEntries: [string, boolean][] = [];
+
+      for (const [levelId, isCompleted] of Object.entries(tempProgress.levels)) {
+        const numericId = parseInt(levelId, 10);
+        const lDef = isNaN(numericId) ? undefined : levels.find(l => l.id === numericId);
+        const isSession = levelId.startsWith('synth-') || lDef?.level_name === '-';
+        if (isSession) sessionLevelEntries.push([levelId, isCompleted]);
+        else eventLevelEntries.push([levelId, isCompleted]);
+      }
+
+      for (const [levelId, isCompleted] of [...sessionLevelEntries, ...eventLevelEntries]) {
         let actualLevelId = levelId;
+        let syntheticMeta: { token: string; day: number } | null = null;
         if (levelId.startsWith("synth-")) {
           const syntheticLevel =
             columns.find((col) => col.kind === "level" && col.id === levelId) ||
@@ -416,7 +440,7 @@ export default function AccountDetailPage() {
               .find((session) => session.id === levelId);
 
           if (syntheticLevel) {
-            const syntheticMeta = parseSyntheticLevelId(levelId);
+            syntheticMeta = parseSyntheticLevelId(levelId);
             if (!syntheticMeta) continue;
 
             const newLevel = {
@@ -450,29 +474,90 @@ export default function AccountDetailPage() {
           } else continue;
         }
 
-        const levelIdNum = parseInt(actualLevelId);
+        const levelIdNum = parseInt(actualLevelId, 10);
         const existingProgress = levelsProgress.find(
           (p) => p.level_id === levelIdNum,
         );
-        if (existingProgress) {
-          await TauriService.updateLevelProgress({
-            account_id: accountId,
-            level_id: levelIdNum,
-            is_completed: isCompleted,
-            bypass_cooldown: true,
-          });
-        } else {
-          await TauriService.createLevelProgress({
-            account_id: accountId,
-            level_id: levelIdNum,
-          });
-          if (isCompleted)
+        let levelDef = levels.find((l) => l.id === levelIdNum);
+        if (!levelDef && syntheticMeta) {
+          levelDef = {
+            id: levelIdNum,
+            game_id: account!.game_id,
+            branch_id: account!.branch_id,
+            event_token: `${syntheticMeta.token}_day${syntheticMeta.day}`,
+            level_name: "-",
+            days_offset: syntheticMeta.day,
+            time_spent: 1000,
+            is_bonus: false,
+          };
+        }
+
+        // Update progress (individual try/catch so failures don't block history)
+        try {
+          // Always generate time_spent so Dur.(ms) is never missing in History
+          const baseSecondsForLevel = levelDef?.time_spent || 1000;
+          const levelTimeSpentMs = generateRandomTimeSpentMs(baseSecondsForLevel);
+
+          if (existingProgress) {
             await TauriService.updateLevelProgress({
               account_id: accountId,
               level_id: levelIdNum,
-              is_completed: true,
+              is_completed: isCompleted,
+              time_spent: levelTimeSpentMs,
               bypass_cooldown: true,
             });
+          } else {
+            await TauriService.createLevelProgress({
+              account_id: accountId,
+              level_id: levelIdNum,
+            });
+            if (isCompleted)
+              await TauriService.updateLevelProgress({
+                account_id: accountId,
+                level_id: levelIdNum,
+                is_completed: true,
+                time_spent: levelTimeSpentMs,
+                bypass_cooldown: true,
+              });
+          }
+          // Save history for new completions only
+          if (isCompleted && existingProgress?.is_completed !== true) {
+            // Compute fallback eventToken for synthetic levels when levelDef is missing
+            const computedEventToken =
+              levelDef?.event_token ||
+              (syntheticMeta ? `${syntheticMeta.token}_day${syntheticMeta.day}` : '');
+            const isSession = levelDef?.level_name === '-' || levelId.startsWith('synth-');
+
+            // For session levels: skip history if a corresponding event level at the same
+            // day with the same base token is also being completed (only one row per event)
+            if (isSession) {
+              const sessionDay = levelDef?.days_offset ?? syntheticMeta?.day;
+              const sessionBaseToken = syntheticMeta?.token || computedEventToken.split('_day')[0];
+              const hasCorrespondingEvent = eventLevelEntries.some(([eId]) => {
+                const eNum = parseInt(eId, 10);
+                const eDef = levels.find(l => l.id === eNum);
+                return eDef && tempProgress.levels[eId] &&
+                  eDef.event_token.split('_day')[0] === sessionBaseToken &&
+                  eDef.days_offset === sessionDay;
+              });
+              if (hasCorrespondingEvent) continue; // Event will save history — skip session
+            }
+
+            await recordTaskCompletion({
+              accountId,
+              accountName: account!.name,
+              gameId: account!.game_id,
+              gameName: gameName || 'Unknown',
+              eventToken: computedEventToken,
+              durationMs: levelTimeSpentMs,
+              levelId: levelIdNum,
+              levelName: levelDef?.level_name,
+              requestType: isSession ? 'Session Only' : 'Level Event',
+              isPurchase: false,
+            });
+          }
+        } catch (e) {
+          console.error("Failed to update level progress:", e);
         }
       }
 
@@ -480,7 +565,7 @@ export default function AccountDetailPage() {
       Object.keys(tempPurchaseDates).forEach((k) => purchaseKeys.add(k));
 
       for (const purchaseIdStr of Array.from(purchaseKeys)) {
-        const purchaseIdNum = parseInt(purchaseIdStr);
+        const purchaseIdNum = parseInt(purchaseIdStr, 10);
         const isCompleted = tempProgress.purchases[purchaseIdNum] ?? false;
         const selectedDate = tempPurchaseDates[purchaseIdNum];
 
@@ -531,54 +616,81 @@ export default function AccountDetailPage() {
               );
             }
           }
-          if (calculatedTimeSpent <= 0) {
-            const existingProgress = purchaseProgress.find(
-              (p) => p.purchase_event_id === purchaseIdNum,
-            );
-            calculatedTimeSpent = existingProgress?.time_spent || 243;
-          }
+        } else {
+          // No date selected — use existing stored time_spent if available
+          const existingPurchaseProgForTime = purchaseProgress.find(
+            (p) => p.purchase_event_id === purchaseIdNum,
+          );
+          calculatedTimeSpent = existingPurchaseProgForTime?.time_spent || 0;
         }
 
-        const existingProgress = purchaseProgress.find(
+        // Always ensure a valid time_spent value (generate randomly if still 0)
+        if (calculatedTimeSpent <= 0) {
+          calculatedTimeSpent = generateRandomTimeSpentMs(1000);
+        }
+
+        const existingPurchaseProg = purchaseProgress.find(
           (p) => p.purchase_event_id === purchaseIdNum,
         );
-        if (existingProgress) {
-          await TauriService.updatePurchaseEventProgress({
-            account_id: accountId,
-            purchase_event_id: purchaseIdNum,
-            is_completed: isCompleted,
-            days_offset: daysOffset,
-            time_spent: calculatedTimeSpent,
-            bypass_cooldown: true,
-          });
-        } else {
-          await TauriService.createPurchaseEventProgress({
-            account_id: accountId,
-            purchase_event_id: purchaseIdNum,
-            days_offset: daysOffset,
-            time_spent: calculatedTimeSpent,
-          });
-          if (isCompleted)
+
+        // Update progress (individual try/catch)
+        try {
+          if (existingPurchaseProg) {
             await TauriService.updatePurchaseEventProgress({
               account_id: accountId,
               purchase_event_id: purchaseIdNum,
-              is_completed: true,
+              is_completed: isCompleted,
+              days_offset: daysOffset,
+              time_spent: calculatedTimeSpent,
               bypass_cooldown: true,
             });
+          } else {
+            await TauriService.createPurchaseEventProgress({
+              account_id: accountId,
+              purchase_event_id: purchaseIdNum,
+              days_offset: daysOffset,
+              time_spent: calculatedTimeSpent,
+            });
+            if (isCompleted)
+              await TauriService.updatePurchaseEventProgress({
+                account_id: accountId,
+                purchase_event_id: purchaseIdNum,
+                is_completed: true,
+                days_offset: daysOffset,
+                time_spent: calculatedTimeSpent,
+                bypass_cooldown: true,
+              });
+          }
+          // Save history for new completions only
+          if (isCompleted && existingPurchaseProg?.is_completed !== true) {
+            await recordTaskCompletion({
+              accountId,
+              accountName: account!.name,
+              gameId: account!.game_id,
+              gameName: gameName || 'Unknown',
+              eventToken: eventDef?.event_token || '',
+              durationMs: calculatedTimeSpent,
+              requestType: 'Purchase Event',
+              isPurchase: true,
+            });
+          }
+        } catch (e) {
+          console.error("Failed to update purchase progress:", e);
         }
       }
-
-      setIsEditMode(false);
-      setRangeFillMode(false);
-      setCompleteAllChecked(false);
-      window.dispatchEvent(
-        new CustomEvent("progress-updated", { detail: { accountId } }),
-      );
-      window.dispatchEvent(new CustomEvent("data-changed"));
     } catch (error) {
-      console.error("Error saving progress:", error);
-      alert(`Error saving progress: ${error}`);
+      console.error("Error during progress tracking:", error);
     }
+
+    // Phase 3: Always exit edit mode and dispatch events
+    setIsEditMode(false);
+    setRangeFillMode(false);
+    setCompleteAllChecked(false);
+    window.dispatchEvent(
+      new CustomEvent("progress-updated", { detail: { accountId } }),
+    );
+    window.dispatchEvent(new CustomEvent("data-changed"));
+    window.dispatchEvent(new CustomEvent("daily-task-completed"));
   };
 
   const handleCancelEdit = () => {
@@ -872,7 +984,7 @@ export default function AccountDetailPage() {
   const exportData = useMemo((): ExportColumnData[] => {
     return columns.flatMap((c) => {
       if (c.kind !== "split") return [c];
-      return c.event ? [c.session, c.event] : [c.session];
+      return c.event ? [c.event] : [c.session];
     });
   }, [columns]);
 

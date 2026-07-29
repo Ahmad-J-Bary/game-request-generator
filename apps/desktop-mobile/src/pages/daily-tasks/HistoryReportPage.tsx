@@ -8,7 +8,7 @@ import { Input } from '@grq/ui/atoms/input';
 import { Button } from '@grq/ui/atoms/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@grq/ui/atoms/table';
 import { Badge } from '@grq/ui/atoms/badge';
-import { Search, Calendar, Trash2 as TrashIcon, Clock, HardDrive, User, Gamepad2 } from 'lucide-react';
+import { Search, Calendar, Clock, HardDrive, User, Gamepad2 } from 'lucide-react';
 import { NotificationService } from '@grq/core/utils/notifications';
 
 const HistoryReportPage = () => {
@@ -32,18 +32,10 @@ const HistoryReportPage = () => {
 
     useEffect(() => {
         fetchHistory();
+        const handler = () => { fetchHistory(); };
+        window.addEventListener('daily-task-completed', handler);
+        return () => window.removeEventListener('daily-task-completed', handler);
     }, []);
-
-    const handleClearHistory = async () => {
-        if (!window.confirm(t('common.confirmDelete'))) return;
-        try {
-            await TauriService.clearTaskHistory();
-            setHistory([]);
-            NotificationService.success('History cleared successfully');
-        } catch (error) {
-            NotificationService.error('Failed to clear history');
-        }
-    };
 
     const filteredHistory = history.filter(item => 
         item.accountName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -87,10 +79,7 @@ const HistoryReportPage = () => {
                             <Calendar className="w-4 h-4 mr-2" />
                             {t('common.refresh', 'Refresh')}
                         </Button>
-                        <Button variant="destructive" size="sm" onClick={handleClearHistory} disabled={loading}>
-                            <TrashIcon className="w-4 h-4 mr-2" />
-                            {t('common.clearAll', 'Clear All')}
-                        </Button>
+
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -131,7 +120,7 @@ const HistoryReportPage = () => {
                                     </TableRow>
                                 ) : (
                                     filteredHistory.map((item) => (
-                                        <TableRow key={item.id} className="hover:bg-primary/5 transition-colors group">
+                                        <TableRow key={item.id} className="hover:bg-primary/5 transition-colors">
                                             <TableCell className="font-mono text-xs opacity-80">
                                                 {formatTimestamp(item.completedAt)}
                                             </TableCell>

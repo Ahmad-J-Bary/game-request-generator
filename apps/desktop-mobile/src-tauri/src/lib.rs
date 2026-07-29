@@ -1799,7 +1799,7 @@ fn add_completed_task(
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = HistoryService::new();
-    service.insert_completed_task(conn, request)
+    service.upsert_completed_task(conn, request)
 }
 
 #[tauri::command]
@@ -1812,6 +1812,17 @@ fn get_task_history(
     let conn = db_guard.get_connection();
     let service = HistoryService::new();
     service.get_task_history(conn, limit, account_id)
+}
+
+#[tauri::command]
+fn delete_completed_task(
+    state: tauri::State<AppState>,
+    id: String,
+) -> Result<(), String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = HistoryService::new();
+    service.delete_completed_task(conn, id)
 }
 
 #[tauri::command]
@@ -2018,6 +2029,7 @@ pub fn run() {
             add_completed_task,
             get_task_history,
             clear_task_history,
+            delete_completed_task,
             get_backup_config,
             set_backup_config,
             backup_database_local_now,

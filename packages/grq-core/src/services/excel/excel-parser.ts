@@ -139,38 +139,40 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
           
           // Tag everything with game name
           parsedData.accounts.forEach(a => (a as any).gameName = gameName);
+          parsedData.levels.forEach(l => (l as any).gameName = gameName);
+          parsedData.purchaseEvents.forEach(e => (e as any).gameName = gameName);
           
           // Add to overall results
           result.accounts.push(...parsedData.accounts);
-          
-          // For matrix sheets, if it's the only sheet or dedicated ones are missing, 
-          // we might want results from it. However, with the new 3-sheet format,
-          // it's safer to only take accounts from here and definitions from _Lvl/_Evt.
-          if (workbook.SheetNames.length === 1) {
-            result.levels.push(...parsedData.levels);
-            result.purchaseEvents.push(...parsedData.purchaseEvents);
+          result.levels.push(...parsedData.levels);
+          result.purchaseEvents.push(...parsedData.purchaseEvents);
+
+          // Skip leading Branch rows to calculate offset for header parsing
+          let headerOffset = 0;
+          while (headerOffset < matrixData.length && String(matrixData[headerOffset]?.[0] ?? '').toLowerCase().startsWith('branch:')) {
+            headerOffset++;
           }
 
           let accountHeaderRow = -1;
-          for (let i = 3; i < Math.min(10, matrixData.length); i++) {
+          for (let i = headerOffset + 3; i < Math.min(headerOffset + 10, matrixData.length); i++) {
             if (matrixData[i] && matrixData[i][0] && matrixData[i][0].toString().toLowerCase().includes('account')) {
               accountHeaderRow = i;
               break;
             }
           }
 
-          let dataRowsStart = accountHeaderRow !== -1 ? accountHeaderRow + 1 : 4;
+          let dataRowsStart = accountHeaderRow !== -1 ? accountHeaderRow + 1 : headerOffset + 4;
 
           // Detect startCol for progress parsing based on events header
-          const maxCols = Math.max(...matrixData.slice(0, 4).map(row => row.length));
+          const maxCols = Math.max(...matrixData.slice(headerOffset, headerOffset + 4).map(row => row.length));
           let startCol = 0;
           for (let col = 0; col < Math.min(5, maxCols); col++) {
-            const valDayRaw = matrixData[2] && matrixData[2][col] !== undefined && matrixData[2][col] !== null ? matrixData[2][col] : '';
+            const valDayRaw = matrixData[headerOffset + 2] && matrixData[headerOffset + 2][col] !== undefined && matrixData[headerOffset + 2][col] !== null ? matrixData[headerOffset + 2][col] : '';
             const valDay = valDayRaw.toString().trim();
             const isDayNumeric = valDay !== '' && !isNaN(Number(valDay));
             const isLess = valDay.toLowerCase().includes('less');
             
-            const valTokenRaw = matrixData[0] && matrixData[0][col] !== undefined && matrixData[0][col] !== null ? matrixData[0][col] : '';
+            const valTokenRaw = matrixData[headerOffset] && matrixData[headerOffset][col] !== undefined && matrixData[headerOffset][col] !== null ? matrixData[headerOffset][col] : '';
             const valToken = valTokenRaw.toString().trim().toLowerCase();
             const isLabelColumn = valToken === 'event token' || valToken === 'levels' || valToken === '' || valToken.includes(' ');
             
@@ -182,9 +184,9 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
 
           const colHeaders: { name: string; isPurchase: boolean; token: string }[] = [];
           for (let col = startCol; col < maxCols; col++) {
-            const tokenRaw = matrixData[0] && matrixData[0][col] !== undefined && matrixData[0][col] !== null ? matrixData[0][col] : '';
+            const tokenRaw = matrixData[headerOffset] && matrixData[headerOffset][col] !== undefined && matrixData[headerOffset][col] !== null ? matrixData[headerOffset][col] : '';
             const token = tokenRaw.toString().trim();
-            const nameRaw = matrixData[1] && matrixData[1][col] !== undefined && matrixData[1][col] !== null ? matrixData[1][col] : '';
+            const nameRaw = matrixData[headerOffset + 1] && matrixData[headerOffset + 1][col] !== undefined && matrixData[headerOffset + 1][col] !== null ? matrixData[headerOffset + 1][col] : '';
             const name = nameRaw.toString().trim();
             if (token && token.toLowerCase() !== 'event token') {
               colHeaders.push({ name, token, isPurchase: name === '$$$' });
@@ -196,7 +198,10 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
           for (let i = dataRowsStart; i < matrixData.length; i++) {
             const row = matrixData[i];
             if (!row || !row[0]) continue;
-            const accountName = row[0].toString().trim();
+            const firstCell = row[0].toString().trim();
+            // Skip Branch rows and header-like rows that appear between branch groups
+            if (firstCell.toLowerCase().startsWith('branch:') || firstCell.toLowerCase().includes('event token')) continue;
+            const accountName = firstCell;
             
             // Note: startCol here relates to the horizontal shift of the overall matrix.
             // Often Accounts are col 0..3, and progress starts at startCol.
@@ -328,8 +333,16 @@ export function parseLevelsData(rows: any[][]): Partial<Level>[] {
 export function isAccountsDetailFormat(rows: any[][]): boolean {
   if (rows.length < 6) return false;
 
-  // Look for "Account" header in the first column around row 5-6
-  for (let i = 4; i < Math.min(8, rows.length); i++) {
+  // Skip leading Branch rows
+  let dataStart = 0;
+  while (dataStart < rows.length && String(rows[dataStart]?.[0] ?? '').toLowerCase().startsWith('branch:')) {
+    dataStart++;
+  }
+
+  if (dataStart + 6 > rows.length) return false;
+
+  // Look for "Account" header in the first column around row 4-7 (relative to dataStart)
+  for (let i = dataStart + 4; i < Math.min(dataStart + 8, rows.length); i++) {
     if (rows[i] && rows[i][0] && rows[i][0].toString().toLowerCase().includes('account')) {
       return true;
     }
@@ -380,137 +393,27 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
   const purchaseEvents: Partial<PurchaseEvent>[] = [];
   const accounts: Partial<Account>[] = [];
 
-  if (rows.length < 4) {
+  if (rows.length < 6) {
     return { levels, purchaseEvents, accounts };
   }
 
-  // Find the account header row - can be row 3, 4, 5, etc.
-  let accountHeaderRow = -1;
-  for (let i = 3; i < Math.min(10, rows.length); i++) {
-    if (rows[i] && rows[i][0] && rows[i][0].toString().toLowerCase().includes('account')) {
-      accountHeaderRow = i;
-      break;
-    }
-  }
+  // Helper to parse a single account from a row
+  const parseAccountRow = (row: any[]): Partial<Account> | null => {
+    if (!row || row.length < 3) return null;
+    const accountName = row[0] ? String(row[0]).trim() : '';
+    if (!accountName) return null;
 
-  // Detect data columns start (where actual events/levels begin)
-  const maxCols = Math.max(...rows.slice(0, 4).map(row => row.length));
-  let startCol = 0;
-  for (let col = 0; col < Math.min(5, maxCols); col++) {
-    const valDayRaw = rows[2] && rows[2][col] !== undefined && rows[2][col] !== null ? rows[2][col] : '';
-    const valDay = valDayRaw.toString().trim();
-    const isDayNumeric = valDay !== '' && !isNaN(Number(valDay));
-    const isLess = valDay.toLowerCase().includes('less');
-    
-    const valTokenRaw = rows[0] && rows[0][col] !== undefined && rows[0][col] !== null ? rows[0][col] : '';
-    const valToken = valTokenRaw.toString().trim().toLowerCase();
-    const isLabelColumn = valToken === 'event token' || valToken === 'levels' || valToken === '' || valToken.includes(' ');
-    
-    if ((isDayNumeric || isLess) && !isLabelColumn) {
-       startCol = col;
-       break;
-    }
-  }
-
-  // Parse levels and purchase events (rows 0-3)
-  for (let col = startCol; col < maxCols; col++) {
-    const eventTokenRaw = rows[0] && rows[0][col] !== undefined && rows[0][col] !== null ? rows[0][col] : '';
-    const eventToken = eventTokenRaw.toString().trim();
-    const levelNameRaw = rows[1] && rows[1][col] !== undefined && rows[1][col] !== null ? rows[1][col] : '';
-    const levelName = levelNameRaw.toString().trim();
-    const daysOffsetRaw = rows[2] && rows[2][col] !== undefined && rows[2][col] !== null ? rows[2][col] : '';
-    const daysOffsetStr = daysOffsetRaw.toString().trim();
-    const timeSpentRaw = rows[3] && rows[3][col] !== undefined && rows[3][col] !== null ? rows[3][col] : '';
-    const timeSpentStr = timeSpentRaw.toString().trim();
-
-    if (!eventToken || eventToken.toLowerCase() === 'event token') continue;
-
-    if (levelName === '$$$') {
-      // Purchase event
-      const purchaseEvent: Partial<PurchaseEvent> = {
-        event_token: eventToken,
-        is_restricted: false,
-      };
-
-      if (daysOffsetStr && daysOffsetStr.toLowerCase().includes('less than')) {
-        const match = daysOffsetStr.match(/less than (\d+)/i);
-        if (match) {
-          purchaseEvent.max_days_offset = parseInt(match[1], 10);
-        }
-      } else {
-        const daysOffset = parseInt(daysOffsetStr, 10);
-        if (!isNaN(daysOffset)) {
-          purchaseEvent.max_days_offset = daysOffset;
-        } else {
-          const numValue = Number(daysOffsetStr);
-          if (!isNaN(numValue) && isFinite(numValue)) {
-            purchaseEvent.max_days_offset = Math.floor(numValue);
-          }
-        }
-      }
-
-      purchaseEvents.push(purchaseEvent);
-    } else {
-      // Level
-      const level: Partial<Level> = {
-        event_token: eventToken,
-        level_name: levelName,
-      };
-
-      if (daysOffsetStr !== '-' && daysOffsetStr !== '') {
-        const daysOffset = parseInt(daysOffsetStr, 10);
-        if (!isNaN(daysOffset)) {
-          level.days_offset = daysOffset;
-        } else {
-          const numValue = Number(daysOffsetStr);
-          if (!isNaN(numValue) && isFinite(numValue)) {
-            level.days_offset = Math.floor(numValue);
-          }
-        }
-      }
-
-      if (timeSpentStr !== '-' && timeSpentStr !== '') {
-        const timeSpent = parseInt(timeSpentStr);
-        if (!isNaN(timeSpent)) {
-          level.time_spent = timeSpent;
-        }
-      } else {
-        level.time_spent = level.time_spent || 0;
-      }
-
-      level.is_bonus = false; // As requested by user - import all as regular levels without bonus
-
-      // Only add levels that have required fields
-      if (level.event_token && level.level_name &&
-        level.days_offset != null && level.time_spent != null) {
-        levels.push(level);
-      }
-    }
-  }
-
-  // If no accountHeaderRow found explicitly, but we have rows past row 3, we should try parsing from row 4 anyway
-  let accountStartRow = accountHeaderRow !== -1 ? accountHeaderRow + 1 : 4;
-  
-  // Parse accounts
-  for (let i = accountStartRow; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row || row.length < 3) continue;
-
-    const accountName = row[0] ? row[0].toString().trim() : '';
-
-
-    // Handle start date - could be string or Excel date value
+    // Handle start date
     let startDateStr = '';
     if (row[1]) {
       if (row[1] instanceof Date) {
-        const dateObj = row[1] as Date;
-        startDateStr = dateObj.toISOString().split('T')[0];
+        startDateStr = (row[1] as Date).toISOString().split('T')[0];
       } else {
-        startDateStr = row[1].toString().trim();
+        startDateStr = String(row[1]).trim();
       }
     }
 
-    // Handle start time - could be string or Excel time value
+    // Handle start time
     let startTimeStr = '';
     if (row[2]) {
       if (row[2] instanceof Date) {
@@ -520,25 +423,22 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
         const seconds = timeObj.getSeconds().toString().padStart(2, '0');
         startTimeStr = `${hours}:${minutes}:${seconds}`;
       } else {
-        startTimeStr = row[2].toString().trim();
+        startTimeStr = String(row[2]).trim();
       }
     }
-
-    if (!accountName) continue;
 
     const account: Partial<Account> = {
       name: accountName,
       request_template: 'Needs to be filled in - imported from Excel export',
     };
 
-    // Parse start date - handle various formats and store in standardized YYYY-MM-DD format
+    // Parse start date
     if (startDateStr) {
       let parsedDate: Date | null = null;
 
-      // Try MM/DD/YYYY format (e.g., "12/23/2025")
       const slashDateMatch = startDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (slashDateMatch) {
-        const month = parseInt(slashDateMatch[1]) - 1; // JS months are 0-based
+        const month = parseInt(slashDateMatch[1]) - 1;
         const day = parseInt(slashDateMatch[2]);
         const year = parseInt(slashDateMatch[3]);
         parsedDate = new Date(year, month, day);
@@ -547,7 +447,6 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
         }
       }
 
-      // Try YYYY-MM-DD format (e.g., "2025-12-23")
       if (!parsedDate && startDateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
         parsedDate = new Date(startDateStr);
         if (!isNaN(parsedDate.getTime())) {
@@ -555,7 +454,6 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
         }
       }
 
-      // Try DD-MMM-YYYY format (e.g., "23-Dec-2025") - REQUIRES YEAR
       if (!parsedDate) {
         const dashDateMatch = startDateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
         if (dashDateMatch) {
@@ -574,45 +472,170 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
       }
     }
 
-    // Parse start time - handle various formats and store in standardized 24-hour HH:mm:ss format
+    // Parse start time
     if (startTimeStr) {
-      let parsedTime = startTimeStr.trim();
       let finalTime = '';
-
-      // Handle AM/PM formats and convert to 24-hour format
-      // Matches: "03:40 PM", "3:40 PM", "03:40:00 PM", "15:40"
-      const timeMatch = parsedTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+      const timeMatch = startTimeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
       if (timeMatch) {
         let hours = parseInt(timeMatch[1], 10);
         const minutes = timeMatch[2];
         const seconds = timeMatch[3] || '00';
         const ampm = timeMatch[4]?.toUpperCase();
-
-        if (ampm) {
-          // Convert to 24-hour format
-          if (ampm === 'PM' && hours !== 12) {
-            hours += 12;
-          } else if (ampm === 'AM' && hours === 12) {
-            hours = 0;
-          }
-        }
-
-        // Store in standardized HH:mm:ss format
+        if (ampm === 'PM' && hours !== 12) hours += 12;
+        else if (ampm === 'AM' && hours === 12) hours = 0;
         finalTime = `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
-      } else if (parsedTime.match(/^(\d{1,2}):(\d{2})$/)) {
-        // Already in HH:MM format, add seconds
-        finalTime = `${parsedTime}:00`;
-      } else if (parsedTime.match(/^(\d{1,2}):(\d{2}):(\d{2})$/)) {
-        // Already in HH:MM:SS format
-        finalTime = parsedTime;
+      } else if (startTimeStr.match(/^(\d{1,2}):(\d{2})$/)) {
+        finalTime = `${startTimeStr}:00`;
+      } else if (startTimeStr.match(/^(\d{1,2}):(\d{2}):(\d{2})$/)) {
+        finalTime = startTimeStr;
       }
+      if (finalTime) account.start_time = finalTime;
+    }
 
-      if (finalTime) {
-        account.start_time = finalTime;
+    return account;
+  };
+
+  // Helper to parse levels/events from a group's 4 header rows
+  const parseLevelsAndEvents = (headerRows: any[][], branchName?: string): { groupLevels: Partial<Level>[], groupEvents: Partial<PurchaseEvent>[] } => {
+    const groupLevels: Partial<Level>[] = [];
+    const groupEvents: Partial<PurchaseEvent>[] = [];
+
+    if (headerRows.length < 4) return { groupLevels, groupEvents };
+
+    const maxCols = Math.max(...headerRows.map(r => r.length));
+    let startCol = 0;
+    for (let col = 0; col < Math.min(5, maxCols); col++) {
+      const valDayRaw = headerRows[2]?.[col] !== undefined && headerRows[2]?.[col] !== null ? headerRows[2][col] : '';
+      const valDay = String(valDayRaw).trim();
+      const isDayNumeric = valDay !== '' && !isNaN(Number(valDay));
+      const isLess = valDay.toLowerCase().includes('less');
+      const valTokenRaw = headerRows[0]?.[col] !== undefined && headerRows[0]?.[col] !== null ? headerRows[0][col] : '';
+      const valToken = String(valTokenRaw).trim().toLowerCase();
+      const isLabelColumn = valToken === 'event token' || valToken === 'levels' || valToken === '' || valToken.includes(' ');
+      if ((isDayNumeric || isLess) && !isLabelColumn) {
+        startCol = col;
+        break;
       }
     }
 
-    accounts.push(account);
+    for (let col = startCol; col < maxCols; col++) {
+      const eventToken = String(headerRows[0]?.[col] ?? '').trim();
+      const levelName = String(headerRows[1]?.[col] ?? '').trim();
+      const daysOffsetStr = String(headerRows[2]?.[col] ?? '').trim();
+      const timeSpentStr = String(headerRows[3]?.[col] ?? '').trim();
+
+      if (!eventToken || eventToken.toLowerCase() === 'event token') continue;
+
+      if (levelName === '$$$') {
+        const pe: Partial<PurchaseEvent> = { event_token: eventToken, is_restricted: false };
+        if (daysOffsetStr.toLowerCase().includes('less than')) {
+          const m = daysOffsetStr.match(/less than (\d+)/i);
+          if (m) pe.max_days_offset = parseInt(m[1], 10);
+        } else {
+          const d = parseInt(daysOffsetStr, 10);
+          if (!isNaN(d)) pe.max_days_offset = d;
+          else { const n = Number(daysOffsetStr); if (!isNaN(n) && isFinite(n)) pe.max_days_offset = Math.floor(n); }
+        }
+        (pe as any).branchName = branchName;
+        groupEvents.push(pe);
+      } else {
+        const lvl: Partial<Level> = { event_token: eventToken, level_name: levelName };
+        if (daysOffsetStr !== '-' && daysOffsetStr !== '') {
+          const d = parseInt(daysOffsetStr, 10);
+          if (!isNaN(d)) lvl.days_offset = d;
+          else { const n = Number(daysOffsetStr); if (!isNaN(n) && isFinite(n)) lvl.days_offset = Math.floor(n); }
+        }
+        if (timeSpentStr !== '-' && timeSpentStr !== '') {
+          const t = parseInt(timeSpentStr);
+          if (!isNaN(t)) lvl.time_spent = t;
+        } else {
+          lvl.time_spent = lvl.time_spent || 0;
+        }
+        lvl.is_bonus = false;
+        if (lvl.event_token && lvl.level_name && lvl.days_offset != null && lvl.time_spent != null) {
+          (lvl as any).branchName = branchName;
+          groupLevels.push(lvl);
+        }
+      }
+    }
+
+    return { groupLevels, groupEvents };
+  };
+
+  // Multi-branch loop
+  let i = 0;
+  let currentBranchName: string | undefined;
+
+  while (i < rows.length) {
+    // Skip empty rows
+    while (i < rows.length && (!rows[i] || rows[i].length === 0 || !rows[i][0])) {
+      i++;
+    }
+    if (i >= rows.length) break;
+
+    // Capture branch name
+    currentBranchName = undefined;
+    const branchRowRaw = rows[i]?.[0];
+    if (branchRowRaw) {
+      const branchStr = String(branchRowRaw).trim();
+      if (branchStr.toLowerCase().startsWith('branch:')) {
+        const colonIdx = branchStr.indexOf(':');
+        if (colonIdx >= 0) {
+          currentBranchName = branchStr.substring(colonIdx + 1).trim() || undefined;
+        }
+      }
+    }
+
+    // Skip all Branch rows
+    while (i < rows.length && String(rows[i]?.[0] ?? '').toLowerCase().startsWith('branch:')) {
+      i++;
+    }
+
+    // Need at least 5 more rows: Event Token, Level Name, Days Offset, Time Spent, Account header
+    if (i + 5 > rows.length) break;
+
+    // Verify first 4 rows look like header (Event Token row has some non-token values)
+    const groupHeaders = rows.slice(i, i + 5);
+    const hasToken = groupHeaders[0]?.some((v: any) => v && String(v).trim() && !String(v).toLowerCase().includes('event token'));
+    if (!hasToken) { i++; continue; }
+
+    // Parse levels/events from first 4 rows
+    const { groupLevels, groupEvents } = parseLevelsAndEvents(rows.slice(i, i + 4), currentBranchName);
+    levels.push(...groupLevels);
+    purchaseEvents.push(...groupEvents);
+
+    // Find Account header within the group (should be row i+4, but scan flexibly)
+    let accountRowIdx = -1;
+    for (let j = i + 4; j < Math.min(i + 10, rows.length); j++) {
+      if (rows[j] && rows[j][0] && String(rows[j][0]).toLowerCase().includes('account')) {
+        accountRowIdx = j;
+        break;
+      }
+    }
+    if (accountRowIdx === -1) { i += 5; continue; }
+
+    // Find end of this branch group: next Branch row or end of rows
+    let groupEnd = rows.length;
+    for (let j = accountRowIdx + 1; j < rows.length; j++) {
+      const r = rows[j];
+      if (!r || r.length === 0) continue;
+      if (String(r[0] ?? '').toLowerCase().startsWith('branch:')) {
+        groupEnd = j;
+        break;
+      }
+    }
+
+    // Parse accounts from rows after Account header until group end
+    for (let j = accountRowIdx + 1; j < groupEnd; j++) {
+      const account = parseAccountRow(rows[j]);
+      if (account) {
+        (account as any).branchName = currentBranchName;
+        accounts.push(account);
+      }
+    }
+
+    // Advance past this group
+    i = groupEnd;
   }
 
   return { levels, purchaseEvents, accounts };
@@ -697,7 +720,21 @@ export function parseVerticalLayoutData(rows: any[][]): { levels: Partial<Level>
 
   // Parse all branch groups (skip "Branch:" rows, find 4-row header blocks)
   let i = 0;
+  let currentBranchName: string | undefined;
   while (i < rows.length) {
+    // Capture branch name from current row before skipping
+    currentBranchName = undefined;
+    const branchRowRaw = rows[i]?.[0];
+    if (branchRowRaw) {
+      const branchStr = String(branchRowRaw).trim();
+      if (branchStr.toLowerCase().startsWith('branch:')) {
+        const colonIdx = branchStr.indexOf(':');
+        if (colonIdx >= 0) {
+          currentBranchName = branchStr.substring(colonIdx + 1).trim() || undefined;
+        }
+      }
+    }
+
     // Skip branch header rows
     while (i < rows.length && String(rows[i]?.[0] ?? '').toLowerCase().startsWith('branch:')) {
       i++;
@@ -773,6 +810,7 @@ export function parseVerticalLayoutData(rows: any[][]): { levels: Partial<Level>
           }
         }
 
+        (purchaseEvent as any).branchName = currentBranchName;
         purchaseEvents.push(purchaseEvent);
       } else {
         const level: Partial<Level> = {
@@ -799,6 +837,7 @@ export function parseVerticalLayoutData(rows: any[][]): { levels: Partial<Level>
           levelName.match(/\+\d+/) !== null;
 
         if (level.level_name) {
+          (level as any).branchName = currentBranchName;
           levels.push(level);
         }
       }

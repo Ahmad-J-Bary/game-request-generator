@@ -2,17 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, CheckCircle, Clock, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, CheckCircle, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@grq/ui/atoms/button';
 import { Card, CardContent } from '@grq/ui/atoms/card';
 import { Badge } from '@grq/ui/atoms/badge';
 import { ScrollArea } from '@grq/ui/atoms/scroll-area';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@grq/ui/atoms/dropdown-menu';
+
 import { cn } from '@grq/ui/lib/utils';
 import type { CompletedDailyTask } from '@grq/api-bindings/types/daily-tasks.types';
 import { TauriService } from '@grq/core/services/tauri.service';
@@ -81,19 +76,6 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
         } catch (error) {
             console.error('Error loading completed tasks:', error);
             setCompletedTasks([]);
-        }
-    };
-
-    const clearCompletedTasks = async () => {
-        if (!window.confirm(t('common.confirmDelete'))) return;
-        try {
-            await TauriService.clearTaskHistory();
-            setCompletedTasks([]);
-            setExpandedAccounts(new Set());
-            // Dispatch event to update other components (like the new history report)
-            window.dispatchEvent(new CustomEvent('daily-task-completed'));
-        } catch (error) {
-            console.error('Error clearing history:', error);
         }
     };
 
@@ -169,40 +151,6 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                     </div>
                     
                     <div className="flex items-center gap-1">
-                        {completedTasks.length > 0 && (
-                            <>
-                                {/* Desktop: Inline Secondary Actions */}
-                                <div className="hidden sm:flex items-center mr-1">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                        onClick={clearCompletedTasks}
-                                    >
-                                        <Trash2 className="h-4 w-4 ltr:mr-1.5 rtl:ml-1.5" />
-                                        <span className="text-xs">{t('common.clear')}</span>
-                                    </Button>
-                                </div>
-                                
-                                {/* Mobile: "More" Dropdown menu */}
-                                <div className="sm:hidden">
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                <X className="h-4 w-4 hidden" /> {/* dummy for layout matching if needed, but we use MoreVertical */}
-                                                <Trash2 className="h-4 w-4 text-muted-foreground" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-48">
-                                            <DropdownMenuItem onClick={clearCompletedTasks} className="text-destructive justify-center font-medium">
-                                                <Trash2 className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
-                                                {t('dailyTasks.clearCompleted')}
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                </div>
-                            </>
-                        )}
                         
                         <div className="w-[1px] h-4 bg-border mx-1 hidden sm:block"></div>
 

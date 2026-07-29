@@ -49,6 +49,7 @@ import { useSettings } from "@grq/ui/contexts/SettingsContext";
 import { useTheme } from "@grq/ui/contexts/ThemeContext";
 import { useGames } from "@grq/core/hooks/useGames";
 import { TauriService } from "@grq/core/services/tauri.service";
+import { recordTaskCompletion, computeTaskDuration } from "@grq/core/utils/taskCompletion";
 import { ExcelTabBar } from "@grq/ui/organisms/ExcelTabBar";
 import { Badge } from "@grq/ui/atoms/badge";
 import {
@@ -574,6 +575,10 @@ function AccountsDetailContent({
       number,
       Awaited<ReturnType<typeof TauriService.getGameLevels>>
     >();
+    const branchPurchaseEventsCache = new Map<
+      number,
+      Awaited<ReturnType<typeof TauriService.getGamePurchaseEvents>>
+    >();
 
     for (const key of Array.from(purchaseKeys)) {
       const [accIdStr, peIdStr] = key.split("_");
@@ -652,6 +657,11 @@ function AccountsDetailContent({
         calculatedTimeSpent = existing?.time_spent || 243;
       }
 
+      // Always ensure a valid time_spent (generate randomly if still 0)
+      if (calculatedTimeSpent <= 0) {
+        calculatedTimeSpent = computeTaskDuration(1000);
+      }
+
       if (existing) {
         purchaseUpdates.push({
           account_id: accId,
@@ -684,11 +694,34 @@ function AccountsDetailContent({
       let lvlId: number | null = Number.parseInt(parsedKey.rawId, 10);
       if (!Number.isFinite(lvlId)) {
         lvlId = await ensureSyntheticLevel(account, parsedKey.rawId);
+        if (lvlId && account.branch_id != null) {
+          const freshLevels = await TauriService.getGameLevels(account.branch_id);
+          branchLevelsCache.set(account.branch_id, freshLevels);
+        }
       }
 
       if (!lvlId || !Number.isFinite(lvlId)) continue;
       const isCompleted = tempProgress.levels[key];
       const existing = levelsProgress[key];
+
+      // Look up the level definition to get base time_spent
+      let levelTimeSpentMs = 0;
+      if (account.branch_id != null) {
+        try {
+          if (!branchLevelsCache.has(account.branch_id)) {
+            const lvls = await TauriService.getGameLevels(account.branch_id);
+            branchLevelsCache.set(account.branch_id, lvls);
+          }
+          const branchLevels = branchLevelsCache.get(account.branch_id)!;
+          const levelDef = branchLevels.find((l) => l.id === lvlId);
+          const baseSeconds = levelDef?.time_spent || 1000;
+          levelTimeSpentMs = computeTaskDuration(baseSeconds);
+        } catch {
+          levelTimeSpentMs = computeTaskDuration(1000);
+        }
+      } else {
+        levelTimeSpentMs = computeTaskDuration(1000);
+      }
 
       if (existing) {
         if (existing.is_completed !== isCompleted) {
@@ -696,6 +729,7 @@ function AccountsDetailContent({
             account_id: accId,
             level_id: lvlId,
             is_completed: isCompleted,
+            time_spent: levelTimeSpentMs,
             bypass_cooldown: true,
           });
         }
@@ -704,6 +738,7 @@ function AccountsDetailContent({
           account_id: accId,
           level_id: lvlId,
           is_completed: true,
+          time_spent: levelTimeSpentMs,
           bypass_cooldown: true,
         });
       }
@@ -714,6 +749,132 @@ function AccountsDetailContent({
         level_updates: levelUpdates,
         purchase_updates: purchaseUpdates,
       });
+
+      // --- Save History for newly completed entries ---
+      // Build a cache of game names
+      const gameNameCache = new Map<number, string>();
+      for (const account of accounts) {
+        if (!gameNameCache.has(account.game_id)) {
+          try {
+            const game = await TauriService.getGameById(account.game_id);
+            gameNameCache.set(account.game_id, game?.name || 'Unknown');
+          } catch {
+            gameNameCache.set(account.game_id, 'Unknown');
+          }
+        }
+      }
+
+      // --- History for level completions with session/event dedup ---
+      // First pass: collect base tokens for event-type completions per account
+      const accountBaseTokens = new Map<number, Set<string>>();
+      for (const lu of levelUpdates) {
+        if (!lu.is_completed) continue;
+        const existingEntry = levelsProgress[`${lu.account_id}_${lu.level_id}`];
+        if (existingEntry?.is_completed) continue;
+
+        const account = accounts.find((a) => a.id === lu.account_id);
+        if (!account) continue;
+
+        let levelDef: { event_token?: string; level_name?: string } | undefined;
+        if (account.branch_id != null && branchLevelsCache.has(account.branch_id)) {
+          levelDef = branchLevelsCache.get(account.branch_id)!.find((l) => l.id === lu.level_id);
+        }
+
+        const isSession = (levelDef?.level_name || '') === '-';
+        if (!isSession) {
+          const baseToken = (levelDef?.event_token || '').split('_day')[0];
+          if (baseToken) {
+            if (!accountBaseTokens.has(lu.account_id)) {
+              accountBaseTokens.set(lu.account_id, new Set());
+            }
+            accountBaseTokens.get(lu.account_id)!.add(baseToken);
+          }
+        }
+      }
+
+      // Second pass: save history, skipping sessions with matching events
+      for (const lu of levelUpdates) {
+        if (!lu.is_completed) continue;
+        const existingEntry = levelsProgress[`${lu.account_id}_${lu.level_id}`];
+        if (existingEntry?.is_completed) continue;
+
+        const account = accounts.find((a) => a.id === lu.account_id);
+        if (!account) continue;
+
+        let levelDef: { event_token?: string; level_name?: string } | undefined;
+        if (account.branch_id != null && branchLevelsCache.has(account.branch_id)) {
+          levelDef = branchLevelsCache.get(account.branch_id)!.find((l) => l.id === lu.level_id);
+        }
+
+        const levelName = levelDef?.level_name || '';
+        const isSession = levelName === '-';
+        const eventToken = levelDef?.event_token || '';
+
+        // Skip session history if a corresponding event with the same base token exists
+        if (isSession) {
+          const sessionBaseToken = eventToken.split('_day')[0];
+          if (sessionBaseToken && accountBaseTokens.get(lu.account_id)?.has(sessionBaseToken)) {
+            continue;
+          }
+        }
+
+        try {
+          await recordTaskCompletion({
+            accountId: lu.account_id,
+            accountName: account.name,
+            gameId: account.game_id,
+            gameName: gameNameCache.get(account.game_id) || 'Unknown',
+            eventToken,
+            durationMs: lu.time_spent || computeTaskDuration(1000),
+            levelId: lu.level_id,
+            levelName: levelName,
+            requestType: isSession ? 'Session Only' : 'Level Event',
+            isPurchase: false,
+          });
+        } catch (e) {
+          console.error('[AccountsDetailPage] Failed to save level history:', e);
+        }
+      }
+
+      // History for purchase completions
+      for (const pu of purchaseUpdates) {
+        if (!pu.is_completed) continue;
+        const existingEntry = purchaseProgress[`${pu.account_id}_${pu.purchase_event_id}`];
+        // Only record history for NEW completions
+        if (existingEntry?.is_completed) continue;
+
+        const account = accounts.find((a) => a.id === pu.account_id);
+        if (!account) continue;
+
+        let purchaseEventToken = '';
+        if (account.branch_id != null) {
+          try {
+            if (!branchPurchaseEventsCache.has(account.branch_id)) {
+              const pes = await TauriService.getGamePurchaseEvents(account.branch_id);
+              branchPurchaseEventsCache.set(account.branch_id, pes);
+            }
+            const peDef = branchPurchaseEventsCache.get(account.branch_id)!.find(
+              (pe) => pe.id === pu.purchase_event_id,
+            );
+            purchaseEventToken = peDef?.event_token || '';
+          } catch { /* ignore */ }
+        }
+
+        try {
+          await recordTaskCompletion({
+            accountId: pu.account_id,
+            accountName: account.name,
+            gameId: account.game_id,
+            gameName: gameNameCache.get(account.game_id) || 'Unknown',
+            eventToken: purchaseEventToken,
+            durationMs: pu.time_spent || computeTaskDuration(1000),
+            requestType: 'Purchase Event',
+            isPurchase: true,
+          });
+        } catch (e) {
+          console.error('[AccountsDetailPage] Failed to save purchase history:', e);
+        }
+      }
     }
 
     setIsEditMode(false);
@@ -723,6 +884,7 @@ function AccountsDetailContent({
         detail: { accountId: accounts.map((a) => a.id) },
       }),
     );
+    window.dispatchEvent(new CustomEvent("daily-task-completed"));
   };
 
   const exportDropdown = (

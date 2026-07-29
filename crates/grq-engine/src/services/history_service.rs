@@ -10,13 +10,13 @@ impl HistoryService {
         HistoryService
     }
 
-    pub fn insert_completed_task(
+    pub fn upsert_completed_task(
         &self,
         conn: &Connection,
         request: AddCompletedTaskRequest,
     ) -> Result<(), String> {
         conn.execute(
-            "INSERT INTO completed_daily_tasks (
+            "INSERT OR REPLACE INTO completed_daily_tasks (
                 id, account_id, account_name, game_id, game_name, event_token, 
                 time_spent, completion_time, completion_date, completed_at,
                 level_id, level_name, request_type, is_purchase
@@ -37,7 +37,7 @@ impl HistoryService {
                 if request.is_purchase { 1 } else { 0 },
             ],
         )
-        .map_err(|e| format!("Failed to insert completed task: {}", e))?;
+        .map_err(|e| format!("Failed to upsert completed task: {}", e))?;
 
         Ok(())
     }
@@ -94,6 +94,19 @@ impl HistoryService {
         }
 
         Ok(results)
+    }
+
+    pub fn delete_completed_task(
+        &self,
+        conn: &Connection,
+        id: String,
+    ) -> Result<(), String> {
+        conn.execute(
+            "DELETE FROM completed_daily_tasks WHERE id = ?1",
+            params![id],
+        )
+        .map_err(|e| format!("Failed to delete completed task: {}", e))?;
+        Ok(())
     }
 
     pub fn clear_history(&self, conn: &Connection) -> Result<(), String> {

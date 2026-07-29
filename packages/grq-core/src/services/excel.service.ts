@@ -4,7 +4,7 @@
 import XLSX from 'xlsx-js-style';
 import { TauriService } from './tauri.service';
 import { asyncStorageService } from './storage.service';
-import type { Game, Account, Level, PurchaseEvent } from '@grq/api-bindings';
+import type { Game, Account, Level, PurchaseEvent, CompletedDailyTask } from '@grq/api-bindings';
 import type { ColorSettings } from '@grq/ui/contexts/SettingsContext';
 
 // Import decomposed modules
@@ -214,7 +214,8 @@ export class ExcelService {
     theme: 'light' | 'dark',
     levelsProgress?: Record<string, any>,
     purchaseProgress?: Record<string, any>,
-    branchName?: string
+    branchName?: string,
+    taskHistory?: CompletedDailyTask[]
   ): Promise<{ wsData: any[][]; merges: any[]; cols: any[] }> {
     const getCellStyleLocal = (backgroundColor: string, isHeader: boolean = false, isSynthetic: boolean = false) =>
       this.getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
@@ -235,7 +236,7 @@ export class ExcelService {
     // Add Branch Title if provided
     if (branchName) {
       wsData.push([`Branch: ${branchName}`]);
-      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 2 + columns.length } });
+      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 + columns.length } });
     }
 
     const rowOffset = wsData.length;
@@ -255,30 +256,89 @@ export class ExcelService {
         headerRow4.push(col.kind === 'level' ? (col.timeSpent !== null && col.timeSpent !== undefined ? col.timeSpent.toString() : '-') : '-');
         headerRow5.push('');
       });
+      headerRow5.push('Session', 'Time');
 
       wsData.push(headerRow1, headerRow2, headerRow3, headerRow4, headerRow5);
+
+      const levelMapById = new Map(((_levels || []) as any[]).map((l: any) => [l.id, l]));
+      const peMapById = new Map(((_purchaseEvents || []) as any[]).map((p: any) => [p.id, p]));
+
+      // Build lookup maps from task history for last completed time_spent ("Dur. (ms)")
+      const historyLevelMap = new Map<string, number>();
+      const historyPEMap = new Map<string, number>();
+      const histGameId = accounts[0]?.game_id;
+      if (taskHistory && histGameId != null) {
+        for (const h of taskHistory) {
+          if (h.gameId !== histGameId) continue;
+          if (!h.isPurchase && h.levelId != null) {
+            historyLevelMap.set(`${h.accountId}_${h.levelId}`, h.timeSpent);
+          } else if (h.isPurchase) {
+            historyPEMap.set(`${h.accountId}_${h.eventToken}`, h.timeSpent);
+          }
+        }
+      }
 
       accounts.forEach((acc, accIdx) => {
         const matrixRow = matrix[accIdx];
         const row: any[] = [acc.name, formatDateWithYear(acc.start_date), formatTimeAMPM(acc.start_time)];
+
+        // Scan ALL progress (including filtered-out session levels) for the last completed event
+        const start = parseDate(acc.start_date);
+        let lastCompletedDate = '-';
+        let lastCompletedTimeSpent = '-';
+        let maxOffset = -1;
+
+        for (const [key, prog] of Object.entries(levelsProgress || {})) {
+          const [accIdStr, levelIdStr] = key.split('_');
+          if (Number(accIdStr) !== acc.id || !(prog as any)?.is_completed) continue;
+          const level = levelMapById.get(Number(levelIdStr));
+          if (!level) continue;
+          const offsetNum = Number((level as any).days_offset) ?? -1;
+          if (offsetNum > maxOffset) {
+            maxOffset = offsetNum;
+            if (start) lastCompletedDate = formatDateShort(addDays(start, offsetNum));
+            const hTime = historyLevelMap.get(`${acc.id}_${(level as any).id}`);
+            const progTime = (prog as any).time_spent;
+            lastCompletedTimeSpent = hTime ?? ((progTime != null && progTime !== 0) ? progTime : ((level as any).time_spent ?? '-'));
+          }
+        }
+
+        for (const [key, prog] of Object.entries(purchaseProgress || {})) {
+          const [accIdStr, peIdStr] = key.split('_');
+          if (Number(accIdStr) !== acc.id || !(prog as any)?.is_completed) continue;
+          const pe = peMapById.get(Number(peIdStr));
+          if (!pe) continue;
+          const offsetNum = (prog as any)?.days_offset ?? -1;
+          if (offsetNum > maxOffset) {
+            maxOffset = offsetNum;
+            if (start) lastCompletedDate = formatDateShort(addDays(start, offsetNum));
+            const hTime = historyPEMap.get(`${acc.id}_${(pe as any).event_token}`);
+            const progTime = (prog as any).time_spent;
+            lastCompletedTimeSpent = hTime ?? ((progTime != null && progTime !== 0) ? progTime : '-');
+          }
+        }
+
+        // Matrix display loop (columns only, for visible cell content)
         matrixRow.forEach((date, colIdx) => {
           const col = columns[colIdx];
           const progressKey = `${acc.id}_${col.id}`;
           const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
           const isCompleted = progress?.is_completed ?? false;
-          
+
           let displayDate = date;
-          
+
           if (col.kind === 'purchase' && progress && typeof progress.days_offset === 'number') {
-             const start = parseDate(acc.start_date);
-             if (start) {
-                 const actualDate = addDays(start, progress.days_offset);
+             const start2 = parseDate(acc.start_date);
+             if (start2) {
+                 const actualDate = addDays(start2, progress.days_offset);
                  displayDate = formatDateShort(actualDate);
              }
           }
-          
+
           row.push(isCompleted ? `${displayDate} (C)` : displayDate);
         });
+
+        row.push(lastCompletedDate, lastCompletedTimeSpent);
         wsData.push(row);
       });
 
@@ -288,6 +348,8 @@ export class ExcelService {
         { s: { r: rowOffset + 1, c: 0 }, e: { r: rowOffset + 1, c: 2 } },
         { s: { r: rowOffset + 2, c: 0 }, e: { r: rowOffset + 2, c: 2 } },
         { s: { r: rowOffset + 3, c: 0 }, e: { r: rowOffset + 3, c: 2 } },
+        { s: { r: rowOffset + 4, c: 0 }, e: { r: rowOffset + 4, c: 2 } },
+        { s: { r: rowOffset + 4, c: 3 }, e: { r: rowOffset + 4, c: 2 + columns.length } },
       );
 
       // Apply styling directly to cell content in wsData
@@ -300,6 +362,9 @@ export class ExcelService {
         wsData[0][0] = { v: wsData[0][0], s: branchTitleStyle };
       }
 
+      const eventColCount = columns.length;
+      const lastEventCol = 2 + eventColCount;
+
       for (let r = rowOffset; r < wsData.length; r++) {
         const localRowIdx = r - rowOffset;
         for (let c = 0; c < wsData[r].length; c++) {
@@ -309,14 +374,16 @@ export class ExcelService {
           if (localRowIdx < 5) {
             if (c < 3) {
               cellObj.s = headerStyle;
-            } else {
+            } else if (c <= lastEventCol) {
               const col = columns[c - 3];
               cellObj.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, true);
+            } else {
+              cellObj.s = headerStyle;
             }
           } else {
             if (c < 3) {
               cellObj.s = dataRowStyle;
-            } else {
+            } else if (c <= lastEventCol) {
               const col = columns[c - 3];
               const acc = accounts[localRowIdx - 5];
               const progressKey = `${acc.id}_${col.id}`;
@@ -324,6 +391,8 @@ export class ExcelService {
               const isCompleted = progress?.is_completed ?? false;
               const bgColor = isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
               cellObj.s = getCellStyleLocal(bgColor, false, col.synthetic);
+            } else {
+              cellObj.s = dataRowStyle;
             }
           }
           wsData[r][c] = cellObj;
@@ -332,7 +401,8 @@ export class ExcelService {
 
       const cols = [
         { wch: 20 }, { wch: 12 }, { wch: 12 },
-        ...columns.map(() => ({ wch: 12 }))
+        ...columns.map(() => ({ wch: 12 })),
+        { wch: 15 }, { wch: 12 }
       ];
 
       return { wsData, merges, cols };
@@ -415,7 +485,8 @@ export class ExcelService {
     columnsData?: any[],
     levelsProgress?: any,
     purchaseProgress?: any,
-    mode: 'event-only' | 'all' = 'event-only'
+    mode: 'event-only' | 'all' = 'event-only',
+    taskHistory?: CompletedDailyTask[]
   ): Promise<boolean> {
     try {
       const workbook = XLSX.utils.book_new();
@@ -469,7 +540,9 @@ export class ExcelService {
         colorSettings,
         theme,
         levelsProgressRecord,
-        purchaseProgressRecord
+        purchaseProgressRecord,
+        undefined,
+        taskHistory
       );
 
       // Create worksheet from generated data
@@ -495,6 +568,7 @@ export class ExcelService {
     try {
       const game = await TauriService.getGameById(gameId);
       const gameName = game?.name || 'Game';
+      const taskHistory = await TauriService.getTaskHistory();
 
       // If branchId is provided, export ONLY that branch (legacy/specific behavior)
       if (branchId) {
@@ -505,7 +579,7 @@ export class ExcelService {
         ]);
 
         const sortedAccounts = this.sortAccountsByDate(accounts);
-        return await this.exportToExcelMatrix(levels, purchaseEvents, sortedAccounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress, mode);
+        return await this.exportToExcelMatrix(levels, purchaseEvents, sortedAccounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress, mode, taskHistory);
       }
 
       // If no branchId, export ALL branches stacked vertically
@@ -570,7 +644,8 @@ export class ExcelService {
           theme,
           effectiveLevelsProgress,
           effectivePurchaseProgress,
-          branch.name
+          branch.name,
+          taskHistory
         );
 
         // Adjust merge indices
@@ -651,6 +726,7 @@ export class ExcelService {
         let masterCols: any[] = [];
         const allGameLevels: Level[] = [];
         const allGamePurchaseEvents: PurchaseEvent[] = [];
+        const taskHistory = await TauriService.getTaskHistory();
 
         // Truncate base name to allow for _Lvl and _Evt suffixes (max 31 total)
         const sheetBaseName = game.name.substring(0, 27);
@@ -753,7 +829,8 @@ export class ExcelService {
             theme,
             levelsProgress,
             purchaseProgress,
-            branch.name
+            branch.name,
+            taskHistory
           );
 
           // Adjust merge indices
