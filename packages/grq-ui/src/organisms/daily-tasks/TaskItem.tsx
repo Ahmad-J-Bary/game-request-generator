@@ -80,14 +80,14 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
 
   const { isReady, isBlocked, remainingTime } = timerState;
 
-  // Session Only tasks can always be completed regardless of timer state
-  const effectiveIsReady = isSessionOnlyTask || isReady;
+  // Session Only tasks follow the same timer logic as other tasks
+  const effectiveIsReady = isReady;
 
   // Calculate progress percentage for the cooldown (if applicable)
   const progressPercent = useMemo(() => {
     if (isReady || isBlocked) return 100;
-    // We assume a standard wait of 3000s (or whatever is in time_spent)
-    const totalWait = (task.requests[0]?.time_spent || 3000);
+    // time_spent is in ms from Rust; convert to seconds to match remainingTime
+    const totalWait = (task.requests[0]?.time_spent || 3000) / 1000;
     if (totalWait <= 0) return 100;
     return Math.max(0, Math.min(100, ((totalWait - remainingTime) / totalWait) * 100));
   }, [isReady, isBlocked, remainingTime, task.requests]);

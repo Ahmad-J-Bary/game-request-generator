@@ -47,6 +47,7 @@ export const calculateTimerState = (
   };
 
   const currentTimeSpent = getTaskTimeSpent(task);
+  const currentTimeSpentSec = currentTimeSpent / 1000;
 
   // flattened list of all tasks for this account in order to find previous task
   let previousTask: DailyTask | null = null;
@@ -116,17 +117,22 @@ export const calculateTimerState = (
   if (completionRecord) {
     // Subsequent tasks: Wait from the moment the previous unit was finished
     // Target = Previous Completion Time + (Current Task TimeSpent - Previous Task TimeSpent)
-    const prevTimeSpent = completionRecord.timeSpent;
-    const waitDuration = Math.max(0, currentTimeSpent - prevTimeSpent);
+    // Both timeSpent values are in ms from Rust; convert to seconds for the wait formula.
+    const prevTimeSpentSec = completionRecord.timeSpent / 1000;
+    const waitDuration = Math.max(0, currentTimeSpentSec - prevTimeSpentSec);
     targetTime = completionRecord.completionTime + waitDuration * 1000;
-  } else if (startState && startState.startTime) {
-    // First Task: Wait from the account's configured start time (the "zero" reference)
-    // Target = Start Time + (Current Task TimeSpent - 0)
+  } else {
+    // First task: use the later of currentTime and the account's start time
+    // to ensure a visible wait even when startTime is in the past.
     reason = "initializing";
-    const baseTime = new Date(startState.startTime).getTime();
-    if (!isNaN(baseTime)) {
-      targetTime = baseTime + currentTimeSpent * 1000;
+    let baseTime = currentTime;
+    if (startState?.startTime) {
+      const parsedStart = new Date(startState.startTime).getTime();
+      if (!isNaN(parsedStart)) {
+        baseTime = Math.max(currentTime, parsedStart);
+      }
     }
+    targetTime = baseTime + currentTimeSpentSec * 1000;
   }
 
   // Check if we need to wait

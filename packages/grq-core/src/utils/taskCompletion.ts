@@ -269,7 +269,7 @@ export class TaskCompletionHandler {
         const gameLevels = await TauriService.getGameLevels(account.branch_id);
         let baseToken = (request.event_token || "").split("_day")[0];
         let daysOffset = 0;
-        let timeSpent = request.time_spent || 0;
+        let timeSpent = Math.round((request.time_spent || 0) / 1000);
 
         if (request.level_id) {
           const sourceLevel = gameLevels.find(
@@ -345,12 +345,12 @@ export class TaskCompletionHandler {
               (l) => l.days_offset < daysOffset,
             );
             const prevReal = prevLevels[prevLevels.length - 1];
-            timeSpent = prevReal?.time_spent || request.time_spent || 0;
+            timeSpent = prevReal?.time_spent || timeSpent;
           } else {
             const prevReal = searchLevels
               .filter((l) => l.days_offset <= daysOffset)
               .slice(-1)[0];
-            timeSpent = prevReal?.time_spent || request.time_spent || 0;
+            timeSpent = prevReal?.time_spent || timeSpent;
           }
         }
 
@@ -531,11 +531,13 @@ export class TaskCompletionHandler {
         }
 
         // Now update the progress to completed status
-        // Aligning with AccountDetailPage.tsx by omitting target_date and time_spent
-        // which ensures the update targets the correct persistent record.
+        // Include a computed time_spent (ms) so the level progress record
+        // stores a meaningful duration, matching AccountDetailPage behavior.
+        const updateTimeSpentMs = request.time_spent || computeTaskDuration(1000);
         const updateRequest = {
           account_id: accountId,
           level_id: targetLevelId,
+          time_spent: updateTimeSpentMs,
           is_completed: true,
           bypass_cooldown: true,
         };
@@ -558,6 +560,7 @@ export class TaskCompletionHandler {
               await ApiService.updateLevelProgress({
                 account_id: accountId,
                 level_id: sessionLvlId,
+                time_spent: updateTimeSpentMs,
                 is_completed: true,
                 bypass_cooldown: true,
               });

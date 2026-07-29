@@ -39,7 +39,7 @@ export const calculateFirstRequestAllowedTime = (account: Account, firstEventTim
             return Date.now();
         }
 
-        const delayMs = firstEventTimeSpent * 1000;
+        const delayMs = firstEventTimeSpent;
         return baseDate.getTime() + delayMs;
     } catch (error) {
         console.error(`Error calculating first request time for account ${account.id}:`, error);

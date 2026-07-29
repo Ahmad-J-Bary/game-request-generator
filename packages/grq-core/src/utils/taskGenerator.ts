@@ -196,14 +196,7 @@ export class TaskGenerator {
               const baseToken = (request.event_token || "").split("_day")[0];
               const sessionKey = `${baseToken}::${daysOffset}`;
               const sessionLevelId = sessionLevelIdByKey.get(sessionKey);
-
-              if (!sessionLevelId && request.level_id != null) {
-                return completedLevelIds.has(request.level_id);
-              }
-
-              return sessionLevelId
-                ? completedLevelIds.has(sessionLevelId)
-                : false;
+              return sessionLevelId ? completedLevelIds.has(sessionLevelId) : false;
             }
 
             return false;
@@ -250,6 +243,15 @@ export class TaskGenerator {
 
               if (rawType === "session" || rawType === "session only") {
                 req.request_type = "Session Only";
+                // Re-resolve the correct session level ID (if one exists)
+                // to avoid using a real level's ID from the map collision.
+                const sessionDaysOffset = req.days_offset ?? 0;
+                const sessionBaseToken = (req.event_token || "").split("_day")[0];
+                const sessionKey = `${sessionBaseToken}::${sessionDaysOffset}`;
+                const sessionLvlId = sessionLevelIdByKey.get(sessionKey);
+                if (sessionLvlId) {
+                  req.level_id = sessionLvlId;
+                }
               } else if (rawType === "event") {
                 req.request_type = "Level Event";
               }
@@ -391,26 +393,13 @@ export class TaskGenerator {
                 completedTasks,
               };
 
-              // Only the first pending group can be "Ready"
-              // Others will automatically be "Pending Previous"
+              // Only the first pending group is shown in the ready section;
+              // the UI timer (calculateTimerState in TaskItem) handles when it becomes ready.
+              // Subsequent pending groups always go to deferred and are blocked until the
+              // first group completes (via the sequential dependency check).
               if (index === 0) {
-                const timerState = calculateTimerState(
-                  task,
-                  0, // Dummy batch index
-                  [], // No batches yet
-                  this.options.currentTime,
-                  this.options.accountCompletionRecords,
-                  this.options.accountStartStates,
-                  this.options.completedTasks,
-                );
-
-                if (timerState.isReady) {
-                  readyTasksInState.push(task);
-                } else {
-                  globalDeferredTasks.push(task);
-                }
+                readyTasksInState.push(task);
               } else {
-                // Subsequent pending tasks always go to deferred
                 globalDeferredTasks.push(task);
               }
             });
@@ -423,7 +412,7 @@ export class TaskGenerator {
               if (i > 0) {
                 const prevGroup = requestGroups[i - 1];
                 currentScheduledTime +=
-                  (group.time_spent - prevGroup.time_spent) * 1000;
+                  group.time_spent - prevGroup.time_spent;
               }
               scheduledTimes[account.id].push(currentScheduledTime);
             }
