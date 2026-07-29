@@ -11,7 +11,7 @@ import type { ColorSettings } from '@grq/ui/contexts/SettingsContext';
 import { saveExcelFile } from './excel/excel-file-operations';
 import { parseExcelFile } from './excel/excel-parser';
 import { importFromExcel } from './excel/excel-import';
-import { getCellStyle } from './excel/excel-styling';
+import { getCellStyle, getNoFillStyle } from './excel/excel-styling';
 import { formatDateShort, formatDateWithYear, parseDate, addDays, formatTimeAMPM } from './excel/excel-date-utils';
 import { buildColumns, createDateMatrix, getColumnStyle } from './excel/excel-column-builder';
 
@@ -348,7 +348,6 @@ export class ExcelService {
         { s: { r: rowOffset + 1, c: 0 }, e: { r: rowOffset + 1, c: 2 } },
         { s: { r: rowOffset + 2, c: 0 }, e: { r: rowOffset + 2, c: 2 } },
         { s: { r: rowOffset + 3, c: 0 }, e: { r: rowOffset + 3, c: 2 } },
-        { s: { r: rowOffset + 4, c: 0 }, e: { r: rowOffset + 4, c: 2 } },
         { s: { r: rowOffset + 4, c: 3 }, e: { r: rowOffset + 4, c: 2 + columns.length } },
       );
 
@@ -356,6 +355,7 @@ export class ExcelService {
       const headerStyle = getCellStyleLocal(colorSettings.headerColor, true);
       const dataRowStyle = getCellStyleLocal(colorSettings.dataRowColor);
       const branchTitleStyle = getCellStyleLocal(colorSettings.headerColor, true);
+      const noFillHeaderStyle = getNoFillStyle(theme, true);
 
       // Branch Title Styling
       if (branchName) {
@@ -375,8 +375,12 @@ export class ExcelService {
             if (c < 3) {
               cellObj.s = headerStyle;
             } else if (c <= lastEventCol) {
-              const col = columns[c - 3];
-              cellObj.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, true);
+              if (localRowIdx === 4) {
+                cellObj.s = noFillHeaderStyle;
+              } else {
+                const col = columns[c - 3];
+                cellObj.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, true);
+              }
             } else {
               cellObj.s = headerStyle;
             }
@@ -591,14 +595,18 @@ export class ExcelService {
       let masterMerges: any[] = [];
       let masterCols: any[] = [];
 
-      for (const branch of branches) {
-        const [levels, purchaseEvents, accounts] = await Promise.all([
+      // Fetch all accounts once and filter branches that have accounts
+      const allAccounts = await TauriService.getAccounts(gameId);
+      const branchesWithAccounts = branches.filter(b => allAccounts.some(a => a.branch_id === b.id));
+      if (branchesWithAccounts.length === 0) return false;
+      const showBranchTitles = branchesWithAccounts.length > 1;
+
+      for (const branch of branchesWithAccounts) {
+        const accounts = allAccounts.filter(a => a.branch_id === branch.id);
+        const [levels, purchaseEvents] = await Promise.all([
           TauriService.getGameLevels(branch.id),
           TauriService.getGamePurchaseEvents(branch.id),
-          TauriService.getAccounts(gameId).then(accs => accs.filter(a => a.branch_id === branch.id))
         ]);
-
-        if (accounts.length === 0) continue;
 
         const sortedAccounts = this.sortAccountsByDate(accounts);
         const branchColumns = buildColumns(levels, purchaseEvents);
@@ -644,7 +652,7 @@ export class ExcelService {
           theme,
           effectiveLevelsProgress,
           effectivePurchaseProgress,
-          branch.name,
+          showBranchTitles ? branch.name : undefined,
           taskHistory
         );
 
@@ -731,14 +739,18 @@ export class ExcelService {
         // Truncate base name to allow for _Lvl and _Evt suffixes (max 31 total)
         const sheetBaseName = game.name.substring(0, 27);
 
-        for (const branch of branches) {
-          const [levels, purchaseEvents, accounts] = await Promise.all([
-            TauriService.getGameLevels(branch.id),
-            TauriService.getGamePurchaseEvents(branch.id),
-            TauriService.getAccounts(game.id).then(accs => accs.filter(a => a.branch_id === branch.id))
-          ]);
+        // Fetch all accounts once and filter branches that have accounts
+        const allAccounts = await TauriService.getAccounts(game.id);
+        const branchesWithAccounts = branches.filter(b => allAccounts.some(a => a.branch_id === b.id));
+        if (branchesWithAccounts.length === 0) continue;
+        const showBranchTitles = branchesWithAccounts.length > 1;
 
-          if (accounts.length === 0) continue;
+        for (const branch of branchesWithAccounts) {
+          const accounts = allAccounts.filter(a => a.branch_id === branch.id);
+          const [levels, purchaseEvents] = await Promise.all([
+            TauriService.getGameLevels(branch.id),
+            TauriService.getGamePurchaseEvents(branch.id)
+          ]);
 
           // Collect unique levels/events for definition sheets
           levels.forEach(l => { if (!allGameLevels.find(xl => xl.id === l.id)) allGameLevels.push(l); });
@@ -838,7 +850,7 @@ export class ExcelService {
             theme,
             levelsProgress,
             purchaseProgress,
-            branch.name,
+            showBranchTitles ? branch.name : undefined,
             taskHistory
           );
 
@@ -1002,6 +1014,11 @@ export class ExcelService {
 
       const wsData: any[][] = [];
       const merges: any[] = [];
+
+      // Suppress branch title when only one branch
+      if (dataGroups.length === 1) {
+        delete dataGroups[0].branchName;
+      }
 
       for (const group of dataGroups) {
           const currentOffset = wsData.length;
@@ -1372,6 +1389,11 @@ export class ExcelService {
         const sheetName = gameData.gameName.substring(0, 31);
         const wsData: any[][] = [];
         const merges: any[] = [];
+
+        // Suppress branch title when only one branch for this game
+        if (gameData.branches.length === 1) {
+          delete gameData.branches[0].branchName;
+        }
 
         for (const group of gameData.branches) {
           const currentOffset = wsData.length;

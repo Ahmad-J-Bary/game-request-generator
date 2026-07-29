@@ -73,6 +73,9 @@ export function BranchBulkTransferDialog({
   const selectedCount = selectedIds.size;
   const allIds = useMemo(() => new Set(accounts.map(a => a.id)), [accounts]);
   const allSelected = selectedCount === accounts.length && accounts.length > 0;
+  const excludedBranchIds = useMemo(() => {
+    return new Set(accounts.map(a => a.branch_id).filter((id): id is number => id != null));
+  }, [accounts]);
 
   const handleClose = () => {
     if (transferResults.length > 0 && transferResults.every(r => r.success)) {
@@ -170,7 +173,7 @@ export function BranchBulkTransferDialog({
                 <SelectValue placeholder={t('accounts.bulkTransfer.selectBranchPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                {branches.map(branch => (
+                {branches.filter(branch => !excludedBranchIds.has(branch.id)).map(branch => (
                   <SelectItem key={branch.id} value={branch.id.toString()}>{branch.name}</SelectItem>
                 ))}
               </SelectContent>

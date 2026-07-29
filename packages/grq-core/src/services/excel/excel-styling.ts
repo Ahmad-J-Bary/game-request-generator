@@ -28,6 +28,20 @@ export function getTextColor(backgroundColor: string, theme: 'light' | 'dark'): 
 /**
  * Helper function to get cell style for Excel
  */
+export function getNoFillStyle(theme: 'light' | 'dark', isHeader: boolean = false) {
+  const textColor = theme === 'dark' ? 'FFFFFF' : '000000';
+  return {
+    font: { color: { rgb: textColor }, bold: isHeader },
+    border: {
+      top: { style: 'thin', color: { auto: 1 } },
+      bottom: { style: 'thin', color: { auto: 1 } },
+      left: { style: 'thin', color: { auto: 1 } },
+      right: { style: 'thin', color: { auto: 1 } },
+    },
+    alignment: { horizontal: 'center', vertical: 'center' }
+  };
+}
+
 export function getCellStyle(backgroundColor: string, theme: 'light' | 'dark', isHeader: boolean = false, isSynthetic: boolean = false) {
   let finalBgColor = rgbToHex(backgroundColor);
   

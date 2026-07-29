@@ -321,6 +321,9 @@ export default function AccountFormPage() {
   const { id } = useParams<{ id?: string }>();
   const [searchParams] = useSearchParams();
   const gameId = searchParams.get('gameId') ? parseInt(searchParams.get('gameId')!, 10) : undefined;
+  const [initialBranchId] = useState<number | undefined>(
+    searchParams.get('branchId') ? parseInt(searchParams.get('branchId')!, 10) : undefined,
+  );
   const { accounts, addAccount, updateAccount } = useAccounts();
 
   const locationState = location.state as { account?: import('@grq/api-bindings').Account; selectedGameId?: number } | null;
@@ -378,32 +381,42 @@ export default function AccountFormPage() {
         const data = await fetchBranches(currentGameId);
         setBranches(data);
         
-        if (selectedBranchId === null) {
-            const latestCreatedBranch = [...data]
-              .filter(branch => !branch.is_default)
-              .sort((a, b) => {
-                const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
-                const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (data.length === 1) {
+            setSelectedBranchId(data[0].id);
+            return;
+        }
 
-                if (aTime !== bTime) {
-                  return bTime - aTime;
-                }
+        if (initialBranchId && data.some(b => b.id === initialBranchId)) {
+            setSelectedBranchId(initialBranchId);
+            return;
+        }
 
-                return b.id - a.id;
-              })[0];
+        if (selectedBranchId !== null) return;
 
-            const defaultBranch = data.find(b => b.is_default) || data[0];
-            const preferredBranch = latestCreatedBranch || defaultBranch;
+        const latestCreatedBranch = [...data]
+          .filter(branch => !branch.is_default)
+          .sort((a, b) => {
+            const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
 
-            if (preferredBranch) {
-                setSelectedBranchId(preferredBranch.id);
+            if (aTime !== bTime) {
+              return bTime - aTime;
             }
+
+            return b.id - a.id;
+          })[0];
+
+        const defaultBranch = data.find(b => b.is_default) || data[0];
+        const preferredBranch = latestCreatedBranch || defaultBranch;
+
+        if (preferredBranch) {
+            setSelectedBranchId(preferredBranch.id);
         }
       };
       loadBranches();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentGameId, fetchBranches]); 
+  }, [currentGameId, fetchBranches, initialBranchId]); 
 
   // Format date for display
   const formatDateForDisplay = (date: Date | null): string => {
@@ -522,7 +535,8 @@ export default function AccountFormPage() {
 
             <div className="space-y-2">
               <Label>{t('branches.branch')}</Label>
-              <Select 
+              <Select
+                key={branches.length > 0 ? 'loaded' : 'empty'}
                 value={selectedBranchId?.toString() || ""} 
                 onValueChange={(val) => {
                   const newId = val === "" ? null : parseInt(val, 10);

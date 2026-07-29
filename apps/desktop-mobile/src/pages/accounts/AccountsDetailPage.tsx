@@ -1438,14 +1438,16 @@ function BranchSection({
         >
           <Download className="h-4 w-4 mr-1" /> {t("common.export", "Export")}
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowBulkTransfer(true)}
-          className="h-8 px-2 text-muted-foreground hover:text-primary"
-        >
-          <GitBranch className="h-4 w-4 mr-1" /> {t("accounts.bulkTransfer.title")}
-        </Button>
+        {branches.length > 1 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowBulkTransfer(true)}
+            className="h-8 px-2 text-muted-foreground hover:text-primary"
+          >
+            <GitBranch className="h-4 w-4 mr-1" /> {t("accounts.bulkTransfer.title")}
+          </Button>
+        )}
       </div>
       <Card className="overflow-hidden border-border/50 shadow-2xl shadow-black/5 bg-background/40 backdrop-blur-sm rounded-t-none">
         <CardContent className="p-0 overflow-auto max-h-[600px] custom-scrollbar">
@@ -1476,7 +1478,7 @@ function BranchSection({
             onAccountEdit={handleAccountEdit}
             onAccountTransfer={handleAccountTransfer}
             onAccountDelete={confirmDeleteAccount}
-            onAddAccount={() => navigate(`/accounts/new?gameId=${selectedGameId}`)}
+            onAddAccount={() => navigate(`/accounts/new?gameId=${selectedGameId}&branchId=${branch.id}`)}
           />
         </CardContent>
       </Card>
