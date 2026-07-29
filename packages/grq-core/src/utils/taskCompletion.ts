@@ -541,6 +541,34 @@ export class TaskCompletionHandler {
         };
 
         result = await ApiService.updateLevelProgress(updateRequest);
+
+        // For Level Event, also create/update the synthetic session level progress
+        if (finalRequestType === 'Level Event') {
+          try {
+            const sessionLvlId = await resolveSessionLevelId();
+            if (sessionLvlId) {
+              const sessProgs =
+                await TauriService.getAccountLevelProgress(accountId);
+              if (!sessProgs.some((p) => p.level_id === sessionLvlId)) {
+                await TauriService.createLevelProgress({
+                  account_id: accountId,
+                  level_id: sessionLvlId,
+                });
+              }
+              await ApiService.updateLevelProgress({
+                account_id: accountId,
+                level_id: sessionLvlId,
+                is_completed: true,
+                bypass_cooldown: true,
+              });
+            }
+          } catch (err) {
+            console.warn(
+              '[completeTask] Failed to create/update session level progress:',
+              err,
+            );
+          }
+        }
       }
 
       // Check if the operation was successful (handles both boolean and ApiResponse results)

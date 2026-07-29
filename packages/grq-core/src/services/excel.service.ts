@@ -772,11 +772,20 @@ export class ExcelService {
             }
           }
 
-          // Build columns for this branch
-          let filteredLevels = levels;
-          if (mode === 'event-only') {
-            filteredLevels = levels.filter(l => l.level_name !== '-');
-          }
+          // Build columns for this branch — filter out session levels that have
+          // a corresponding event level (compound events treated as single entity)
+          let filteredLevels = levels.filter((l) => {
+            if (l.level_name !== '-') return true;
+            if (mode === 'event-only') return false;
+            const baseToken = (l.event_token || '').split('_day')[0];
+            return !levels.some(
+              (other) =>
+                other.id !== l.id &&
+                other.level_name !== '-' &&
+                (other.event_token || '').split('_day')[0] === baseToken &&
+                other.days_offset === l.days_offset,
+            );
+          });
 
           const levelCols = filteredLevels.map((l) => ({
             kind: 'level' as const,

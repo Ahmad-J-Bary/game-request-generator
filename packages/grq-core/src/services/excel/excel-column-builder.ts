@@ -21,18 +21,31 @@ export interface ColumnData {
  * Build columns array from levels and purchase events
  */
 export function buildColumns(levels: Level[], purchaseEvents: PurchaseEvent[]): ColumnData[] {
-  const levelCols: ColumnData[] = levels.map((l) => ({
-    kind: 'level' as const,
-    id: l.id,
-    token: l.event_token.split('_day')[0],
-    fullToken: l.event_token,
-    name: l.level_name,
-    daysOffset: l.days_offset,
-    timeSpent: l.time_spent,
-    isBonus: l.is_bonus,
-    uniqueKey: `${l.event_token}:${l.level_name === '-' ? 'Session Only' : 'Level Event'}`,
-    synthetic: false,
-  }));
+  // Filter out session levels that have a corresponding event level (compound events)
+  const levelCols: ColumnData[] = levels
+    .filter((l) => {
+      if (l.level_name !== '-') return true;
+      const baseToken = (l.event_token || '').split('_day')[0];
+      return !levels.some(
+        (other) =>
+          other.id !== l.id &&
+          other.level_name !== '-' &&
+          (other.event_token || '').split('_day')[0] === baseToken &&
+          other.days_offset === l.days_offset,
+      );
+    })
+    .map((l) => ({
+      kind: 'level' as const,
+      id: l.id,
+      token: l.event_token.split('_day')[0],
+      fullToken: l.event_token,
+      name: l.level_name,
+      daysOffset: l.days_offset,
+      timeSpent: l.time_spent,
+      isBonus: l.is_bonus,
+      uniqueKey: `${l.event_token}:${l.level_name === '-' ? 'Session Only' : 'Level Event'}`,
+      synthetic: false,
+    }));
 
   const peCols: ColumnData[] = purchaseEvents.map((p: PurchaseEvent) => {
     const isRestricted = (p as any).is_restricted ?? false;

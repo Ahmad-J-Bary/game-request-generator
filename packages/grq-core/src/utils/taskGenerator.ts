@@ -232,11 +232,8 @@ export class TaskGenerator {
             const matchingPurchase = purchaseByToken.get(req.event_token);
 
             if (matchingLevel) {
-              req.level_name = matchingLevel.level_name;
-              req.level_id = matchingLevel.id;
-              req.days_offset = matchingLevel.days_offset;
-
               const rawType = (req.request_type as string).toLowerCase();
+              // For compound level events, skip the session request entirely
               if (rawType === "session" || rawType === "session only") {
                 const hasCorrespondingEvent = tempRequests.some(
                   (r) =>
@@ -244,19 +241,35 @@ export class TaskGenerator {
                     (r.request_type as string).toLowerCase() === "event" &&
                     r.level_id === req.level_id,
                 );
-                req.request_type = hasCorrespondingEvent
-                  ? "Level Session"
-                  : "Session Only";
+                if (hasCorrespondingEvent) continue;
+              }
+
+              req.level_name = matchingLevel.level_name;
+              req.level_id = matchingLevel.id;
+              req.days_offset = matchingLevel.days_offset;
+
+              if (rawType === "session" || rawType === "session only") {
+                req.request_type = "Session Only";
               } else if (rawType === "event") {
                 req.request_type = "Level Event";
               }
               validRequests.push(req);
             } else if (matchingPurchase) {
+              const rawType = req.request_type as string;
+              // For compound purchase events, skip the session request entirely
+              if (rawType === "session") {
+                const hasCorrespondingPurchaseEvent = tempRequests.some(
+                  (r) =>
+                    r.event_token === req.event_token &&
+                    r !== req &&
+                    (r.request_type as string).toLowerCase() !== "session",
+                );
+                if (hasCorrespondingPurchaseEvent) continue;
+              }
+
               req.level_name = "$$$";
               req.level_id = matchingPurchase.id;
               req.days_offset = matchingPurchase.days_offset;
-
-              const rawType = req.request_type as string;
               req.request_type =
                 rawType === "session" ? "Purchase Session" : "Purchase Event";
               validRequests.push(req);
