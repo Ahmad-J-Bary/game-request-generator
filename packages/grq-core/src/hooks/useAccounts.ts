@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { TauriService } from '@grq/core/services/tauri.service';
 import { Account, CreateAccountRequest, UpdateAccountRequest } from '@grq/api-bindings';
 import { NotificationService } from '@grq/core/utils/notifications';
+import { applySessionCompletionForGame } from '@grq/core/services/excel/excel-session-processor';
 
 function extractErrorMessage(err: any): string {
   if (!err) return 'Unknown error';
@@ -56,6 +57,7 @@ export const useAccounts = (gameId?: number) => {
     setError(null);
     try {
       const id = await TauriService.addAccount(request);
+      applySessionCompletionForGame(request.game_id).catch(() => {});
       NotificationService.success('Account added successfully');
       window.dispatchEvent(
         new CustomEvent('accounts-updated', {

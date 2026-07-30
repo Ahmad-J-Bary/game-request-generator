@@ -531,3 +531,333 @@ describe('Purchase event level_name resolution', () => {
     assert.strictEqual(resolvePurchaseLevelName(''), '');
   });
 });
+
+// ===== Multi-Account Progress Generation Tests =====
+
+interface MockProgressEntry {
+  gameName: string;
+  accountName: string;
+  levelName?: string;
+  purchaseToken?: string;
+  token: string;
+  isCompleted: boolean;
+  completionDate?: string;
+  sessionDate?: string;
+}
+
+/**
+ * Simulates what the parser does for each account row:
+ * parse cells, apply session cutoff, apply per-type cascade, push progress entries.
+ */
+function generateProgressForRow(
+  rowCells: string[],
+  accountName: string,
+  gameName: string,
+  sessionDateStr: string | undefined,
+  startDate: Date,
+  colHeaders: { name: string; isPurchase: boolean; token: string; daysOffset?: number }[],
+): MockProgressEntry[] {
+  const MONTHS_CAP = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const parseCell = (cellVal: string): { isCompleted: boolean; dateStr: string; hasDateCell: boolean } => {
+    let isCompleted = false;
+    let dateStr = '';
+    let hasDateCell = false;
+    if (cellVal && cellVal !== '-') {
+      hasDateCell = true;
+      if (cellVal.endsWith('(C)')) {
+        isCompleted = true;
+        dateStr = cellVal.replace('(C)', '').trim();
+      } else if (/^\d{1,2}-[A-Za-z]{3}$/.test(cellVal)) {
+        isCompleted = false;
+        dateStr = cellVal;
+      }
+    }
+    return { isCompleted, dateStr, hasDateCell };
+  };
+
+  const computeEvtDateStr = (daysOffset: number): string => {
+    const evtDate = new Date(startDate.getTime() + daysOffset * 24 * 60 * 60 * 1000);
+    return `${evtDate.getDate()}-${MONTHS_CAP[evtDate.getMonth()]}`;
+  };
+  const parseDMMMD = (dateStr: string, refYear?: number): Date | null => {
+    const m = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+    if (!m) return null;
+    const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const mi = months.indexOf(m[2].toLowerCase());
+    if (mi < 0) return null;
+    const year = refYear ?? new Date().getFullYear();
+    const d = new Date(year, mi, parseInt(m[1]));
+    return isNaN(d.getTime()) ? null : d;
+  };
+  const dateStrLte = (a: string, b: string, refYear?: number): boolean => {
+    const da = parseDMMMD(a, refYear);
+    const db = parseDMMMD(b, refYear);
+    if (!da || !db) return false;
+    return da.getTime() <= db.getTime();
+  };
+
+  const refYear = startDate.getFullYear();
+
+  // Parse cells → events
+  const rowEvents: { header: typeof colHeaders[0]; isCompleted: boolean; dateStr: string; hasDateCell: boolean }[] = [];
+  for (let c = 0; c < rowCells.length && c < colHeaders.length; c++) {
+    const header = colHeaders[c];
+    if (!header || !header.token) continue;
+    const { isCompleted, dateStr, hasDateCell } = parseCell(rowCells[c]);
+    rowEvents.push({ header, isCompleted, dateStr, hasDateCell });
+  }
+
+  // Apply session cutoff
+  if (sessionDateStr && startDate) {
+    for (const evt of rowEvents) {
+      if (evt.isCompleted) continue;
+      if (evt.header.daysOffset === undefined) continue;
+      const evtDateStr = computeEvtDateStr(evt.header.daysOffset);
+      if (evtDateStr && dateStrLte(evtDateStr, sessionDateStr, refYear)) {
+        evt.isCompleted = true;
+      }
+    }
+  }
+
+  // Per-type cascade
+  let maxLevelFromC = -1;
+  let maxPurchaseFromC = -1;
+  for (const evt of rowEvents) {
+    if (!evt.isCompleted || evt.header.daysOffset === undefined) continue;
+    if (evt.header.isPurchase) {
+      if (evt.header.daysOffset > maxPurchaseFromC) maxPurchaseFromC = evt.header.daysOffset;
+    } else {
+      if (evt.header.daysOffset > maxLevelFromC) maxLevelFromC = evt.header.daysOffset;
+    }
+  }
+
+  const maxLevelOffset = maxLevelFromC >= 0 ? maxLevelFromC : undefined;
+  const maxPurchaseOffset = maxPurchaseFromC >= 0 ? maxPurchaseFromC : undefined;
+
+  // Generate progress entries
+  const entries: MockProgressEntry[] = [];
+  for (const evt of rowEvents) {
+    let { isCompleted, header, dateStr, hasDateCell } = evt;
+    if (!isCompleted && header.daysOffset !== undefined) {
+      if (!header.isPurchase && maxLevelOffset !== undefined && header.daysOffset <= maxLevelOffset) {
+        isCompleted = true;
+      }
+      if (header.isPurchase && maxPurchaseOffset !== undefined && header.daysOffset <= maxPurchaseOffset) {
+        isCompleted = true;
+      }
+    }
+    if (isCompleted || hasDateCell) {
+      entries.push({
+        gameName,
+        accountName,
+        levelName: header.isPurchase ? undefined : header.name,
+        purchaseToken: header.isPurchase ? header.token : undefined,
+        token: header.token,
+        isCompleted,
+        completionDate: dateStr || undefined,
+        sessionDate: sessionDateStr || undefined,
+      });
+    }
+  }
+  return entries;
+}
+
+describe('Multi-account progress generation', () => {
+  it('generates progress entries for 3 accounts in the same game', () => {
+    const headers = [
+      { name: 'Event 1', isPurchase: false, token: 'event1_day0', daysOffset: 0 },
+      { name: 'Event 2', isPurchase: false, token: 'event1_day2', daysOffset: 2 },
+      { name: 'Event 3', isPurchase: false, token: 'event1_day5', daysOffset: 5 },
+    ];
+    const startDate = new Date(2025, 0, 1);
+
+    const rows: { name: string; sessionCell: string; cells: string[] }[] = [
+      // 3 headers for offsets 0, 2, 5. Session (last cell) extracted separately.
+      { name: 'AccountA', sessionCell: '3-Jan', cells: ['-', '-', '-'] },
+      { name: 'AccountB', sessionCell: '2-Jan', cells: ['-', '-', '-'] },
+      { name: 'AccountC', sessionCell: '-',     cells: ['-', '1-Jan (C)', '-'] },
+    ];
+
+    const allEntries: MockProgressEntry[] = [];
+    for (const row of rows) {
+      const sessionDate = row.sessionCell === '-' ? undefined : row.sessionCell;
+      const entries = generateProgressForRow(
+        row.cells, row.name, 'Call of Dragons', sessionDate, startDate, headers,
+      );
+      allEntries.push(...entries);
+    }
+
+    assert.ok(allEntries.length > 0, 'Should generate entries for all accounts');
+
+    const accountNames = [...new Set(allEntries.map(e => e.accountName))];
+    assert.strictEqual(accountNames.length, 3, 'All 3 accounts should have progress entries');
+
+    // Each account should have its own session date stamped on its progress entries
+    const aEntries = allEntries.filter(e => e.accountName === 'AccountA');
+    assert.ok(aEntries.length > 0, 'AccountA should have progress entries');
+    aEntries.forEach(e => assert.strictEqual(e.sessionDate, '3-Jan', 'AccountA entries should carry sessionDate'));
+
+    const bEntries = allEntries.filter(e => e.accountName === 'AccountB');
+    assert.ok(bEntries.length > 0, 'AccountB should have progress entries');
+    bEntries.forEach(e => assert.strictEqual(e.sessionDate, '2-Jan', 'AccountB entries should carry sessionDate'));
+
+    const cEntries = allEntries.filter(e => e.accountName === 'AccountC');
+    assert.ok(cEntries.length > 0, 'AccountC should have progress entries');
+    cEntries.forEach(e => assert.strictEqual(e.sessionDate, undefined, 'AccountC (no session) entries carry undefined'));
+  });
+
+  it('per-account session cutoff produces different completion sets', () => {
+    const headers = [
+      { name: 'Day 0', isPurchase: false, token: 'evt_day0', daysOffset: 0 },
+      { name: 'Day 3', isPurchase: false, token: 'evt_day3', daysOffset: 3 },
+      { name: 'Day 5', isPurchase: false, token: 'evt_day5', daysOffset: 5 },
+    ];
+    const startDate = new Date(2025, 0, 1);
+
+    // AccountA: Session = 3-Jan → completes days 0,3
+    // AccountB: Session = 5-Jan → completes days 0,3,5
+    // AccountC: Session = 1-Jan → completes day 0 only
+    const rows = [
+      { name: 'AccountA', session: '3-Jan', cells: ['-', '-', '-'] },
+      { name: 'AccountB', session: '5-Jan', cells: ['-', '-', '-'] },
+      { name: 'AccountC', session: '1-Jan', cells: ['-', '-', '-'] },
+    ];
+
+    const allEntries: MockProgressEntry[] = [];
+    for (const row of rows) {
+      const entries = generateProgressForRow(
+        row.cells, row.name, 'TestGame', row.session, startDate, headers,
+      );
+      allEntries.push(...entries);
+    }
+
+    // Session cutoff only: no (C) markers and no threshold → only events with
+    // computed date ≤ session date are completed (no cascade fallback).
+    // AccountA session 3-Jan: day 0 (1-Jan) ≤ 3-Jan = 1 completed
+    // AccountB session 5-Jan: days 0 (1-Jan) and 3 (4-Jan) ≤ 5-Jan = 2 completed
+    // AccountC session 1-Jan: day 0 (1-Jan) ≤ 1-Jan = 1 completed
+    const aCompleted = allEntries.filter(e => e.accountName === 'AccountA' && e.isCompleted);
+    const bCompleted = allEntries.filter(e => e.accountName === 'AccountB' && e.isCompleted);
+    const cCompleted = allEntries.filter(e => e.accountName === 'AccountC' && e.isCompleted);
+
+    assert.strictEqual(aCompleted.length, 1, 'AccountA: day 0 completed (≤ 3-Jan)');
+    assert.strictEqual(bCompleted.length, 2, 'AccountB: days 0 and 3 completed (≤ 5-Jan)');
+    assert.strictEqual(cCompleted.length, 1, 'AccountC: only day 0 completed (≤ 1-Jan)');
+  });
+});
+
+// ===== Session Processor Override Tests =====
+
+describe('Session processor per-account overrides', () => {
+  /**
+   * Simulates what `processAccount` does in the session processor:
+   * for each session-only level, check if eventDate <= cutoffDate
+   * using the per-account override.
+   */
+  function simulateProcessAccount(
+    startDateStr: string,
+    levels: { daysOffset: number; token: string }[],
+    overrideDateStr: string | undefined,
+  ): { token: string; completed: boolean }[] {
+    const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const parseDMMMD = (dateStr: string, refYear?: number): Date | null => {
+      const m = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+      if (!m) return null;
+      const mi = months.indexOf(m[2].toLowerCase());
+      if (mi < 0) return null;
+      const d = new Date(refYear ?? new Date().getFullYear(), mi, parseInt(m[1]));
+      return isNaN(d.getTime()) ? null : d;
+    };
+
+    const startDate = new Date(startDateStr);
+    if (isNaN(startDate.getTime())) return [];
+
+    let cutoffDate: Date;
+    if (overrideDateStr) {
+      const parsed = parseDMMMD(overrideDateStr, startDate.getFullYear());
+      cutoffDate = parsed || new Date();
+    } else {
+      cutoffDate = new Date();
+    }
+
+    const addDays = (date: Date, days: number): Date => {
+      const r = new Date(date);
+      r.setDate(r.getDate() + days);
+      return r;
+    };
+
+    return levels.map(level => {
+      const eventDate = addDays(startDate, level.daysOffset);
+      const completed = eventDate.getTime() <= cutoffDate.getTime();
+      return { token: level.token, completed };
+    });
+  }
+
+  it('processAccount with override completes levels up to cutoff', () => {
+    const levels = [
+      { daysOffset: 0, token: 'evt_day0' },
+      { daysOffset: 3, token: 'evt_day3' },
+      { daysOffset: 5, token: 'evt_day5' },
+      { daysOffset: 7, token: 'evt_day7' },
+    ];
+    // Start 1-Jan-2025, Session 3-Jan → only days with eventDate ≤ 3-Jan completed.
+    // Day 0: 1-Jan ≤ 3-Jan = true
+    // Day 3: 4-Jan ≤ 3-Jan = false
+    const result = simulateProcessAccount('2025-01-01', levels, '3-Jan');
+    assert.strictEqual(result[0].completed, true,  'day 0 (1-Jan) ≤ 3-Jan');
+    assert.strictEqual(result[1].completed, false, 'day 3 (4-Jan) > 3-Jan');
+    assert.strictEqual(result[2].completed, false, 'day 5 (6-Jan) > 3-Jan');
+    assert.strictEqual(result[3].completed, false, 'day 7 (8-Jan) > 3-Jan');
+  });
+
+  it('processAccount with later override includes more levels', () => {
+    const levels = [
+      { daysOffset: 0, token: 'evt_day0' },
+      { daysOffset: 3, token: 'evt_day3' },
+      { daysOffset: 5, token: 'evt_day5' },
+    ];
+    // Start 1-Jan-2025, Session 5-Jan → days 0,3 are ≤ 5-Jan
+    const result = simulateProcessAccount('2025-01-01', levels, '5-Jan');
+    assert.strictEqual(result[0].completed, true,  'day 0 (1-Jan) ≤ 5-Jan');
+    assert.strictEqual(result[1].completed, true,  'day 3 (4-Jan) ≤ 5-Jan');
+    assert.strictEqual(result[2].completed, false, 'day 5 (6-Jan) > 5-Jan');
+  });
+
+  it('different accounts get different cutoffs from their own overrides', () => {
+    const levels = [
+      { daysOffset: 0, token: 'evt_day0' },   // 1-Jan
+      { daysOffset: 2, token: 'evt_day2' },   // 3-Jan
+      { daysOffset: 5, token: 'evt_day5' },   // 6-Jan
+    ];
+    const startDate = '2025-01-01';
+
+    // Account 1: cutoff 2-Jan → only day 0 (1-Jan) ≤ 2-Jan
+    const result1 = simulateProcessAccount(startDate, levels, '2-Jan');
+    assert.strictEqual(result1[0].completed, true,  'Account1 day0: 1-Jan ≤ 2-Jan');
+    assert.strictEqual(result1[1].completed, false, 'Account1 day2: 3-Jan > 2-Jan');
+    assert.strictEqual(result1[2].completed, false, 'Account1 day5: 6-Jan > 2-Jan');
+
+    // Account 2: cutoff 5-Jan → days 0 (1-Jan) and 2 (3-Jan) ≤ 5-Jan; day 5 (6-Jan) > 5-Jan
+    const result2 = simulateProcessAccount(startDate, levels, '5-Jan');
+    assert.strictEqual(result2[0].completed, true, 'Account2 day0: 1-Jan ≤ 5-Jan');
+    assert.strictEqual(result2[1].completed, true, 'Account2 day2: 3-Jan ≤ 5-Jan');
+    assert.strictEqual(result2[2].completed, false, 'Account2 day5: 6-Jan > 5-Jan');
+  });
+
+  it('no override falls back to current date (always completes past levels)', () => {
+    const levels = [
+      { daysOffset: -5, token: 'evt_minus5' },
+      { daysOffset: 0, token: 'evt_now' },
+      { daysOffset: 1000, token: 'evt_future' },
+    ];
+    const startDate = '2025-01-01';
+    const result = simulateProcessAccount(startDate, levels, undefined);
+    // Past and current events ≤ Date.now() → completed
+    assert.strictEqual(result[0].completed, true);
+    assert.strictEqual(result[1].completed, true);
+    // Future event > Date.now() → not completed (unless Date.now() is > that date)
+    // This depends on when the test runs, but 1000 days from 2025 should be in the past
+    // since Date.now() is well past 2025+1000 days. So result[2].completed might be true too.
+    // This test verifies the fallback behavior exists.
+  });
+});

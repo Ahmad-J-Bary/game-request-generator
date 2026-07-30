@@ -40,6 +40,7 @@ export interface ImportData {
     token: string;
     isCompleted: boolean;
     completionDate?: string;
+    sessionDate?: string;
   }[];
   fullCompletionUpToDate?: string;
   completedToday?: any[];
@@ -118,7 +119,7 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
 
       if (!sheet) continue;
 
-      let gameName = sheetName;
+      let gameName = sheetName.trim();
       if (sheetName.endsWith('_Lvl')) {
         gameName = sheetName.substring(0, sheetName.length - 4);
         const levelsData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
@@ -291,15 +292,16 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
               }
 
               if (isCompleted || hasDateCell) {
-                result.progress.push({
-                  gameName,
-                  accountName,
-                  levelName: header.isPurchase ? undefined : header.name,
-                  purchaseToken: header.isPurchase ? header.token : undefined,
-                  token: header.token,
-                  isCompleted,
-                  completionDate: dateStr || undefined
-                });
+                  result.progress.push({
+                    gameName,
+                    accountName,
+                    levelName: header.isPurchase ? undefined : header.name,
+                    purchaseToken: header.isPurchase ? header.token : undefined,
+                    token: header.token,
+                    isCompleted,
+                    completionDate: dateStr || undefined,
+                    sessionDate: sessionDateStr || undefined,
+                  });
               }
             }
           }

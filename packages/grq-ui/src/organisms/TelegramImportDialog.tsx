@@ -33,6 +33,7 @@ import { TauriService } from '@grq/core/services/tauri.service';
 import { TelegramImportPreview, Game, GameBranch, TelegramConfig } from '@grq/api-bindings';
 import { cn } from '@grq/ui/lib/utils';
 import { asyncStorageService } from '@grq/core/services/storage.service';
+import { applySessionCompletionForGame } from '@grq/core/services/excel/excel-session-processor';
 
 interface TelegramImportDialogProps {
   open: boolean;
@@ -264,6 +265,8 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         request_template: content,
         country: selectedCountry,
       });
+
+      applySessionCompletionForGame(parseInt(selectedGameId)).catch(() => {});
 
       // 3. Update offset to mark as processed
       await TauriService.updateTelegramOffset(selectedImport.update_id);
