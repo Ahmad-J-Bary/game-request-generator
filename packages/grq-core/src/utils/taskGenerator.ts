@@ -259,7 +259,7 @@ export class TaskGenerator {
             } else if (matchingPurchase) {
               const rawType = req.request_type as string;
 
-              req.level_name = "$$$";
+              req.level_name = (matchingPurchase as any).level_name || "$$$";
               req.level_id = matchingPurchase.id;
               req.days_offset = matchingPurchase.days_offset;
               req.request_type =

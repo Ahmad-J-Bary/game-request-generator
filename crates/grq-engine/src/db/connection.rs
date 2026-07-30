@@ -284,6 +284,9 @@ impl Database {
         if !column_exists("purchase_events", "created_at")? {
             tx.execute("ALTER TABLE purchase_events ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP", [])?;
         }
+        if !column_exists("purchase_events", "level_name")? {
+            tx.execute("ALTER TABLE purchase_events ADD COLUMN level_name TEXT NOT NULL DEFAULT ''", [])?;
+        }
         if !column_exists("levels", "is_bonus")? {
             tx.execute(
                 "ALTER TABLE levels ADD COLUMN is_bonus INTEGER NOT NULL DEFAULT 0",

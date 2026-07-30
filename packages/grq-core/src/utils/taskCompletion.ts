@@ -40,6 +40,7 @@ export function formatTaskLevelName(
   levelName: string | undefined | null,
   isPurchase: boolean,
 ): string {
+  if (levelName && levelName.trim()) return levelName.trim();
   if (isPurchase) return '$$$';
   if (!levelName) return '-';
   const trimmed = levelName.trim();
@@ -491,7 +492,7 @@ export class TaskCompletionHandler {
             "Unknown",
           eventToken: request.event_token!,
           durationMs: request.time_spent || computeTaskDuration(1000),
-          levelName: request.level_name || "$$$",
+          levelName: request.level_name,
           requestType: finalRequestType,
           isPurchase: true,
         });

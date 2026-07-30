@@ -1187,7 +1187,7 @@ function BranchSection({
         kind: "purchase" as const,
         id: p.id,
         token: p.event_token,
-        name: "$$$",
+        name: p.level_name || "$$$",
         isRestricted: p.is_restricted ?? false,
         daysOffset: day != null ? day : null,
         timeSpent: midpointTime,

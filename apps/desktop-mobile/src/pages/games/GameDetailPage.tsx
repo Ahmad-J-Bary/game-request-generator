@@ -246,6 +246,7 @@ export default function GameDetailPage({
           // Check if purchase event was modified
           if (
             originalEvent.event_token !== editedEvent.event_token ||
+            originalEvent.level_name !== editedEvent.level_name ||
             originalEvent.is_restricted !== editedEvent.is_restricted ||
             originalEvent.max_days_offset !== editedEvent.max_days_offset ||
             originalEvent.days_offset !== editedEvent.days_offset
@@ -253,6 +254,7 @@ export default function GameDetailPage({
             await TauriService.updatePurchaseEvent({
               id: editedEvent.id,
               event_token: editedEvent.event_token,
+              level_name: editedEvent.level_name,
               is_restricted: editedEvent.is_restricted,
               max_days_offset: editedEvent.max_days_offset,
               days_offset: editedEvent.days_offset,
@@ -451,7 +453,7 @@ export default function GameDetailPage({
             kind: "purchase" as const,
             id: p.id,
             token: p.event_token,
-            name: "$$$",
+            name: p.level_name || "$$",
             daysOffset: daysOffsetValue,
             maxDaysOffset:
               p.max_days_offset != null ? String(p.max_days_offset) : null,
@@ -529,7 +531,7 @@ export default function GameDetailPage({
             kind: "purchase" as const,
             id: p.id,
             token: p.event_token,
-            name: "$$$",
+            name: p.level_name || "$$",
             daysOffset: daysOffsetValue,
             maxDaysOffset: p.max_days_offset != null ? String(p.max_days_offset) : null,
             isRestricted: !!p.is_restricted,
@@ -985,7 +987,7 @@ function GameBranchSection({
         kind: "purchase" as const,
         id: p.id,
         token: p.event_token,
-        name: "$$$",
+        name: p.level_name || "$$$",
         daysOffset: day != null ? day : null,
         maxDaysOffset:
           p.max_days_offset != null ? String(p.max_days_offset) : null,
@@ -1148,6 +1150,7 @@ function GameBranchSection({
 
   const handleAddPurchaseEvent = async (data: {
     event_token: string;
+    level_name: string;
     days_offset: number;
     max_days_offset: number | null;
     is_restricted: boolean;

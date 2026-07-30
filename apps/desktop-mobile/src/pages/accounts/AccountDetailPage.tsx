@@ -759,7 +759,7 @@ export default function AccountDetailPage() {
         kind: "purchase" as const,
         id: p.id,
         token: p.event_token,
-        name: "$$$",
+        name: p.level_name || "$$$",
         daysOffset: day,
         displayDaysOffset,
         maxDaysOffset:

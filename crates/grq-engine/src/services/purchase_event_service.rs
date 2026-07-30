@@ -32,13 +32,15 @@ impl PurchaseEventService {
             return Err(format!("Branch with ID {} not found", request.branch_id));
         }
 
+        let level_name = request.level_name.unwrap_or_default();
         conn.execute(
-            "INSERT INTO purchase_events (game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO purchase_events (game_id, branch_id, event_token, level_name, is_restricted, max_days_offset, days_offset)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 request.game_id,
                 request.branch_id,
                 request.event_token,
+                level_name,
                 if request.is_restricted { 1 } else { 0 },
                 request.max_days_offset,
                 request.days_offset,
@@ -56,7 +58,7 @@ impl PurchaseEventService {
     ) -> Result<Vec<PurchaseEvent>, String> {
         let mut stmt = conn
             .prepare(
-                "SELECT id, game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset, created_at
+                "SELECT id, game_id, branch_id, event_token, level_name, is_restricted, max_days_offset, days_offset, created_at
                  FROM purchase_events WHERE branch_id = ?1 ORDER BY id",
             )
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
@@ -68,10 +70,11 @@ impl PurchaseEventService {
                     game_id: row.get(1)?,
                     branch_id: row.get(2).ok(),
                     event_token: row.get(3)?,
-                    is_restricted: row.get::<_, i32>(4)? != 0,
-                    max_days_offset: row.get(5).ok(),
-                    days_offset: row.get(6).ok(),
-                    created_at: row.get(7).ok(),
+                    level_name: row.get::<_, String>(4).unwrap_or_default(),
+                    is_restricted: row.get::<_, i32>(5)? != 0,
+                    max_days_offset: row.get(6).ok(),
+                    days_offset: row.get(7).ok(),
+                    created_at: row.get(8).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query purchase events: {}", e))?;
@@ -90,7 +93,7 @@ impl PurchaseEventService {
         id: i64,
     ) -> Result<Option<PurchaseEvent>, String> {
         conn.query_row(
-            "SELECT id, game_id, branch_id, event_token, is_restricted, max_days_offset, days_offset, created_at 
+            "SELECT id, game_id, branch_id, event_token, level_name, is_restricted, max_days_offset, days_offset, created_at 
              FROM purchase_events WHERE id = ?1",
             params![id],
             |row| {
@@ -99,10 +102,11 @@ impl PurchaseEventService {
                     game_id: row.get(1)?,
                     branch_id: row.get(2).ok(),
                     event_token: row.get(3)?,
-                    is_restricted: row.get::<_, i32>(4)? != 0,
-                    max_days_offset: row.get(5).ok(),
-                    days_offset: row.get(6).ok(),
-                    created_at: row.get(7).ok(),
+                    level_name: row.get::<_, String>(4).unwrap_or_default(),
+                    is_restricted: row.get::<_, i32>(5)? != 0,
+                    max_days_offset: row.get(6).ok(),
+                    days_offset: row.get(7).ok(),
+                    created_at: row.get(8).ok(),
                 })
             },
         )
@@ -121,6 +125,11 @@ impl PurchaseEventService {
         if let Some(event_token) = request.event_token {
             updates.push("event_token = ?");
             values.push(Box::new(event_token));
+        }
+
+        if let Some(level_name) = request.level_name {
+            updates.push("level_name = ?");
+            values.push(Box::new(level_name));
         }
 
         if let Some(is_restricted) = request.is_restricted {
