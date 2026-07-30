@@ -395,12 +395,37 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
         // Import progress (completion status) - using matrix completion markers
         for (const p of importResult.imported.progress) {
           try {
-            const ids = await getOrCreateGameAndBranch(p.gameName);
+            const ids = await getOrCreateGameAndBranch(p.gameName, (p as any).branchName);
             if (!ids) continue;
-            const { targetGameId: gid } = ids;
+            const { targetGameId: gid, targetBranchId: bid } = ids;
             
-            const aid = accountCache[`${gid}_${p.accountName.toLowerCase()}`];
-            if (!aid) continue;
+            let aid = accountCache[`${gid}_${p.accountName.toLowerCase()}`];
+            if (!aid) {
+              // Fallback: search imported accounts list and create account on the fly
+              const matchedAcc = importResult.imported.accounts.find((a: any) =>
+                (a as any).gameName === p.gameName &&
+                a.name?.toLowerCase() === p.accountName.toLowerCase()
+              );
+              if (matchedAcc) {
+                const lowerAccName = matchedAcc.name?.toLowerCase() || '';
+                aid = accountCache[`${gid}_${lowerAccName}`];
+                if (!aid) {
+                  console.warn('ImportProgress: creating missing account on the fly', p.accountName, p.gameName);
+                  aid = await TauriService.addAccount({
+                    ...matchedAcc,
+                    game_id: gid,
+                    branch_id: bid,
+                    request_template: matchedAcc.request_template || 'Needs to be filled in - imported from Excel export',
+                    country: (matchedAcc as any).country || 'UNITED STATES (US)',
+                  } as any);
+                  accountCache[`${gid}_${lowerAccName}`] = aid;
+                  importedCount++;
+                }
+              } else {
+                console.warn('ImportProgress: account not found for progress entry', p.accountName, p.gameName);
+                continue;
+              }
+            }
 
             // Use token for matching instead of name
             const lowerToken = p.token.toLowerCase();
@@ -412,7 +437,27 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
             );
 
             if (p.levelName !== undefined) {
-              const lid = levelCache[`${gid}_${lowerToken}`];
+              let lid = levelCache[`${gid}_${lowerToken}_Session Only`];
+              if (!lid && p.levelName === '-') {
+                // Session Only level not in cache — create it on the fly
+                const gameLevels = await TauriService.getGameLevels(bid);
+                const existing = gameLevels.find(l => l.event_token?.toLowerCase() === lowerToken);
+                if (existing) {
+                  lid = existing.id;
+                } else {
+                  const dayMatch = p.token.match(/_day(-?\d+)$/);
+                  lid = await TauriService.addLevel({
+                    game_id: gid,
+                    branch_id: bid,
+                    level_name: '-',
+                    event_token: p.token,
+                    days_offset: dayMatch ? parseInt(dayMatch[1]) : 0,
+                    time_spent: 0,
+                    is_bonus: false,
+                  } as any);
+                }
+                levelCache[`${gid}_${lowerToken}_Session Only`] = lid;
+              }
               if (lid) {
                 try {
                   await TauriService.createLevelProgress({
@@ -427,9 +472,19 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
                 });
               }
             } else if (p.purchaseToken !== undefined) {
-              const peid = purchaseCache[`${gid}_${lowerToken}`];
+              const peid = purchaseCache[`${gid}_${lowerToken}_Purchase Event`];
               if (peid) {
                 let calculatedDaysOffset = 0;
+                
+                // Fall back to purchase event's days_offset if no completion date
+                if (!p.completionDate) {
+                  const importedPe = importResult.imported.purchaseEvents.find(
+                    (pe: any) => pe.event_token?.toLowerCase() === lowerToken
+                  );
+                  if (importedPe && importedPe.days_offset != null) {
+                    calculatedDaysOffset = importedPe.days_offset;
+                  }
+                }
                 
                 // Calculate days_offset if completion date is provided
                 if (p.completionDate && accountInfo?.start_date) {

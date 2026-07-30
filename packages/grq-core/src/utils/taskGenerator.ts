@@ -1,10 +1,8 @@
-// src/utils/taskGenerator.ts
-// @ts-nocheck
 import { TauriService } from "@grq/core/services/tauri.service";
 import { calculateFirstRequestAllowedTime } from "./daily-tasks.utils";
-import { calculateTimerState } from "./timer.utils";
-import type { DailyRequestsResponse } from "@grq/api-bindings";
 import type {
+  Account,
+  DailyRequestsResponse,
   DailyTask,
   GameBatch,
   AccountCompletionRecord,
@@ -58,7 +56,7 @@ export class TaskGenerator {
     const statesOrder = ["FLORIDA", "CALIFORNIA", "TEXAS", "New York", "UK"];
 
     // 1. Get all accounts and group them by state
-    const allAccounts = await TauriService.getAllAccounts();
+    const allAccounts: Account[] = await TauriService.getAllAccounts();
     const stateGroups: { [state: string]: Account[] } = {};
 
     for (const acc of allAccounts) {
@@ -77,7 +75,6 @@ export class TaskGenerator {
 
     const allBatches: GameBatch[] = [];
     const globalDeferredTasks: DailyTask[] = [];
-    let batchIndex = 0;
     const scheduledTimes: { [accountId: number]: number[] } = {};
     const pendingStartStates: { [accountId: number]: AccountStartState } = {};
     const pendingAssignments: { [accountId: number]: AccountTaskAssignment[] } =

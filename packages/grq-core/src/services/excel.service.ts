@@ -3,7 +3,6 @@
 
 import XLSX from 'xlsx-js-style';
 import { TauriService } from './tauri.service';
-import { asyncStorageService } from './storage.service';
 import type { Game, Account, Level, PurchaseEvent, CompletedDailyTask } from '@grq/api-bindings';
 import type { ColorSettings } from '@grq/ui/contexts/SettingsContext';
 
@@ -426,8 +425,12 @@ export class ExcelService {
           col.kind === 'level' ? (col.timeSpent !== null && col.timeSpent !== undefined ? col.timeSpent.toString() : '-') : '-',
         ];
 
-        accounts.forEach((_acc, accIdx) => {
-          row.push(matrix[accIdx][colIdx]);
+        accounts.forEach((acc, accIdx) => {
+          const dateVal = matrix[accIdx][colIdx];
+          const progressKey = `${acc.id}_${col.id}`;
+          const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
+          const isCompleted = progress?.is_completed ?? false;
+          row.push(isCompleted ? `${dateVal} (C)` : dateVal);
         });
         wsData.push(row);
       });
@@ -687,13 +690,13 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Export all games data with matrix layout
-   * Each game gets 3 sheets: accounts progress, levels definitions, and events definitions
-   */
-  static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', excludeMetadata: boolean = false): Promise<boolean> {
+   /**
+    * Export all games data to Excel
+    * Each game gets 1 sheet: accounts progress matrix
+    */
+  static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<boolean> {
     try {
-      const buffer = await this.generateAllGamesBuffer(layout, colorSettings, theme, mode, excludeMetadata);
+      const buffer = await this.generateAllGamesBuffer(layout, colorSettings, theme, mode);
       if (!buffer) return false;
       return await this.saveFile('All_Games.xlsx', buffer);
     } catch (error) {
@@ -705,9 +708,9 @@ export class ExcelService {
   /**
    * Generates the Excel workbook buffer for all games
    */
-  static async generateAllGamesBuffer(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', excludeMetadata: boolean = false): Promise<any> {
+  static async generateAllGamesBuffer(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<any> {
     try {
-      const workbook = await this.generateAllGamesWorkbook(layout, colorSettings, theme, mode, excludeMetadata);
+      const workbook = await this.generateAllGamesWorkbook(layout, colorSettings, theme, mode);
       if (!workbook) return null;
       return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     } catch (error) {
@@ -719,7 +722,7 @@ export class ExcelService {
   /**
    * Internal logic to generate the workbook object for all games
    */
-  private static async generateAllGamesWorkbook(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', excludeInfoSheets: boolean = false): Promise<any> {
+  private static async generateAllGamesWorkbook(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<any> {
     try {
       const games = await TauriService.getGames();
       const workbook = XLSX.utils.book_new();
@@ -732,11 +735,9 @@ export class ExcelService {
         let masterWsData: any[][] = [];
         let masterMerges: any[] = [];
         let masterCols: any[] = [];
-        const allGameLevels: Level[] = [];
-        const allGamePurchaseEvents: PurchaseEvent[] = [];
         const taskHistory = await TauriService.getTaskHistory();
 
-        // Truncate base name to allow for _Lvl and _Evt suffixes (max 31 total)
+        // Truncate base name to fit within Excel 31-char sheet name limit
         const sheetBaseName = game.name.substring(0, 27);
 
         // Fetch all accounts once and filter branches that have accounts
@@ -751,10 +752,6 @@ export class ExcelService {
             TauriService.getGameLevels(branch.id),
             TauriService.getGamePurchaseEvents(branch.id)
           ]);
-
-          // Collect unique levels/events for definition sheets
-          levels.forEach(l => { if (!allGameLevels.find(xl => xl.id === l.id)) allGameLevels.push(l); });
-          purchaseEvents.forEach(pe => { if (!allGamePurchaseEvents.find(xpe => xpe.id === pe.id)) allGamePurchaseEvents.push(pe); });
 
           // Sort accounts by date (oldest to newest)
           const sortedAccounts = this.sortAccountsByDate(accounts);
@@ -876,90 +873,7 @@ export class ExcelService {
 
         XLSX.utils.book_append_sheet(workbook, accountsWorksheet, sheetBaseName);
 
-        // 2. Create Levels sheet
-        if (allGameLevels.length > 0) {
-          const levelHeaders = ['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)', 'Bonus'];
-          const levelRows = allGameLevels.map(level => [
-            level.event_token,
-            level.level_name,
-            level.days_offset,
-            level.time_spent,
-            level.is_bonus ? 'Yes' : 'No'
-          ]);
-          if (!excludeInfoSheets) {
-            const levelSheet = XLSX.utils.aoa_to_sheet([levelHeaders, ...levelRows]);
-            XLSX.utils.book_append_sheet(workbook, levelSheet, `${sheetBaseName}_Lvl`);
-          }
-        }
-
-        // 3. Create Purchase Events sheet
-        if (allGamePurchaseEvents.length > 0 && !excludeInfoSheets) {
-          const purchaseHeaders = ['Event Token', 'Restricted', 'Max Days Offset'];
-          const purchaseRows = allGamePurchaseEvents.map(event => [
-            event.event_token,
-            event.is_restricted ? 'Yes' : 'No',
-            event.max_days_offset
-          ]);
-          const purchaseSheet = XLSX.utils.aoa_to_sheet([purchaseHeaders, ...purchaseRows]);
-          XLSX.utils.book_append_sheet(workbook, purchaseSheet, `${sheetBaseName}_Evt`);
-        }
       }
-
-      if (excludeInfoSheets) {
-          return workbook;
-      }
-
-      // 4. Create Completion Info sheet
-      const now = new Date();
-      const todayString = now.toISOString().split('T')[0];
-      
-      // Yesterday calculation
-      const yesterday = new Date(now);
-      yesterday.setDate(now.getDate() - 1);
-      const yesterdayString = yesterday.toISOString().split('T')[0];
-
-      const completedKey = `dailyTasks_completed_${todayString}`;
-      const existingCompleted = await asyncStorageService.get<any[]>(completedKey);
-      const todayCompletions = existingCompleted ? existingCompleted : [];
-
-      const infoRows = [
-        ['Field', 'Value', 'Description'],
-        ['Full Completion Up To Date', yesterdayString, 'All items before or on this date will be marked completed upon import (YYYY-MM-DD)'],
-        [''],
-        ['--- Completed Today Records ---'],
-        ['ID', 'Account Name', 'Game Name', 'Event Token', 'Level Name', 'Time Spent', 'Completion Time', 'Completion Date', 'Level ID', 'Request Type', 'Is Purchase']
-      ];
-
-      todayCompletions.forEach((c: any) => {
-        // Format timestamp to HH:mm:ss AM/PM
-        let formattedTime = '';
-        if (c.completionTime) {
-          const date = new Date(c.completionTime);
-          formattedTime = date.toLocaleTimeString('en-US', { 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit', 
-            hour12: true 
-          });
-        }
-
-        infoRows.push([
-          c.id,
-          c.accountName,
-          c.gameName,
-          c.eventToken,
-          c.levelName || '-',
-          c.timeSpent,
-          formattedTime,
-          c.completionDate,
-          c.levelId || '',
-          c.requestType || '',
-          c.isPurchase ? 'Yes' : 'No'
-        ]);
-      });
-
-      const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
-      XLSX.utils.book_append_sheet(workbook, infoSheet, 'Completion_Info');
 
       return workbook;
     } catch (error) {

@@ -182,18 +182,33 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
             }
           }
 
-          const colHeaders: { name: string; isPurchase: boolean; token: string }[] = [];
+          const colHeaders: { name: string; isPurchase: boolean; token: string; daysOffset?: number }[] = [];
           for (let col = startCol; col < maxCols; col++) {
             const tokenRaw = matrixData[headerOffset] && matrixData[headerOffset][col] !== undefined && matrixData[headerOffset][col] !== null ? matrixData[headerOffset][col] : '';
             const token = tokenRaw.toString().trim();
             const nameRaw = matrixData[headerOffset + 1] && matrixData[headerOffset + 1][col] !== undefined && matrixData[headerOffset + 1][col] !== null ? matrixData[headerOffset + 1][col] : '';
             const name = nameRaw.toString().trim();
+            const daysOffsetRaw = matrixData[headerOffset + 2] && matrixData[headerOffset + 2][col] !== undefined && matrixData[headerOffset + 2][col] !== null ? matrixData[headerOffset + 2][col] : '';
+            const daysOffsetStr = daysOffsetRaw.toString().trim();
+            const daysOffset = !isNaN(Number(daysOffsetStr)) ? parseInt(daysOffsetStr, 10) : undefined;
             const timeSpentRaw = matrixData[headerOffset + 3] && matrixData[headerOffset + 3][col] !== undefined && matrixData[headerOffset + 3][col] !== null ? matrixData[headerOffset + 3][col] : '';
             const timeSpentStr = timeSpentRaw.toString().trim();
             if (token && token.toLowerCase() !== 'event token') {
-              colHeaders.push({ name, token, isPurchase: name === '$$$' || timeSpentStr === '' || timeSpentStr === '-' });
+              colHeaders.push({ name, token, isPurchase: name === '$$$' || timeSpentStr === '' || timeSpentStr === '-', daysOffset });
             } else {
-              colHeaders.push({ name: '', token: '', isPurchase: false }); // Empty placeholder to align indices
+              colHeaders.push({ name: '', token: '', isPurchase: false, daysOffset: undefined });
+            }
+          }
+
+          // Find Session and Time column positions from account header row
+          let sessionCol = -1;
+          let timeCol = -1;
+          if (accountHeaderRow >= 0 && matrixData[accountHeaderRow]) {
+            const headerRow = matrixData[accountHeaderRow];
+            for (let c = 0; c < headerRow.length; c++) {
+              const cellStr = headerRow[c]?.toString().trim().toLowerCase();
+              if (cellStr === 'session') sessionCol = c;
+              if (cellStr === 'time') timeCol = c;
             }
           }
 
@@ -204,38 +219,147 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
             // Skip Branch rows and header-like rows that appear between branch groups
             if (firstCell.toLowerCase().startsWith('branch:') || firstCell.toLowerCase().includes('event token')) continue;
             const accountName = firstCell;
-            
-            // Note: startCol here relates to the horizontal shift of the overall matrix.
-            // Often Accounts are col 0..3, and progress starts at startCol.
-            for (let col = startCol; col < row.length; col++) {
-              const cellVal = row[col] ? row[col].toString().trim() : '';
-              if (cellVal && cellVal !== '-') {
-                let isCompleted = false;
-                let dateStr = '';
 
+            // Read Time column value for Session/Time inference
+            let timeValue: number | undefined;
+            if (timeCol >= 0 && row.length > timeCol && row[timeCol] !== undefined && row[timeCol] !== null) {
+              const cell = row[timeCol].toString().trim();
+              if (cell !== '-' && cell !== '') {
+                const n = Number(cell);
+                if (!isNaN(n) && isFinite(n)) timeValue = n;
+              }
+            }
+            const completionThreshold = timeValue !== undefined ? Math.round(timeValue / 1000) : undefined;
+
+            // Read Session column date for Session date cutoff
+            let sessionDateStr: string | undefined;
+            if (sessionCol >= 0 && row.length > sessionCol && row[sessionCol] !== undefined && row[sessionCol] !== null) {
+              const cell = row[sessionCol].toString().trim();
+              if (cell !== '-' && cell !== '') sessionDateStr = cell;
+            }
+
+            // Parse account start date from row[1] for date computations
+            let accountStartDate: Date | undefined;
+            if (row[1]) {
+              const raw = row[1].toString().trim();
+              const dashMatch = raw.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+              if (dashMatch) {
+                const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+                const monthIdx = months.indexOf(dashMatch[2].toLowerCase());
+                if (monthIdx >= 0) accountStartDate = new Date(parseInt(dashMatch[3]), monthIdx, parseInt(dashMatch[1]));
+              } else {
+                const d = new Date(raw);
+                if (!isNaN(d.getTime())) accountStartDate = d;
+              }
+            }
+
+            // Helper to compute an event's date string in D-MMM format
+            const computeEventDateStr = (daysOffset: number): string => {
+              if (!accountStartDate) return '';
+              const eventDate = new Date(accountStartDate.getTime() + daysOffset * 24 * 60 * 60 * 1000);
+              const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              return `${eventDate.getDate()}-${months[eventDate.getMonth()]}`;
+            };
+
+            // Helper to compare two D-MMM date strings: returns true if a <= b
+            const dateStrLte = (a: string, b: string): boolean => {
+              if (!a || !b) return false;
+              const parseDMMM = (s: string): Date | null => {
+                const m = s.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+                if (!m) return null;
+                const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+                const mi = months.indexOf(m[2].toLowerCase());
+                if (mi < 0) return null;
+                const year = accountStartDate ? accountStartDate.getFullYear() : new Date().getFullYear();
+                return new Date(year, mi, parseInt(m[1]));
+              };
+              const da = parseDMMM(a);
+              const db = parseDMMM(b);
+              if (!da || !db) return false;
+              return da.getTime() <= db.getTime();
+            };
+
+            // First pass: collect events and detect (C) markers only
+            const rowEvents: {
+              header: typeof colHeaders[0];
+              isCompleted: boolean;
+              dateStr: string;
+              hasDateCell: boolean;
+            }[] = [];
+            for (let col = startCol; col < row.length; col++) {
+              const header = colHeaders[col - startCol];
+              if (!header || !header.token) continue;
+
+              const cellVal = row[col] ? row[col].toString().trim() : '';
+              let isCompleted = false;
+              let dateStr = '';
+              let hasDateCell = false;
+
+              if (cellVal && cellVal !== '-') {
+                hasDateCell = true;
                 if (cellVal.endsWith('(C)')) {
                   isCompleted = true;
                   dateStr = cellVal.replace('(C)', '').trim();
                 } else if (/^\d{1,2}-[A-Za-z]{3}$/.test(cellVal)) {
-                  // It's a date but not completed (scheduled/incomplete with custom offset)
                   isCompleted = false;
                   dateStr = cellVal;
                 }
+              }
 
-                if (dateStr) {
-                  const header = colHeaders[col - startCol];
-                  if (header && header.token) {
-                    result.progress.push({
-                      gameName,
-                      accountName,
-                      levelName: header.isPurchase ? undefined : header.name,
-                      purchaseToken: header.isPurchase ? header.token : undefined,
-                      token: header.token,
-                      isCompleted,
-                      completionDate: dateStr
-                    });
-                  }
+              rowEvents.push({ header, isCompleted, dateStr, hasDateCell });
+            }
+
+            // Apply Session date cutoff: mark all events whose computed date <= sessionDateStr
+            if (sessionDateStr && accountStartDate) {
+              for (const evt of rowEvents) {
+                if (evt.isCompleted) continue;
+                if (evt.header.daysOffset === undefined) continue;
+                const evtDateStr = computeEventDateStr(evt.header.daysOffset);
+                if (evtDateStr && dateStrLte(evtDateStr, sessionDateStr)) {
+                  evt.isCompleted = true;
                 }
+              }
+            }
+
+            // Compute per-type max completed offsets from (C) markers + Session cutoff
+            let maxLevelFromC = -1;
+            let maxPurchaseFromC = -1;
+            for (const evt of rowEvents) {
+              if (!evt.isCompleted || evt.header.daysOffset === undefined) continue;
+              if (evt.header.isPurchase) {
+                if (evt.header.daysOffset > maxPurchaseFromC) maxPurchaseFromC = evt.header.daysOffset;
+              } else {
+                if (evt.header.daysOffset > maxLevelFromC) maxLevelFromC = evt.header.daysOffset;
+              }
+            }
+
+            // If a type has no (C) markers, fall back to completionThreshold
+            const maxLevelOffset = maxLevelFromC >= 0 ? maxLevelFromC : completionThreshold;
+            const maxPurchaseOffset = maxPurchaseFromC >= 0 ? maxPurchaseFromC : completionThreshold;
+
+            // Second pass: cascade per type and push to result
+            for (const evt of rowEvents) {
+              let { isCompleted, header, dateStr, hasDateCell } = evt;
+
+              if (!isCompleted && header.daysOffset !== undefined) {
+                if (!header.isPurchase && maxLevelOffset !== undefined && header.daysOffset <= maxLevelOffset) {
+                  isCompleted = true;
+                }
+                if (header.isPurchase && maxPurchaseOffset !== undefined && header.daysOffset <= maxPurchaseOffset) {
+                  isCompleted = true;
+                }
+              }
+
+              if (isCompleted || hasDateCell) {
+                result.progress.push({
+                  gameName,
+                  accountName,
+                  levelName: header.isPurchase ? undefined : header.name,
+                  purchaseToken: header.isPurchase ? header.token : undefined,
+                  token: header.token,
+                  isCompleted,
+                  completionDate: dateStr || undefined
+                });
               }
             }
           }
@@ -530,13 +654,21 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
 
       if (levelName === '$$$' || timeSpentStr === '-' || timeSpentStr === '') {
         const pe: Partial<PurchaseEvent> = { event_token: eventToken, level_name: levelName !== '$$$' ? levelName : '', is_restricted: false };
-        if (daysOffsetStr.toLowerCase().includes('less than')) {
-          const m = daysOffsetStr.match(/less than (\d+)/i);
-          if (m) pe.max_days_offset = parseInt(m[1], 10);
+        const parenMatch = daysOffsetStr.match(/\((.+?)\s+(\d+)\)\s*$/);
+        if (parenMatch) {
+          const baseVal = parseInt(daysOffsetStr, 10);
+          if (!isNaN(baseVal)) pe.days_offset = baseVal;
+          pe.max_days_offset = parseInt(parenMatch[2], 10);
+          pe.is_restricted = true;
         } else {
-          const d = parseInt(daysOffsetStr, 10);
-          if (!isNaN(d)) pe.max_days_offset = d;
-          else { const n = Number(daysOffsetStr); if (!isNaN(n) && isFinite(n)) pe.max_days_offset = Math.floor(n); }
+          const val = parseInt(daysOffsetStr, 10);
+          if (!isNaN(val)) {
+            pe.days_offset = val;
+            pe.max_days_offset = val;
+          } else {
+            const n = Number(daysOffsetStr);
+            if (!isNaN(n) && isFinite(n)) pe.days_offset = Math.floor(n);
+          }
         }
         (pe as any).branchName = branchName;
         groupEvents.push(pe);
@@ -678,12 +810,18 @@ export function parseHorizontalLayoutData(rows: any[][]): { levels: Partial<Leve
         is_restricted: false,
       };
 
-      if (daysOffsetStr.toLowerCase().includes('less than')) {
-        const match = daysOffsetStr.match(/less than (\d+)/i);
-        if (match) purchaseEvent.max_days_offset = parseInt(match[1]);
+      const parenMatch = daysOffsetStr.match(/\((.+?)\s+(\d+)\)\s*$/);
+      if (parenMatch) {
+        const baseVal = parseInt(daysOffsetStr, 10);
+        if (!isNaN(baseVal)) purchaseEvent.days_offset = baseVal;
+        purchaseEvent.max_days_offset = parseInt(parenMatch[2], 10);
+        purchaseEvent.is_restricted = true;
       } else {
-        const val = parseInt(daysOffsetStr);
-        if (!isNaN(val)) purchaseEvent.max_days_offset = val;
+        const val = parseInt(daysOffsetStr, 10);
+        if (!isNaN(val)) {
+          purchaseEvent.days_offset = val;
+          purchaseEvent.max_days_offset = val;
+        }
       }
       purchaseEvents.push(purchaseEvent);
     } else {
@@ -802,15 +940,17 @@ export function parseVerticalLayoutData(rows: any[][]): { levels: Partial<Level>
           is_restricted: false,
         };
 
-        if (daysOffsetStr && daysOffsetStr.toLowerCase().includes('less than')) {
-          const match = daysOffsetStr.match(/less than (\d+)/i);
-          if (match) {
-            purchaseEvent.max_days_offset = parseInt(match[1]);
-          }
+        const parenMatch = daysOffsetStr.match(/\((.+?)\s+(\d+)\)\s*$/);
+        if (parenMatch) {
+          const baseVal = parseInt(daysOffsetStr, 10);
+          if (!isNaN(baseVal)) purchaseEvent.days_offset = baseVal;
+          purchaseEvent.max_days_offset = parseInt(parenMatch[2], 10);
+          purchaseEvent.is_restricted = true;
         } else {
-          const daysOffset = parseInt(daysOffsetStr);
-          if (!isNaN(daysOffset)) {
-            purchaseEvent.max_days_offset = daysOffset;
+          const val = parseInt(daysOffsetStr, 10);
+          if (!isNaN(val)) {
+            purchaseEvent.days_offset = val;
+            purchaseEvent.max_days_offset = val;
           }
         }
 

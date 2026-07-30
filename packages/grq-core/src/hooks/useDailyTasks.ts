@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TauriService } from '@grq/core/services/tauri.service';
@@ -6,7 +5,7 @@ import { NotificationService } from '@grq/core/utils/notifications';
 import { TaskGenerator } from '@grq/core/utils/taskGenerator';
 import { TaskCompletionHandler } from '@grq/core/utils/taskCompletion';
 import { RequestProcessor } from '@grq/core/services/tauri.service';
-import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, CompletedDailyTask } from '@grq/api-bindings';
+import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings';
 
 import { asyncStorageService } from '@grq/core/services/storage.service';
 
@@ -41,7 +40,6 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [games, setGames] = useState<any[]>([]);
-  // @ts-expect-error - used for internal state management and persistence
   const [accountScheduledTime, setAccountScheduledTime] = useState<{ [accountId: number]: number[] }>({});
   const [accountCompletionRecords, setAccountCompletionRecords] = useState<{ [accountId: number]: AccountCompletionRecord }>({});
   const [accountTaskAssignments, setAccountTaskAssignments] = useState<{ [accountId: number]: AccountTaskAssignment[] }>({});

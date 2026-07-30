@@ -1,5 +1,3 @@
-// src/utils/taskCompletion.ts
-// @ts-nocheck
 import { ApiService } from "@grq/core/services/api.service";
 import { TauriService } from "@grq/core/services/tauri.service";
 import type { ApiResponse } from "@grq/core/services/api.service";
@@ -395,7 +393,7 @@ export class TaskCompletionHandler {
         throw new Error("Task completion error");
       }
 
-      let result: ApiResponse;
+      let result: any;
       let resolvedLevelId = request.level_id ?? undefined;
 
       if (isPurchaseEvent) {
@@ -575,8 +573,6 @@ export class TaskCompletionHandler {
         }
       }
 
-      // Check if the operation was successful (handles both boolean and ApiResponse results)
-      // @ts-ignore - TypeScript has trouble with union type checking here
       const success =
         result === true ||
         (result && typeof result === "object" && result.success);
