@@ -25,6 +25,7 @@ import { CompletedTasksSidebar } from '@grq/ui/organisms/CompletedTasksSidebar';
 import { TelegramImportDialog } from '@grq/ui/organisms/TelegramImportDialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@grq/ui/atoms/dropdown-menu';
 import { TauriService } from '@grq/core/services/tauri.service';
+import { asyncStorageService } from '@grq/core/services/storage.service';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -71,8 +72,11 @@ export function MainLayout({ children }: MainLayoutProps) {
         }
 
         const updates = await TauriService.getTelegramUpdates();
+        const dismissedRaw = await asyncStorageService.get('dismissed_telegram_updates');
+        const dismissedIds: number[] = Array.isArray(dismissedRaw) ? dismissedRaw : [];
+        const pendingUpdates = updates.filter(item => !dismissedIds.includes(Number(item.update_id)));
         if (!cancelled) {
-          setPendingImportsCount(updates.length);
+          setPendingImportsCount(pendingUpdates.length);
         }
       } catch (error) {
         if (!cancelled) {
@@ -158,10 +162,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           >
             <MessageSquare className="h-4.5 w-4.5 text-primary/70 group-hover:scale-110 transition-transform" />
             {pendingImportsCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-              </span>
+              <span className="absolute top-0.5 right-0.5 h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm shadow-red-500/40" />
             )}
           </button>
 
@@ -349,14 +350,14 @@ export function MainLayout({ children }: MainLayoutProps) {
                 title={sidebarCollapsed ? t('settings.telegramImport.title') : undefined}
               >
                  <MessageSquare className={cn('h-5 w-5 flex-shrink-0 transition-colors', !sidebarCollapsed ? 'me-3' : '', telegramImportOpen ? 'text-primary' : 'group-hover:text-primary')} />
-                 {!sidebarCollapsed && <span className="flex-1 ltr:text-left rtl:text-right">{t('settings.telegramImport.title')}</span>}
+                 {!sidebarCollapsed && (
+                   <span className="flex-1 ltr:text-left rtl:text-right">{t('settings.telegramImport.title')}</span>
+                 )}
                  {pendingImportsCount > 0 && (
                   <span className={cn(
-                    "flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-background",
-                    sidebarCollapsed ? "absolute top-1.5 right-1.5" : "ms-2"
-                  )}>
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  </span>
+                    "h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm shadow-red-500/40",
+                    sidebarCollapsed ? "absolute top-0.5 right-0.5" : "ms-2"
+                  )} />
                  )}
               </button>
 
