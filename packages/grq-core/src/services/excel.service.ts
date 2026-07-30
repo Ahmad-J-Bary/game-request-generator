@@ -4,21 +4,18 @@
 import XLSX from 'xlsx-js-style';
 import { TauriService } from './tauri.service';
 import type { Game, Account, Level, PurchaseEvent, CompletedDailyTask } from '@grq/api-bindings';
-import type { ColorSettings } from '@grq/ui/contexts/SettingsContext';
+import type { ExcelColorSettings as ColorSettings } from '../types/excel';
 
 // Import decomposed modules
 import { saveExcelFile } from './excel/excel-file-operations';
-import { parseExcelFile } from './excel/excel-parser';
+import { parseExcelFile, type ImportData } from './excel/excel-parser';
 import { importFromExcel } from './excel/excel-import';
-import { getCellStyle, getNoFillStyle } from './excel/excel-styling';
-import { formatDateShort, formatDateWithYear, parseDate, addDays, formatTimeAMPM } from './excel/excel-date-utils';
-import { buildColumns, createDateMatrix, getColumnStyle } from './excel/excel-column-builder';
+import { getCellStyle } from './excel/excel-styling';
+import { formatTimeAMPM, sortAccountsByDate } from './excel/excel-date-utils';
+import { buildColumns } from './excel/excel-column-builder';
+import { generateGameMatrixData, buildGameDetailSheetData, buildAccountDetailSheetData } from './excel/excel-export-sheet-builder';
 
-export interface ImportData {
-  levels: Partial<Level>[];
-  purchaseEvents: Partial<PurchaseEvent>[];
-  accounts: Partial<Account>[];
-}
+export type { ImportData };
 
 export interface ExportData {
   levels?: Level[];
@@ -28,33 +25,8 @@ export interface ExportData {
 }
 
 export class ExcelService {
-  // ===== Private Helper Methods (delegated to modules) =====
-
   private static async saveFile(filename: string, buffer: any): Promise<boolean> {
     return saveExcelFile(filename, buffer);
-  }
-
-  /**
-   * Sort accounts by start date and time (oldest to newest)
-   */
-  private static sortAccountsByDate(accounts: Account[]): Account[] {
-    return [...accounts].sort((a, b) => {
-      try {
-        const dateA = new Date(`${a.start_date}T${a.start_time}`);
-        const dateB = new Date(`${b.start_date}T${b.start_time}`);
-        
-        if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) {
-          if (a.start_date !== b.start_date) {
-            return a.start_date.localeCompare(b.start_date);
-          }
-          return a.start_time.localeCompare(b.start_time);
-        }
-        
-        return dateA.getTime() - dateB.getTime();
-      } catch (e) {
-        return 0;
-      }
-    });
   }
 
   static async parseExcelFile(filePath: string): Promise<ImportData> {
@@ -67,7 +39,6 @@ export class ExcelService {
     return importFromExcel();
   }
 
-
   /**
    * Export data to Excel file
    */
@@ -75,7 +46,6 @@ export class ExcelService {
     try {
       const workbook = XLSX.utils.book_new();
 
-      // Create Levels sheet
       if (data.levels && data.levels.length > 0) {
         const levelHeaders = ['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)', 'Bonus'];
         const levelRows = data.levels.map(level => [
@@ -89,7 +59,6 @@ export class ExcelService {
         XLSX.utils.book_append_sheet(workbook, levelSheet, 'Levels');
       }
 
-      // Create Purchase Events sheet
       if (data.purchaseEvents && data.purchaseEvents.length > 0) {
         const purchaseHeaders = ['Event Token', 'Restricted', 'Max Days Offset'];
         const purchaseRows = data.purchaseEvents.map(event => [
@@ -101,7 +70,6 @@ export class ExcelService {
         XLSX.utils.book_append_sheet(workbook, purchaseSheet, 'Purchase Events');
       }
 
-      // Create Accounts sheet
       if (data.accounts && data.accounts.length > 0) {
         const accountHeaders = ['Account', 'Start Date', 'Start Time'];
         const accountRows = data.accounts.map(account => [
@@ -113,7 +81,6 @@ export class ExcelService {
         XLSX.utils.book_append_sheet(workbook, accountSheet, 'Accounts');
       }
 
-      // Save file
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
       return await this.saveFile(filename, buffer);
     } catch (error) {
@@ -122,9 +89,6 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Export data for a single account (legacy function - keeping for compatibility)
-   */
   static async exportAccountData(accountId: number, _layout?: 'horizontal' | 'vertical', _colorSettings?: ColorSettings, _theme?: 'light' | 'dark'): Promise<boolean> {
     try {
       const account = await TauriService.getAccountById(accountId);
@@ -141,23 +105,16 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Export game detail data (only levels and purchase events) from GameDetailPage
-   */
-  /**
-   * Export game detail data (only levels and purchase events) from GameDetailPage
-   */
   static async exportGameDetailData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', data?: any): Promise<boolean> {
     try {
       const game = await TauriService.getGameById(gameId);
       const gameName = game?.name || 'Game';
-      
+
       let finalData = data;
       let levels: Level[] = [];
       let purchaseEvents: PurchaseEvent[] = [];
 
       if (!data) {
-        // Fallback: Fetch all levels and events for the game's default branch if not provided
         levels = await TauriService.getGameLevels(gameId);
         purchaseEvents = await TauriService.getGamePurchaseEvents(gameId);
       }
@@ -169,12 +126,6 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Export account detail data from AccountDetailPage
-   */
-  /**
-   * Export account detail data from AccountDetailPage
-   */
   static async exportAccountDetailData(
     accountId: number,
     layout: 'horizontal' | 'vertical',
@@ -200,287 +151,6 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Generate matrix data for a game/branch using matrix layout (helper method)
-   */
-  private static async generateGameMatrixData(
-    _levels: Level[],
-    _purchaseEvents: PurchaseEvent[],
-    accounts: Account[],
-    columns: any[],
-    layout: 'horizontal' | 'vertical',
-    colorSettings: ColorSettings,
-    theme: 'light' | 'dark',
-    levelsProgress?: Record<string, any>,
-    purchaseProgress?: Record<string, any>,
-    branchName?: string,
-    taskHistory?: CompletedDailyTask[]
-  ): Promise<{ wsData: any[][]; merges: any[]; cols: any[] }> {
-    const getCellStyleLocal = (backgroundColor: string, isHeader: boolean = false, isSynthetic: boolean = false) =>
-      this.getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
-
-    const getCellStyleWrapper = (backgroundColor: string, themeParam: 'light' | 'dark', isHeader: boolean, isSynthetic: boolean) =>
-      this.getCellStyle(backgroundColor, themeParam, isHeader, isSynthetic);
-
-    const getColumnStyleLocal = (kind: 'level' | 'purchase', isBonus?: boolean, isRestricted?: boolean, isSynthetic?: boolean, isHeader: boolean = false): any => {
-      return getColumnStyle(kind, isBonus, isRestricted, isSynthetic, isHeader, getCellStyleWrapper, colorSettings, theme);
-    };
-
-    // Create matrix for date calculations
-    const matrix = createDateMatrix(accounts, columns, formatDateShort, parseDate, addDays);
-
-    const wsData: any[][] = [];
-    const merges: any[] = [];
-
-    // Add Branch Title if provided
-    if (branchName) {
-      wsData.push([`Branch: ${branchName}`]);
-      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 + columns.length } });
-    }
-
-    const rowOffset = wsData.length;
-
-    if (layout === 'vertical') {
-      // Vertical layout: Accounts as rows, Levels as columns
-      const headerRow1 = ['Event Token', '', ''];
-      const headerRow2 = ['Level Name', '', ''];
-      const headerRow3 = ['Days Offset', '', ''];
-      const headerRow4 = ['Time Spent (1000 seconds)', '', ''];
-      const headerRow5 = ['Account', 'Start Date', 'Start Time'];
-
-      columns.forEach((col) => {
-        headerRow1.push(col.token);
-        headerRow2.push(col.name);
-        headerRow3.push(col.daysOffset !== null && col.daysOffset !== undefined && col.daysOffset !== '' ? col.daysOffset.toString() : '-');
-        headerRow4.push(col.kind === 'level' ? (col.timeSpent !== null && col.timeSpent !== undefined ? col.timeSpent.toString() : '-') : '-');
-        headerRow5.push('');
-      });
-      headerRow5.push('Session', 'Time');
-
-      wsData.push(headerRow1, headerRow2, headerRow3, headerRow4, headerRow5);
-
-      const levelMapById = new Map(((_levels || []) as any[]).map((l: any) => [l.id, l]));
-      const peMapById = new Map(((_purchaseEvents || []) as any[]).map((p: any) => [p.id, p]));
-
-      // Build lookup maps from task history for last completed time_spent ("Dur. (ms)")
-      const historyLevelMap = new Map<string, number>();
-      const historyPEMap = new Map<string, number>();
-      const histGameId = accounts[0]?.game_id;
-      if (taskHistory && histGameId != null) {
-        for (const h of taskHistory) {
-          if (h.gameId !== histGameId) continue;
-          if (!h.isPurchase && h.levelId != null) {
-            historyLevelMap.set(`${h.accountId}_${h.levelId}`, h.timeSpent);
-          } else if (h.isPurchase) {
-            historyPEMap.set(`${h.accountId}_${h.eventToken}`, h.timeSpent);
-          }
-        }
-      }
-
-      accounts.forEach((acc, accIdx) => {
-        const matrixRow = matrix[accIdx];
-        const row: any[] = [acc.name, formatDateWithYear(acc.start_date), formatTimeAMPM(acc.start_time)];
-
-        // Scan ALL progress (including filtered-out session levels) for the last completed event
-        const start = parseDate(acc.start_date);
-        let lastCompletedDate = '-';
-        let lastCompletedTimeSpent = '-';
-        let maxOffset = -1;
-
-        for (const [key, prog] of Object.entries(levelsProgress || {})) {
-          const [accIdStr, levelIdStr] = key.split('_');
-          if (Number(accIdStr) !== acc.id || !(prog as any)?.is_completed) continue;
-          const level = levelMapById.get(Number(levelIdStr));
-          if (!level) continue;
-          const offsetNum = Number((level as any).days_offset) ?? -1;
-          if (offsetNum > maxOffset) {
-            maxOffset = offsetNum;
-            if (start) lastCompletedDate = formatDateShort(addDays(start, offsetNum));
-            const hTime = historyLevelMap.get(`${acc.id}_${(level as any).id}`);
-            const progTime = (prog as any).time_spent;
-            lastCompletedTimeSpent = hTime ?? ((progTime != null && progTime !== 0) ? progTime : ((level as any).time_spent ?? '-'));
-          }
-        }
-
-        for (const [key, prog] of Object.entries(purchaseProgress || {})) {
-          const [accIdStr, peIdStr] = key.split('_');
-          if (Number(accIdStr) !== acc.id || !(prog as any)?.is_completed) continue;
-          const pe = peMapById.get(Number(peIdStr));
-          if (!pe) continue;
-          const offsetNum = (prog as any)?.days_offset ?? -1;
-          if (offsetNum > maxOffset) {
-            maxOffset = offsetNum;
-            if (start) lastCompletedDate = formatDateShort(addDays(start, offsetNum));
-            const hTime = historyPEMap.get(`${acc.id}_${(pe as any).event_token}`);
-            const progTime = (prog as any).time_spent;
-            lastCompletedTimeSpent = hTime ?? ((progTime != null && progTime !== 0) ? progTime : '-');
-          }
-        }
-
-        // Matrix display loop (columns only, for visible cell content)
-        matrixRow.forEach((date, colIdx) => {
-          const col = columns[colIdx];
-          const progressKey = `${acc.id}_${col.id}`;
-          const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
-          const isCompleted = progress?.is_completed ?? false;
-
-          let displayDate = date;
-
-          if (col.kind === 'purchase' && progress && typeof progress.days_offset === 'number') {
-             const start2 = parseDate(acc.start_date);
-             if (start2) {
-                 const actualDate = addDays(start2, progress.days_offset);
-                 displayDate = formatDateShort(actualDate);
-             }
-          }
-
-          row.push(isCompleted ? `${displayDate} (C)` : displayDate);
-        });
-
-        row.push(lastCompletedDate, lastCompletedTimeSpent);
-        wsData.push(row);
-      });
-
-      // Apply merging relative to rowOffset
-      merges.push(
-        { s: { r: rowOffset + 0, c: 0 }, e: { r: rowOffset + 0, c: 2 } },
-        { s: { r: rowOffset + 1, c: 0 }, e: { r: rowOffset + 1, c: 2 } },
-        { s: { r: rowOffset + 2, c: 0 }, e: { r: rowOffset + 2, c: 2 } },
-        { s: { r: rowOffset + 3, c: 0 }, e: { r: rowOffset + 3, c: 2 } },
-        { s: { r: rowOffset + 4, c: 3 }, e: { r: rowOffset + 4, c: 2 + columns.length } },
-      );
-
-      // Apply styling directly to cell content in wsData
-      const headerStyle = getCellStyleLocal(colorSettings.headerColor, true);
-      const dataRowStyle = getCellStyleLocal(colorSettings.dataRowColor);
-      const branchTitleStyle = getCellStyleLocal(colorSettings.headerColor, true);
-      const noFillHeaderStyle = getNoFillStyle(theme, true);
-
-      // Branch Title Styling
-      if (branchName) {
-        wsData[0][0] = { v: wsData[0][0], s: branchTitleStyle };
-      }
-
-      const eventColCount = columns.length;
-      const lastEventCol = 2 + eventColCount;
-
-      for (let r = rowOffset; r < wsData.length; r++) {
-        const localRowIdx = r - rowOffset;
-        for (let c = 0; c < wsData[r].length; c++) {
-          const val = wsData[r][c];
-          const cellObj = typeof val === 'object' && val !== null && 'v' in val ? val : { v: val };
-          
-          if (localRowIdx < 5) {
-            if (c < 3) {
-              cellObj.s = headerStyle;
-            } else if (c <= lastEventCol) {
-              if (localRowIdx === 4) {
-                cellObj.s = noFillHeaderStyle;
-              } else {
-                const col = columns[c - 3];
-                cellObj.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, true);
-              }
-            } else {
-              cellObj.s = headerStyle;
-            }
-          } else {
-            if (c < 3) {
-              cellObj.s = dataRowStyle;
-            } else if (c <= lastEventCol) {
-              const col = columns[c - 3];
-              const acc = accounts[localRowIdx - 5];
-              const progressKey = `${acc.id}_${col.id}`;
-              const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
-              const isCompleted = progress?.is_completed ?? false;
-              const bgColor = isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
-              cellObj.s = getCellStyleLocal(bgColor, false, col.synthetic);
-            } else {
-              cellObj.s = dataRowStyle;
-            }
-          }
-          wsData[r][c] = cellObj;
-        }
-      }
-
-      const cols = [
-        { wch: 20 }, { wch: 12 }, { wch: 12 },
-        ...columns.map(() => ({ wch: 12 })),
-        { wch: 15 }, { wch: 12 }
-      ];
-
-      return { wsData, merges, cols };
-    } else {
-      // Horizontal layout: Levels as rows, Accounts as columns
-      const headerRow = ['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)'];
-      accounts.forEach(acc => {
-        headerRow.push(`${acc.name} (${formatDateWithYear(acc.start_date)})`);
-      });
-      wsData.push(headerRow);
-
-      columns.forEach((col, colIdx) => {
-        const row = [
-          col.token,
-          col.name,
-          col.daysOffset !== null && col.daysOffset !== undefined && col.daysOffset !== '' ? col.daysOffset.toString() : '-',
-          col.kind === 'level' ? (col.timeSpent !== null && col.timeSpent !== undefined ? col.timeSpent.toString() : '-') : '-',
-        ];
-
-        accounts.forEach((acc, accIdx) => {
-          const dateVal = matrix[accIdx][colIdx];
-          const progressKey = `${acc.id}_${col.id}`;
-          const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
-          const isCompleted = progress?.is_completed ?? false;
-          row.push(isCompleted ? `${dateVal} (C)` : dateVal);
-        });
-        wsData.push(row);
-      });
-
-      const headerStyle = getCellStyleLocal(colorSettings.headerColor, true);
-      const branchTitleStyle = getCellStyleLocal(colorSettings.headerColor, true);
-
-      // Branch Title Styling
-      if (branchName) {
-        wsData[0][0] = { v: wsData[0][0], s: branchTitleStyle };
-      }
-
-      for (let r = rowOffset; r < wsData.length; r++) {
-        const localRowIdx = r - rowOffset;
-        for (let c = 0; c < wsData[r].length; c++) {
-          const val = wsData[r][c];
-          const cellObj = typeof val === 'object' && val !== null && 'v' in val ? val : { v: val };
-
-          if (localRowIdx === 0) {
-            cellObj.s = headerStyle;
-          } else {
-            if (c < 4) {
-              const col = columns[localRowIdx - 1];
-              cellObj.s = getColumnStyleLocal(col.kind, col.isBonus, col.isRestricted, col.synthetic, false);
-            } else {
-              const acc = accounts[c - 4];
-              const col = columns[localRowIdx - 1];
-              const progressKey = `${acc.id}_${col.id}`;
-              const progress = col.kind === 'level' ? (levelsProgress as any)?.[progressKey] : (purchaseProgress as any)?.[progressKey];
-              const isCompleted = progress?.is_completed ?? false;
-              const bgColor = isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
-              cellObj.s = getCellStyleLocal(bgColor, false, col.synthetic);
-            }
-          }
-          wsData[r][c] = cellObj;
-        }
-      }
-
-      const cols = [
-        { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 25 },
-        ...accounts.map(() => ({ wch: 15 }))
-      ];
-
-      return { wsData, merges, cols };
-    }
-  }
-
-  /**
-   * Export data to Excel with matrix layout (matching AccountsDetailPage table)
-   */
   static async exportToExcelMatrix(
     levels: Level[],
     purchaseEvents: PurchaseEvent[],
@@ -498,7 +168,6 @@ export class ExcelService {
     try {
       const workbook = XLSX.utils.book_new();
 
-      // Create columns array (similar to AccountsDetailPage)
       let columns: any[] = [];
       if (columnsData && columnsData.length > 0) {
         columns = columnsData;
@@ -511,7 +180,6 @@ export class ExcelService {
         columns = [...filteredColumns.filter(c => c.kind === 'level'), ...filteredColumns.filter(c => c.kind === 'purchase')];
       }
 
-      // Convert progress arrays to records for the helper method
       const levelsProgressRecord: Record<string, any> = {};
       const purchaseProgressRecord: Record<string, any> = {};
 
@@ -537,8 +205,7 @@ export class ExcelService {
         Object.assign(purchaseProgressRecord, purchaseProgress);
       }
 
-      // Use helper method to generate data
-      const { wsData, merges, cols } = await this.generateGameMatrixData(
+      const { wsData, merges, cols } = generateGameMatrixData(
         levels,
         purchaseEvents,
         accounts,
@@ -546,18 +213,17 @@ export class ExcelService {
         layout,
         colorSettings,
         theme,
+        getCellStyle,
         levelsProgressRecord,
         purchaseProgressRecord,
         undefined,
         taskHistory
       );
 
-      // Create worksheet from generated data
       const worksheet = XLSX.utils.aoa_to_sheet(wsData);
       (worksheet as any)['!merges'] = merges;
       (worksheet as any)['!cols'] = cols;
 
-      // Add worksheet to workbook
       XLSX.utils.book_append_sheet(workbook, worksheet, gameName.substring(0, 31));
 
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
@@ -568,16 +234,12 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Export game data with matrix layout
-   */
   static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any, purchaseProgress?: any, branchId?: number, mode: 'event-only' | 'all' = 'event-only'): Promise<boolean> {
     try {
       const game = await TauriService.getGameById(gameId);
       const gameName = game?.name || 'Game';
       const taskHistory = await TauriService.getTaskHistory();
 
-      // If branchId is provided, export ONLY that branch (legacy/specific behavior)
       if (branchId) {
         const [levels, purchaseEvents, accounts] = await Promise.all([
           TauriService.getGameLevels(branchId),
@@ -585,11 +247,10 @@ export class ExcelService {
           TauriService.getAccounts(gameId).then(accs => accs.filter(a => a.branch_id === branchId))
         ]);
 
-        const sortedAccounts = this.sortAccountsByDate(accounts);
+        const sortedAccounts = sortAccountsByDate(accounts);
         return await this.exportToExcelMatrix(levels, purchaseEvents, sortedAccounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress, mode, taskHistory);
       }
 
-      // If no branchId, export ALL branches stacked vertically
       const branches = await TauriService.getGameBranches(gameId);
       if (branches.length === 0) return false;
 
@@ -598,7 +259,6 @@ export class ExcelService {
       let masterMerges: any[] = [];
       let masterCols: any[] = [];
 
-      // Fetch all accounts once and filter branches that have accounts
       const allAccounts = await TauriService.getAccounts(gameId);
       const branchesWithAccounts = branches.filter(b => allAccounts.some(a => a.branch_id === b.id));
       if (branchesWithAccounts.length === 0) return false;
@@ -611,17 +271,15 @@ export class ExcelService {
           TauriService.getGamePurchaseEvents(branch.id),
         ]);
 
-        const sortedAccounts = this.sortAccountsByDate(accounts);
+        const sortedAccounts = sortAccountsByDate(accounts);
         const branchColumns = buildColumns(levels, purchaseEvents);
-        
-        // Apply Mode-based Filtering
+
         let filteredColumns = branchColumns;
         if (mode === 'event-only') {
            filteredColumns = branchColumns.filter(c => !(c.kind === 'level' && c.name === '-'));
         }
         const finalColumns = [...filteredColumns.filter(c => c.kind === 'level'), ...filteredColumns.filter(c => c.kind === 'purchase')];
 
-        // Fetch progress for these accounts if not provided
         let effectiveLevelsProgress = levelsProgress;
         let effectivePurchaseProgress = purchaseProgress;
 
@@ -642,10 +300,10 @@ export class ExcelService {
 
         const currentOffset = masterWsData.length;
         if (currentOffset > 0) {
-            masterWsData.push([]); // Add separator row
+            masterWsData.push([]);
         }
-        
-        const { wsData, merges, cols } = await this.generateGameMatrixData(
+
+        const { wsData, merges, cols } = generateGameMatrixData(
           levels,
           purchaseEvents,
           sortedAccounts,
@@ -653,13 +311,13 @@ export class ExcelService {
           layout,
           colorSettings,
           theme,
+          getCellStyle,
           effectiveLevelsProgress,
           effectivePurchaseProgress,
           showBranchTitles ? branch.name : undefined,
           taskHistory
         );
 
-        // Adjust merge indices
         const adjustedMerges = merges.map(m => ({
             s: { r: m.s.r + currentOffset + (currentOffset > 0 ? 1 : 0), c: m.s.c },
             e: { r: m.e.r + currentOffset + (currentOffset > 0 ? 1 : 0), c: m.e.c }
@@ -667,8 +325,7 @@ export class ExcelService {
 
         masterWsData.push(...wsData);
         masterMerges.push(...adjustedMerges);
-        
-        // Keep the widest column configuration
+
         if (cols.length > masterCols.length) {
             masterCols = cols;
         }
@@ -690,11 +347,7 @@ export class ExcelService {
     }
   }
 
-   /**
-    * Export all games data to Excel
-    * Each game gets 1 sheet: accounts progress matrix
-    */
-  static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<boolean> {
+   static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<boolean> {
     try {
       const buffer = await this.generateAllGamesBuffer(layout, colorSettings, theme, mode);
       if (!buffer) return false;
@@ -705,9 +358,6 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Generates the Excel workbook buffer for all games
-   */
   static async generateAllGamesBuffer(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<any> {
     try {
       const workbook = await this.generateAllGamesWorkbook(layout, colorSettings, theme, mode);
@@ -719,15 +369,11 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Internal logic to generate the workbook object for all games
-   */
   private static async generateAllGamesWorkbook(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<any> {
     try {
       const games = await TauriService.getGames();
       const workbook = XLSX.utils.book_new();
 
-      // Process each game and create sheets
       for (const game of games) {
         const branches = await TauriService.getGameBranches(game.id);
         if (branches.length === 0) continue;
@@ -737,10 +383,8 @@ export class ExcelService {
         let masterCols: any[] = [];
         const taskHistory = await TauriService.getTaskHistory();
 
-        // Truncate base name to fit within Excel 31-char sheet name limit
         const sheetBaseName = game.name.substring(0, 27);
 
-        // Fetch all accounts once and filter branches that have accounts
         const allAccounts = await TauriService.getAccounts(game.id);
         const branchesWithAccounts = branches.filter(b => allAccounts.some(a => a.branch_id === b.id));
         if (branchesWithAccounts.length === 0) continue;
@@ -753,10 +397,8 @@ export class ExcelService {
             TauriService.getGamePurchaseEvents(branch.id)
           ]);
 
-          // Sort accounts by date (oldest to newest)
-          const sortedAccounts = this.sortAccountsByDate(accounts);
+          const sortedAccounts = sortAccountsByDate(accounts);
 
-          // Fetch progress data for these accounts
           const levelsProgress: Record<string, any> = {};
           const purchaseProgress: Record<string, any> = {};
 
@@ -781,8 +423,6 @@ export class ExcelService {
             }
           }
 
-          // Build columns for this branch — filter out session levels that have
-          // a corresponding event level (compound events treated as single entity)
           let filteredLevels = levels.filter((l) => {
             if (l.level_name !== '-') return true;
             if (mode === 'event-only') return false;
@@ -812,7 +452,7 @@ export class ExcelService {
             const isRestricted = (p as any).is_restricted ?? false;
             const base = (p as any).days_offset !== undefined && (p as any).days_offset !== null ? String((p as any).days_offset) : '-';
             let formattedDaysOffset = base;
-            
+
             if (isRestricted && p.max_days_offset != null) {
                 formattedDaysOffset = `${base} (Less Than ${p.max_days_offset})`;
             }
@@ -834,10 +474,10 @@ export class ExcelService {
           const currentOffset = masterWsData.length;
           const separatorRowsCount = currentOffset > 0 ? 1 : 0;
           if (separatorRowsCount > 0) {
-              masterWsData.push([]); // Add separator row
+              masterWsData.push([]);
           }
 
-          const { wsData, merges, cols } = await this.generateGameMatrixData(
+          const { wsData, merges, cols } = generateGameMatrixData(
             levels,
             purchaseEvents,
             sortedAccounts,
@@ -845,13 +485,13 @@ export class ExcelService {
             layout,
             colorSettings,
             theme,
+            getCellStyle,
             levelsProgress,
             purchaseProgress,
             showBranchTitles ? branch.name : undefined,
             taskHistory
           );
 
-          // Adjust merge indices
           const adjustedMerges = merges.map(m => ({
               s: { r: m.s.r + currentOffset + separatorRowsCount, c: m.s.c },
               e: { r: m.e.r + currentOffset + separatorRowsCount, c: m.e.c }
@@ -859,7 +499,7 @@ export class ExcelService {
 
           masterWsData.push(...wsData);
           masterMerges.push(...adjustedMerges);
-          
+
           if (cols.length > masterCols.length) {
               masterCols = cols;
           }
@@ -882,9 +522,6 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Export game detail data to Excel (GameDetailPage format)
-   */
   private static async exportGameDetailToExcel(
     levels: Level[],
     purchaseEvents: PurchaseEvent[],
@@ -897,10 +534,6 @@ export class ExcelService {
     try {
       const workbook = XLSX.utils.book_new();
 
-      const getCellStyle = (backgroundColor: string, isHeader: boolean = false, isSynthetic: boolean = false) =>
-        this.getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
-
-      // Prepare data groups (branches)
       let dataGroups: Array<{ branchName?: string; columns: any[] }> = [];
 
       if (Array.isArray(columns) && columns.length > 0) {
@@ -910,7 +543,6 @@ export class ExcelService {
           dataGroups = [{ columns }];
         }
       } else {
-        // Fallback to raw data
         const fallbackColumns = [
           ...levels.map(l => ({ kind: 'level', token: l.event_token.split('_day')[0], name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, isBonus: l.is_bonus, synthetic: l.level_name === '-' })),
           ...purchaseEvents.map(p => {
@@ -926,115 +558,21 @@ export class ExcelService {
         dataGroups = [{ columns: fallbackColumns }];
       }
 
-      const wsData: any[][] = [];
-      const merges: any[] = [];
+      const { wsData, merges } = buildGameDetailSheetData(dataGroups, layout, colorSettings, theme, getCellStyle);
 
-      // Suppress branch title when only one branch
-      if (dataGroups.length === 1) {
-        delete dataGroups[0].branchName;
-      }
-
-      for (const group of dataGroups) {
-          const currentOffset = wsData.length;
-          const { columns: groupCols, branchName } = group;
-
-          // Add Branch Title if provided
-          if (branchName) {
-            wsData.push([`Branch: ${branchName}`]);
-            merges.push({ s: { r: currentOffset, c: 0 }, e: { r: currentOffset, c: (layout === 'vertical' ? groupCols.length : 3) } });
-          }
-
-          const rowOffset = wsData.length;
-
-          if (layout === 'vertical') {
-            const row1 = ['Event Token'];
-            const row2 = ['Level Name'];
-            const row3 = ['Days Offset'];
-            const row4 = ['Time Spent (1000 seconds)'];
-
-            groupCols.forEach(item => {
-              row1.push(item.token);
-              row2.push(item.name);
-              row3.push(item.daysOffset !== null && item.daysOffset !== undefined && item.daysOffset !== '' ? item.daysOffset.toString() : '-');
-              row4.push(item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-');
-            });
-            wsData.push(row1, row2, row3, row4);
-
-            // Apply styles to these rows
-            for (let r = rowOffset; r < wsData.length; r++) {
-               for (let c = 0; c < wsData[r].length; c++) {
-                   const cell = { v: wsData[r][c] } as any;
-                   if (c === 0) {
-                       cell.s = getCellStyle(colorSettings.headerColor, true);
-                   } else {
-                       const item = groupCols[c - 1];
-                       let backgroundColor: string;
-                       if (item.kind === 'level') {
-                           backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
-                       } else {
-                           backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
-                       }
-                       cell.s = getCellStyle(backgroundColor, true, item.synthetic);
-                   }
-                   wsData[r][c] = cell;
-               }
-            }
-          } else {
-            // Horizontal layout
-            wsData.push(['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)']);
-            
-            // Apply header style
-            const headerRowIdx = rowOffset;
-            for (let c = 0; c < 4; c++) {
-                wsData[headerRowIdx][c] = { v: wsData[headerRowIdx][c], s: getCellStyle(colorSettings.headerColor, true) };
-            }
-
-            groupCols.forEach((item) => {
-              const row = [
-                item.token,
-                item.name,
-                item.daysOffset !== null && item.daysOffset !== undefined && item.daysOffset !== '' ? item.daysOffset.toString() : '-',
-                item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-'
-              ];
-              
-              let backgroundColor: string;
-              if (item.kind === 'level') {
-                  backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
-              } else {
-                  backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
-              }
-              const rowStyle = getCellStyle(backgroundColor, false, item.synthetic);
-              
-              wsData.push(row.map(v => ({ v, s: rowStyle })));
-            });
-          }
-
-          // Add a spacer row between groups
-          wsData.push([]);
-      }
-      
-      // Cleanup last spacer row
-      if (wsData.length > 0 && wsData[wsData.length - 1].length === 0) {
-          wsData.pop();
-      }
-
-      // Create worksheet
       const worksheet = XLSX.utils.aoa_to_sheet(wsData);
       (worksheet as any)['!merges'] = merges;
 
-      // Set column widths
       worksheet['!cols'] = [
-        { wch: 15 }, // Event Token/Level Name
-        { wch: 12 }, // Level Name
-        { wch: 12 }, // Days Offset
-        { wch: 20 }, // Time Spent
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 20 },
         ...Array(Math.max(0, (layout === 'vertical' ? wsData[0].length - 4 : 0))).fill({ wch: 12 })
       ];
 
-      // Add worksheet to workbook
       XLSX.utils.book_append_sheet(workbook, worksheet, gameName);
 
-      // Save file
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
       return await this.saveFile(`${gameName}_Details.xlsx`, buffer);
     } catch (error) {
@@ -1043,9 +581,6 @@ export class ExcelService {
     }
   }
 
-  /**
-   * Export account detail data to Excel (AccountDetailPage format)
-   */
   private static async exportAccountDetailToExcel(
     account: Account,
     levels: Level[],
@@ -1060,220 +595,18 @@ export class ExcelService {
     try {
       const workbook = XLSX.utils.book_new();
 
-      const getCellStyle = (backgroundColor: string, isHeader: boolean = false, isSynthetic: boolean = false) =>
-        this.getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
-
-      // Helper function to parse date and add days
-      const parseDate = (input?: string): Date | null => {
-        if (!input) return null;
-        const d = new Date(input);
-        return Number.isNaN(d.getTime()) ? null : d;
-      };
-
-      const addDays = (date: Date, days: number): Date => {
-        const r = new Date(date);
-        r.setDate(r.getDate() + days);
-        return r;
-      };
-
-      const formatDateShort = (date: Date | null): string => {
-        if (!date) return '-';
-        const day = date.getDate();
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        return `${day}-${months[date.getMonth()]}`;
-      };
-
-      const startDateObj = parseDate(account.start_date) || new Date();
-
-      // Prepare data
-      let allItems: any[] = [];
-
-      if (columns && columns.length > 0) {
-        allItems = columns.map(col => {
-          let isCompleted = false;
-          let daysOffsetToUse = Number(col.daysOffset || 0);
-
-          if (col.kind === 'level') {
-            const prog = levelsProgress?.find(p => p.level_id === col.id);
-            isCompleted = prog ? prog.is_completed : false;
-          } else {
-            const prog = purchaseProgress?.find(p => p.purchase_event_id === col.id);
-            isCompleted = prog ? prog.is_completed : false;
-            // Use actual execution date if available
-            if (prog && typeof prog.days_offset === 'number') {
-                daysOffsetToUse = prog.days_offset;
-            }
-          }
-
-          const dd = addDays(startDateObj, daysOffsetToUse);
-          const dateStr = formatDateShort(dd);
-          
-          let formattedDaysOffset: string | number = (col as any).displayDaysOffset ?? col.daysOffset;
-          if (col.kind === 'purchase' && !(col as any).displayDaysOffset) {
-             const base = col.daysOffset !== undefined && col.daysOffset !== null ? String(col.daysOffset) : '-';
-             if (col.isRestricted && col.maxDaysOffset != null) {
-                 formattedDaysOffset = `${base} (Less Than ${col.maxDaysOffset})`;
-             } else {
-                 formattedDaysOffset = base;
-             }
-          }
-
-          return {
-            ...col,
-            daysOffset: formattedDaysOffset,
-            dateStr,
-            isCompleted
-          };
-        });
-      } else {
-        // Fallback
-        allItems = [
-          ...levels.map(l => {
-            const dd = addDays(startDateObj, l.days_offset);
-            const prog = levelsProgress?.find(p => p.level_id === l.id);
-            return { kind: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, dateStr: formatDateShort(dd), isCompleted: prog ? prog.is_completed : false, isBonus: l.is_bonus };
-          }),
-          ...purchaseEvents.map(p => {
-            const prog = purchaseProgress?.find(pr => pr.purchase_event_id === p.id);
-            
-            let dateStr = '-';
-            if (prog && typeof prog.days_offset === 'number') {
-                 const dd = addDays(startDateObj, prog.days_offset);
-                 dateStr = formatDateShort(dd);
-            } else if ((p as any).days_offset !== undefined && (p as any).days_offset !== null) {
-                 // Use reference days_offset
-                  const dd = addDays(startDateObj, (p as any).days_offset);
-                  dateStr = formatDateShort(dd);
-            }
-            
-            // Prioritize showing the reference days_offset in the 'Days Offset' column
-            const isRestricted = (p as any).is_restricted ?? false;
-            const base = (p as any).days_offset !== undefined && (p as any).days_offset !== null ? String((p as any).days_offset) : '-';
-            let displayOffset = base;
-            if (isRestricted && p.max_days_offset != null) {
-                displayOffset = `${base} (Less Than ${p.max_days_offset})`;
-            }
-
-            return { 
-                kind: 'purchase', 
-                token: p.event_token, 
-                name: p.level_name || '$$$', 
-                daysOffset: displayOffset, // Use calculated/reference offset
-                timeSpent: null, 
-                dateStr, 
-                isCompleted: prog ? prog.is_completed : false, 
-                isRestricted: p.is_restricted 
-            };
-          })
-        ];
-      }
-
-      // Create worksheet data
-      const wsData: any[][] = [];
-
-      if (layout === 'vertical') {
-        const row1 = ['Event Token'];
-        const row2 = ['Level Name'];
-        const row3 = ['Days Offset'];
-        const row4 = ['Time Spent (1000 seconds)'];
-        const row5 = ['Date'];
-
-        allItems.forEach(item => {
-          row1.push(item.token);
-          row2.push(item.name);
-          row3.push(item.daysOffset !== null && item.daysOffset !== undefined ? item.daysOffset.toString() : '-');
-          row4.push(item.kind === 'level' && item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-');
-          row5.push(item.isCompleted ? `${item.dateStr} (C)` : item.dateStr);
-        });
-        wsData.push(row1, row2, row3, row4, row5);
-      } else {
-        wsData.push(['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)', 'Date']);
-        allItems.forEach(item => {
-          wsData.push([
-            item.token,
-            item.name,
-            item.daysOffset !== null && item.daysOffset !== undefined ? item.daysOffset.toString() : '-',
-            item.kind === 'level' && item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-',
-            item.isCompleted ? `${item.dateStr} (C)` : item.dateStr
-          ]);
-        });
-      }
+      const { wsData } = buildAccountDetailSheetData(
+        account, levels, purchaseEvents, layout, colorSettings, theme, getCellStyle,
+        columns, levelsProgress, purchaseProgress
+      );
 
       const worksheet = XLSX.utils.aoa_to_sheet(wsData);
-
-      // Apply styles
-      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-          const cell = worksheet[cellAddress];
-          if (!cell) continue;
-
-          if (layout === 'vertical') {
-            if (R < 4) {
-              if (C === 0) {
-                cell.s = getCellStyle(colorSettings.headerColor, true);
-              } else {
-                const itemIdx = C - 1;
-                if (itemIdx >= 0 && itemIdx < allItems.length) {
-                  const item = allItems[itemIdx];
-                  let backgroundColor: string;
-                  if (item.kind === 'level') {
-                    backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
-                  } else {
-                    backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
-                  }
-                  cell.s = getCellStyle(backgroundColor, true, item.synthetic);
-                } else {
-                  cell.s = getCellStyle(colorSettings.headerColor, true);
-                }
-              }
-            } else {
-              // Data row (Date) - now at row 5
-              const itemIdx = C - 1;
-              if (itemIdx >= 0 && itemIdx < allItems.length) {
-                const item = allItems[itemIdx];
-                const backgroundColor = item.isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
-                cell.s = getCellStyle(backgroundColor, false, item.synthetic);
-              } else {
-                cell.s = getCellStyle(colorSettings.dataRowColor);
-              }
-            }
-          } else {
-            // Horizontal
-            if (R === 0) {
-              cell.s = getCellStyle(colorSettings.headerColor, true);
-            } else {
-              const itemIdx = R - 1;
-              if (itemIdx >= 0 && itemIdx < allItems.length) {
-                const item = allItems[itemIdx];
-                let backgroundColor: string;
-                if (C < 4) {
-                  // Header-like columns (Event Token, Level Name, Days Offset, Time Spent)
-                  if (item.kind === 'level') {
-                    backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
-                  } else {
-                    backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
-                  }
-                } else {
-                  // Date column (column 4)
-                  backgroundColor = item.isCompleted ? colorSettings.completeScheduledStyle : colorSettings.incompleteScheduledStyle;
-                }
-                cell.s = getCellStyle(backgroundColor, false, item.synthetic);
-              } else {
-                cell.s = getCellStyle(colorSettings.dataRowColor);
-              }
-            }
-          }
-        }
-      }
-
       worksheet['!cols'] = [
-        { wch: 15 }, // Event Token
-        { wch: 12 }, // Level Name
-        { wch: 12 }, // Days Offset
-        { wch: 25 }, // Time Spent (1000 seconds)
-        { wch: 15 }, // Date
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 25 },
+        { wch: 15 },
         ...Array(Math.max(0, (layout === 'vertical' ? wsData[0].length - 5 : 0))).fill({ wch: 12 })
       ];
 
@@ -1286,10 +619,7 @@ export class ExcelService {
       return false;
     }
   }
-  /**
-   * Export all games in game-detail format (levels + purchase events only, no accounts/progress)
-   * Creates one sheet per game with the same vertical layout as exportGameDetailData
-   */
+
   static async exportAllGamesDetailData(
     layout: 'horizontal' | 'vertical',
     colorSettings: ColorSettings,
@@ -1301,88 +631,15 @@ export class ExcelService {
 
       for (const gameData of allGamesData) {
         const sheetName = gameData.gameName.substring(0, 31);
-        const wsData: any[][] = [];
-        const merges: any[] = [];
 
-        // Suppress branch title when only one branch for this game
-        if (gameData.branches.length === 1) {
-          delete gameData.branches[0].branchName;
-        }
+        const dataGroups = gameData.branches.map(b => ({
+          branchName: b.branchName,
+          columns: b.columns
+        }));
 
-        for (const group of gameData.branches) {
-          const currentOffset = wsData.length;
-          const { columns: groupCols, branchName } = group;
-
-          if (branchName) {
-            wsData.push([`Branch: ${branchName}`]);
-            merges.push({ s: { r: currentOffset, c: 0 }, e: { r: currentOffset, c: (layout === 'vertical' ? groupCols.length : 3) } });
-          }
-
-          const rowOffset = wsData.length;
-
-          if (layout === 'vertical') {
-            const row1 = ['Event Token'];
-            const row2 = ['Level Name'];
-            const row3 = ['Days Offset'];
-            const row4 = ['Time Spent (1000 seconds)'];
-
-            groupCols.forEach((item: any) => {
-              row1.push(item.token);
-              row2.push(item.name);
-              row3.push(item.daysOffset !== null && item.daysOffset !== undefined && item.daysOffset !== '' ? item.daysOffset.toString() : '-');
-              row4.push(item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-');
-            });
-            wsData.push(row1, row2, row3, row4);
-
-            for (let r = rowOffset; r < wsData.length; r++) {
-              for (let c = 0; c < wsData[r].length; c++) {
-                const cell = { v: wsData[r][c] } as any;
-                if (c === 0) {
-                  cell.s = this.getCellStyle(colorSettings.headerColor, theme, true);
-                } else {
-                  const item = groupCols[c - 1];
-                  let backgroundColor: string;
-                  if (item.kind === 'level') {
-                    backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
-                  } else {
-                    backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
-                  }
-                  cell.s = this.getCellStyle(backgroundColor, theme, true, item.synthetic);
-                }
-                wsData[r][c] = cell;
-              }
-            }
-          } else {
-            wsData.push(['Event Token', 'Level Name', 'Days Offset', 'Time Spent (1000 seconds)']);
-            const headerRowIdx = rowOffset;
-            for (let c = 0; c < 4; c++) {
-              wsData[headerRowIdx][c] = { v: wsData[headerRowIdx][c], s: this.getCellStyle(colorSettings.headerColor, theme, true) };
-            }
-
-            groupCols.forEach((item: any) => {
-              const row = [
-                item.token,
-                item.name,
-                item.daysOffset !== null && item.daysOffset !== undefined && item.daysOffset !== '' ? item.daysOffset.toString() : '-',
-                item.timeSpent !== null && item.timeSpent !== undefined ? item.timeSpent.toString() : '-'
-              ];
-              let backgroundColor: string;
-              if (item.kind === 'level') {
-                backgroundColor = item.isBonus ? colorSettings.levelBonus : colorSettings.levelNormal;
-              } else {
-                backgroundColor = item.isRestricted ? colorSettings.purchaseRestricted : colorSettings.purchaseUnrestricted;
-              }
-              const rowStyle = this.getCellStyle(backgroundColor, theme, false, item.synthetic);
-              wsData.push(row.map(v => ({ v, s: rowStyle })));
-            });
-          }
-
-          wsData.push([]);
-        }
-
-        if (wsData.length > 0 && wsData[wsData.length - 1].length === 0) {
-          wsData.pop();
-        }
+        const { wsData, merges } = buildGameDetailSheetData(
+          dataGroups, layout, colorSettings, theme, getCellStyle
+        );
 
         const worksheet = XLSX.utils.aoa_to_sheet(wsData);
         (worksheet as any)['!merges'] = merges;
@@ -1404,11 +661,5 @@ export class ExcelService {
       console.error('Export all games detail data error:', error);
       return false;
     }
-  }
-
-  // ===== Styling Methods (delegated to styling module) =====
-
-  private static getCellStyle(backgroundColor: string, theme: 'light' | 'dark', isHeader: boolean = false, isSynthetic: boolean = false) {
-    return getCellStyle(backgroundColor, theme, isHeader, isSynthetic);
   }
 }

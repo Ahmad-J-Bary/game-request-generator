@@ -81,6 +81,29 @@ export function createExcelDateTime(startDate?: string, startTime?: string): { d
 }
 
 /**
+ * Sort accounts by start date and time (oldest to newest)
+ */
+export function sortAccountsByDate<T extends { start_date?: string; start_time?: string }>(accounts: T[]): T[] {
+  return [...accounts].sort((a, b) => {
+    try {
+      const dateA = new Date(`${a.start_date}T${a.start_time}`);
+      const dateB = new Date(`${b.start_date}T${b.start_time}`);
+
+      if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) {
+        if (a.start_date !== b.start_date) {
+          return (a.start_date || '').localeCompare(b.start_date || '');
+        }
+        return (a.start_time || '').localeCompare(b.start_time || '');
+      }
+
+      return dateA.getTime() - dateB.getTime();
+    } catch (e) {
+      return 0;
+    }
+  });
+}
+
+/**
  * Format time string (HH:mm or HH:mm:ss) to AM/PM format
  */
 export function formatTimeAMPM(timeStr?: string): string {

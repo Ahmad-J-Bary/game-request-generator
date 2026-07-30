@@ -412,8 +412,6 @@ export class TauriService {
   }
 }
 
-export const tauriService = new TauriService();
-
 import { TEMPLATE_PATTERNS } from "../constants";
 
 // ===== Request Processing Utilities =====
@@ -446,13 +444,11 @@ export class RequestProcessor {
           timeSpentIndex + TEMPLATE_PATTERNS.TIME_SPENT.length;
         const nextAmpersand = processedContent.indexOf("&", afterTimeSpent);
 
-        // If we found the pattern, replace it
         if (nextAmpersand !== -1 || afterTimeSpent < processedContent.length) {
           const endPos =
             nextAmpersand !== -1 ? nextAmpersand : processedContent.length;
           const remainingPart = processedContent.substring(endPos);
 
-          // Replace the variable part
           const before = processedContent.substring(0, eventTokenIndex);
           const newVariablePart = `${TEMPLATE_PATTERNS.EVENT_TOKEN}${eventToken}${TEMPLATE_PATTERNS.TIME_SPENT}${timeSpent}${remainingPart}`;
 
@@ -462,59 +458,5 @@ export class RequestProcessor {
     }
 
     return processedContent;
-  }
-}
-
-// ===== Import Service (SOLID - Single Responsibility) =====
-export class ImportService {
-  /**
-   * Import request templates from files
-   */
-  static async importRequestTemplates(gameId: number): Promise<{
-    imported_templates: Array<{
-      account_name: string;
-      filename: string;
-      status: string;
-    }>;
-    errors: string[];
-    total_processed: number;
-    successful_imports: number;
-    cancelled?: boolean;
-  }> {
-    return await invoke("import_request_templates", { gameId });
-  }
-
-  /**
-   * Confirm and apply template imports
-   */
-  static async confirmTemplateImport(
-    templates: Array<{
-      filename: string;
-      accountName: string;
-      content: string;
-      matchedAccount?: any;
-    }>,
-  ): Promise<{ importedCount: number }> {
-    let importedCount = 0;
-
-    for (const template of templates) {
-      if (template.matchedAccount) {
-        try {
-          await TauriService.updateAccount({
-            id: template.matchedAccount.id,
-            request_template: template.content,
-          });
-          importedCount++;
-        } catch (error) {
-          console.error(
-            "Failed to update account template:",
-            template.accountName,
-            error,
-          );
-        }
-      }
-    }
-
-    return { importedCount };
   }
 }
