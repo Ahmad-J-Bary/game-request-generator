@@ -60,7 +60,7 @@ export function buildColumns(levels: Level[], purchaseEvents: PurchaseEvent[]): 
       id: p.id,
       token: p.event_token,
       fullToken: p.event_token,
-      name: '$$$',
+      name: p.level_name || '$$$',
       uniqueKey: `${p.event_token}:Purchase Event`,
       isRestricted,
       daysOffset: daysOffsetValue,

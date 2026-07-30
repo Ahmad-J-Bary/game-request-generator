@@ -825,7 +825,7 @@ export class ExcelService {
               id: p.id,
               token: p.event_token,
               fullToken: p.event_token,
-              name: '$$$',
+              name: p.level_name || '$$$',
               isRestricted,
               daysOffset: formattedDaysOffset,
               synthetic: false,
@@ -1006,7 +1006,7 @@ export class ExcelService {
             if (isRestricted && p.max_days_offset != null) {
                 formattedOffset = `${base} (Less Than ${p.max_days_offset})`;
             }
-            return { kind: 'purchase', token: p.event_token, name: '$$$', daysOffset: formattedOffset, timeSpent: '-', isRestricted: isRestricted, synthetic: false };
+            return { kind: 'purchase', token: p.event_token, name: p.level_name || '$$$', daysOffset: formattedOffset, timeSpent: '-', isRestricted: isRestricted, synthetic: false };
           })
         ];
         dataGroups = [{ columns: fallbackColumns }];
@@ -1243,7 +1243,7 @@ export class ExcelService {
             return { 
                 kind: 'purchase', 
                 token: p.event_token, 
-                name: '$$$', 
+                name: p.level_name || '$$$', 
                 daysOffset: displayOffset, // Use calculated/reference offset
                 timeSpent: null, 
                 dateStr, 

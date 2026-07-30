@@ -453,7 +453,7 @@ export default function GameDetailPage({
             kind: "purchase" as const,
             id: p.id,
             token: p.event_token,
-            name: p.level_name || "$$",
+            name: p.level_name || "$$$",
             daysOffset: daysOffsetValue,
             maxDaysOffset:
               p.max_days_offset != null ? String(p.max_days_offset) : null,
@@ -531,7 +531,7 @@ export default function GameDetailPage({
             kind: "purchase" as const,
             id: p.id,
             token: p.event_token,
-            name: p.level_name || "$$",
+            name: p.level_name || "$$$",
             daysOffset: daysOffsetValue,
             maxDaysOffset: p.max_days_offset != null ? String(p.max_days_offset) : null,
             isRestricted: !!p.is_restricted,

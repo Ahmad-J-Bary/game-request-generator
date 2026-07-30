@@ -188,8 +188,10 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
             const token = tokenRaw.toString().trim();
             const nameRaw = matrixData[headerOffset + 1] && matrixData[headerOffset + 1][col] !== undefined && matrixData[headerOffset + 1][col] !== null ? matrixData[headerOffset + 1][col] : '';
             const name = nameRaw.toString().trim();
+            const timeSpentRaw = matrixData[headerOffset + 3] && matrixData[headerOffset + 3][col] !== undefined && matrixData[headerOffset + 3][col] !== null ? matrixData[headerOffset + 3][col] : '';
+            const timeSpentStr = timeSpentRaw.toString().trim();
             if (token && token.toLowerCase() !== 'event token') {
-              colHeaders.push({ name, token, isPurchase: name === '$$$' });
+              colHeaders.push({ name, token, isPurchase: name === '$$$' || timeSpentStr === '' || timeSpentStr === '-' });
             } else {
               colHeaders.push({ name: '', token: '', isPurchase: false }); // Empty placeholder to align indices
             }
@@ -526,8 +528,8 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
 
       if (!eventToken || eventToken.toLowerCase() === 'event token') continue;
 
-      if (levelName === '$$$') {
-        const pe: Partial<PurchaseEvent> = { event_token: eventToken, is_restricted: false };
+      if (levelName === '$$$' || timeSpentStr === '-' || timeSpentStr === '') {
+        const pe: Partial<PurchaseEvent> = { event_token: eventToken, level_name: levelName !== '$$$' ? levelName : '', is_restricted: false };
         if (daysOffsetStr.toLowerCase().includes('less than')) {
           const m = daysOffsetStr.match(/less than (\d+)/i);
           if (m) pe.max_days_offset = parseInt(m[1], 10);
@@ -668,10 +670,11 @@ export function parseHorizontalLayoutData(rows: any[][]): { levels: Partial<Leve
     const daysOffsetStr = row[daysOffsetIndex]?.toString().trim() || '';
     const timeSpentStr = row[timeSpentIndex]?.toString().trim() || '';
 
-    if (name === '$$$') {
+    if (name === '$$$' || timeSpentStr === '-' || timeSpentStr === '') {
       // Purchase event
       const purchaseEvent: Partial<PurchaseEvent> = {
         event_token: token,
+        level_name: name !== '$$$' ? name : '',
         is_restricted: false,
       };
 
@@ -792,9 +795,10 @@ export function parseVerticalLayoutData(rows: any[][]): { levels: Partial<Level>
 
       if (!eventToken || eventToken.toLowerCase() === 'event token' || eventToken.toLowerCase() === 'levels') continue;
 
-      if (levelName === '$$$') {
+      if (levelName === '$$$' || timeSpentStr === '-' || timeSpentStr === '') {
         const purchaseEvent: Partial<PurchaseEvent> = {
           event_token: eventToken,
+          level_name: levelName !== '$$$' ? levelName : '',
           is_restricted: false,
         };
 
