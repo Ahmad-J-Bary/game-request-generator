@@ -1,6 +1,7 @@
 // src/components/daily-tasks/BatchTasks.tsx
 import React from 'react';
 import { TaskItem } from './TaskItem';
+import { VirtualizedTaskList } from './VirtualizedTaskList';
 import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings/types/daily-tasks.types';
 
 interface BatchTasksProps {
@@ -16,6 +17,33 @@ interface BatchTasksProps {
   enableVirtualization?: boolean;
 }
 
+const TaskItemWrapper = React.memo(({ task, batchIndex, ...rest }: {
+  task: DailyTask;
+  batchIndex: number | string;
+  onCompleteTask: BatchTasksProps['onCompleteTask'];
+  onCopyRequest: BatchTasksProps['onCopyRequest'];
+  accountCompletionRecords: BatchTasksProps['accountCompletionRecords'];
+  accountTaskAssignments: BatchTasksProps['accountTaskAssignments'];
+  accountStartStates: BatchTasksProps['accountStartStates'];
+  allBatches: BatchTasksProps['allBatches'];
+  completedTasks: BatchTasksProps['completedTasks'];
+  deferredTasks: BatchTasksProps['deferredTasks'];
+}) => (
+  <TaskItem
+    task={task}
+    onCompleteTask={rest.onCompleteTask}
+    onCopyRequest={rest.onCopyRequest}
+    accountCompletionRecords={rest.accountCompletionRecords}
+    accountTaskAssignments={rest.accountTaskAssignments}
+    accountStartStates={rest.accountStartStates}
+    batchIndex={batchIndex}
+    allBatches={rest.allBatches}
+    completedTasks={rest.completedTasks}
+    deferredTasks={rest.deferredTasks}
+    disableAnimation
+  />
+));
+
 export const BatchTasks = React.memo(({
   batch,
   allBatches,
@@ -26,25 +54,32 @@ export const BatchTasks = React.memo(({
   onCopyRequest,
   completedTasks,
   deferredTasks = [],
+  enableVirtualization = false,
 }: BatchTasksProps) => {
+  const itemProps = {
+    onCompleteTask,
+    onCopyRequest,
+    accountCompletionRecords,
+    accountTaskAssignments,
+    accountStartStates,
+    allBatches,
+    completedTasks,
+    deferredTasks,
+  };
+
   return (
-    <div className="space-y-6">
-      {batch.tasks.map((task, idx) => (
-        <div key={`${task.account.id}-${batch.batchIndex}-${idx}`}>
-          <TaskItem
-            task={task}
-            onCompleteTask={onCompleteTask}
-            onCopyRequest={onCopyRequest}
-            accountCompletionRecords={accountCompletionRecords}
-            accountTaskAssignments={accountTaskAssignments}
-            accountStartStates={accountStartStates}
-            batchIndex={batch.batchIndex}
-            allBatches={allBatches}
-            completedTasks={completedTasks}
-            deferredTasks={deferredTasks}
-          />
-        </div>
-      ))}
-    </div>
+    <VirtualizedTaskList
+      items={batch.tasks}
+      enabled={enableVirtualization}
+      getItemKey={(task) => `${task.account.id}-${batch.batchIndex}-${task.requests[0]?.event_token || ''}-${task.requests[0]?.time_spent || 0}`}
+      renderItem={(task) => (
+        <TaskItemWrapper
+          task={task}
+          batchIndex={batch.batchIndex}
+          {...itemProps}
+        />
+      )}
+      className="space-y-6"
+    />
   );
 });

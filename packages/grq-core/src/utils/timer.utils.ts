@@ -31,6 +31,7 @@ export const calculateTimerState = (
   accountStartStates: { [accountId: number]: AccountStartState },
   completedTasks: any[] = [],
   extraTasks: DailyTask[] = [],
+  previousTask?: DailyTask | null,
 ): TimerState => {
   const accountId = task.account.id;
 
@@ -49,47 +50,49 @@ export const calculateTimerState = (
   const currentTimeSpent = getTaskTimeSpent(task);
   const currentTimeSpentSec = currentTimeSpent / 1000;
 
-  // flattened list of all tasks for this account in order to find previous task
-  let previousTask: DailyTask | null = null;
-  let foundCurrent = false;
+  // Use caller-provided previousTask (O(1)) when available, otherwise search all batches
+  if (previousTask === undefined) {
+    previousTask = null;
+    let foundCurrent = false;
 
-  for (const batch of allBatches) {
-    for (const t of batch.tasks) {
-      if (t.account.id === accountId) {
-        if (
-          t === task ||
-          (t.account.id === task.account.id &&
-            t.requests[0]?.event_token === task.requests[0]?.event_token &&
-            t.requests[0]?.level_id === task.requests[0]?.level_id &&
-            (t.requests[0] as any).days_offset ===
-              (task.requests[0] as any).days_offset &&
-            getTaskTimeSpent(t) === currentTimeSpent)
-        ) {
-          foundCurrent = true;
-          break;
+    for (const batch of allBatches) {
+      for (const t of batch.tasks) {
+        if (t.account.id === accountId) {
+          if (
+            t === task ||
+            (t.account.id === task.account.id &&
+              t.requests[0]?.event_token === task.requests[0]?.event_token &&
+              t.requests[0]?.level_id === task.requests[0]?.level_id &&
+              (t.requests[0] as any).days_offset ===
+                (task.requests[0] as any).days_offset &&
+              getTaskTimeSpent(t) === currentTimeSpent)
+          ) {
+            foundCurrent = true;
+            break;
+          }
+          previousTask = t;
         }
-        previousTask = t;
       }
+      if (foundCurrent) break;
     }
-    if (foundCurrent) break;
-  }
 
-  if (!foundCurrent) {
-    for (const t of extraTasks) {
-      if (t.account.id === accountId) {
-        if (
-          t === task ||
-          (t.account.id === task.account.id &&
-            t.requests[0]?.event_token === task.requests[0]?.event_token &&
-            t.requests[0]?.level_id === task.requests[0]?.level_id &&
-            (t.requests[0] as any).days_offset ===
-              (task.requests[0] as any).days_offset &&
-            getTaskTimeSpent(t) === currentTimeSpent)
-        ) {
-          foundCurrent = true;
-          break;
+    if (!foundCurrent) {
+      for (const t of extraTasks) {
+        if (t.account.id === accountId) {
+          if (
+            t === task ||
+            (t.account.id === task.account.id &&
+              t.requests[0]?.event_token === task.requests[0]?.event_token &&
+              t.requests[0]?.level_id === task.requests[0]?.level_id &&
+              (t.requests[0] as any).days_offset ===
+                (task.requests[0] as any).days_offset &&
+              getTaskTimeSpent(t) === currentTimeSpent)
+          ) {
+            foundCurrent = true;
+            break;
+          }
+          previousTask = t;
         }
-        previousTask = t;
       }
     }
   }

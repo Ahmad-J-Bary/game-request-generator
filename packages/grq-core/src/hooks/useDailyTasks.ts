@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TauriService } from '@grq/core/services/tauri.service';
 import { NotificationService } from '@grq/core/utils/notifications';
@@ -17,7 +17,6 @@ export interface UseDailyTasksReturn {
   loading: boolean;
   isGenerating: boolean;
   games: any[];
-  currentTime: number;
   completedTasks: any[];
 
   // Account state
@@ -48,16 +47,7 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   const [accountTaskAssignments, setAccountTaskAssignments] = useState<{ [accountId: number]: AccountTaskAssignment[] }>({});
   const [accountStartStates, setAccountStartStates] = useState<{ [accountId: number]: AccountStartState }>({});
   const [completedTasks, setCompletedTasks] = useState<any[]>([]);
-  const [currentTime, setCurrentTime] = useState(Date.now());
   const [regenerationTrigger, setRegenerationTrigger] = useState(0);
-  
-  // Update current time every second for UI countdowns
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(Date.now());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Listen for completed tasks event to refresh
   useEffect(() => {
@@ -177,61 +167,34 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   return () => { mounted = false; };
   }, []);
 
-  // Save account data to AsyncStorage whenever they change
+  // Debounced persistence — merge all 4 storage writes into 1 effect (500ms debounce)
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    const save = async () => {
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(async () => {
       try {
+        const writes: Promise<void>[] = [];
         if (Object.keys(accountTaskAssignments).length > 0) {
-          await asyncStorageService.set('accountTaskAssignments', accountTaskAssignments);
+          writes.push(asyncStorageService.set('accountTaskAssignments', accountTaskAssignments));
         }
-      } catch (error) {
-        console.error('Error saving account task assignments:', error);
-      }
-    };
-    save();
-  }, [accountTaskAssignments]);
-
-  useEffect(() => {
-    const save = async () => {
-      try {
         if (Object.keys(accountCompletionRecords).length > 0) {
-          await asyncStorageService.set('accountCompletionRecords', accountCompletionRecords);
+          writes.push(asyncStorageService.set('accountCompletionRecords', accountCompletionRecords));
         }
-      } catch (error) {
-        console.error('Error saving account completion records:', error);
-      }
-    };
-    save();
-  }, [accountCompletionRecords]);
-
-  useEffect(() => {
-    const save = async () => {
-      try {
         if (Object.keys(accountStartStates).length > 0) {
-          await asyncStorageService.set('accountStartStates', accountStartStates);
+          writes.push(asyncStorageService.set('accountStartStates', accountStartStates));
         }
+        if (!loading) {
+          writes.push(asyncStorageService.set('dailyTasks_scheduledTime', { accountScheduledTime }));
+        }
+        await Promise.all(writes);
       } catch (error) {
-        console.error('Error saving account start states:', error);
+        console.error('Error persisting daily tasks state:', error);
       }
+    }, 500);
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
     };
-    save();
-  }, [accountStartStates]);
-
-  useEffect(() => {
-    const saveTasksState = async () => {
-      if (loading) return;
-
-      try {
-        await asyncStorageService.set('dailyTasks_scheduledTime', {
-          accountScheduledTime
-        });
-      } catch (error) {
-        console.error('Error saving daily tasks state:', error);
-      }
-    };
-
-    saveTasksState();
-  }, [accountScheduledTime, loading]);
+  }, [accountTaskAssignments, accountCompletionRecords, accountStartStates, accountScheduledTime, loading]);
 
   // Generate today's tasks using the TaskGenerator utility
   const generateTodaysTasks = useCallback(async () => {
@@ -335,7 +298,6 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
     loading,
     isGenerating,
     games,
-    currentTime,
     completedTasks,
 
     // Account state

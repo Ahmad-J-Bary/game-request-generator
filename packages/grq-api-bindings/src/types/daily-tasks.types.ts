@@ -96,5 +96,6 @@ export interface TaskItemProps {
     allBatches: GameBatch[];
     completedTasks: CompletedDailyTask[];
     deferredTasks?: DailyTask[];
+    disableAnimation?: boolean;
 }
 

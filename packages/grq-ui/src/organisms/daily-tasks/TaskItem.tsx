@@ -49,7 +49,7 @@ const TaskRequestList = React.memo(({
   );
 });
 
-export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks, deferredTasks = [] }: TaskItemProps) => {
+export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks, deferredTasks = [], disableAnimation = false }: TaskItemProps) => {
   const { t } = useTranslation();
   const currentTime = useTimer(1000);
 
@@ -66,32 +66,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
     task.requests.every(req => req.request_type === 'Session Only')
   , [task.requests]);
 
-  // Use centralized timer logic
-  const timerState = calculateTimerState(
-    task,
-    batchIndex,
-    allBatches,
-    currentTime,
-    accountCompletionRecords,
-    accountStartStates,
-    completedTasks,
-    deferredTasks
-  );
-
-  const { isReady, isBlocked, remainingTime } = timerState;
-
-  // Session Only tasks follow the same timer logic as other tasks
-  const effectiveIsReady = isReady;
-
-  // Calculate progress percentage for the cooldown (if applicable)
-  const progressPercent = useMemo(() => {
-    if (isReady || isBlocked) return 100;
-    // time_spent is in ms from Rust; convert to seconds to match remainingTime
-    const totalWait = (task.requests[0]?.time_spent || 3000) / 1000;
-    if (totalWait <= 0) return 100;
-    return Math.max(0, Math.min(100, ((totalWait - remainingTime) / totalWait) * 100));
-  }, [isReady, isBlocked, remainingTime, task.requests]);
-
+  // Compute account task metadata and previousTask for O(1) timer lookup
   const accountTaskMeta = useMemo(() => {
     const flatReadyTasks = allBatches.flatMap((batch) => batch.tasks);
     const allDailyTasks = [...flatReadyTasks, ...deferredTasks];
@@ -113,10 +88,36 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
     return {
       accountTaskTotal: accountTasks.length,
       accountTaskIndex: currentTaskIndex >= 0 ? currentTaskIndex + 1 : 1,
+      previousTask: currentTaskIndex > 0 ? accountTasks[currentTaskIndex - 1] : null,
     };
   }, [accountId, allBatches, deferredTasks, task]);
 
-  // Determine status badge
+  // Use centralized timer logic (pre-computed previousTask for O(1) lookup)
+  const timerState = calculateTimerState(
+    task,
+    batchIndex,
+    allBatches,
+    currentTime,
+    accountCompletionRecords,
+    accountStartStates,
+    completedTasks,
+    deferredTasks,
+    accountTaskMeta.previousTask
+  );
+
+  const { isReady, isBlocked, remainingTime } = timerState;
+
+  // Session Only tasks follow the same timer logic as other tasks
+  const effectiveIsReady = isReady;
+
+  // Calculate progress percentage for the cooldown (if applicable)
+  const progressPercent = useMemo(() => {
+    if (isReady || isBlocked) return 100;
+    const totalWait = (task.requests[0]?.time_spent || 3000) / 1000;
+    if (totalWait <= 0) return 100;
+    return Math.max(0, Math.min(100, ((totalWait - remainingTime) / totalWait) * 100));
+  }, [isReady, isBlocked, remainingTime, task.requests]);
+
   const getStatusBadge = () => {
     if (effectiveIsReady) {
       return (
@@ -142,11 +143,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
     );
   };
 
-  return (
-    <motion.div
-      layout
-      transition={{ layout: { duration: 0.2, ease: "easeOut" } }}
-    >
+  const card = (
       <Card
           key={task.account.id}
           className={cn(
@@ -249,6 +246,16 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
           />
         </CardContent>
       </Card>
+  );
+
+  if (disableAnimation) return card;
+
+  return (
+    <motion.div
+      layout
+      transition={{ layout: { duration: 0.2, ease: "easeOut" } }}
+    >
+      {card}
     </motion.div>
   );
 });
