@@ -1,6 +1,6 @@
 {
   "name": "@grq/api-bindings",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "private": true,
   "main": "./src/types/index.ts",
   "types": "./src/types/index.ts",
