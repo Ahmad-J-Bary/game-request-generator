@@ -29,10 +29,13 @@ interface ActionToolbarProps {
   onCancel: () => void;
   onImport: () => void;
   onExport: () => void;
+  hideImport?: boolean;
+  hideExport?: boolean;
   isExporting?: boolean;
   isSaving?: boolean;
   backTo?: string;
   editModeExtra?: ReactNode;
+  nonEditExtra?: ReactNode;
   exportDropdown?: ReactNode;
   mobilePopoverExtra?: ReactNode;
 }
@@ -46,10 +49,13 @@ export function ActionToolbar({
   onCancel,
   onImport,
   onExport,
+  hideImport = false,
+  hideExport = false,
   isExporting,
   isSaving,
   backTo,
   editModeExtra,
+  nonEditExtra,
   exportDropdown,
   mobilePopoverExtra,
 }: ActionToolbarProps) {
@@ -90,7 +96,7 @@ export function ActionToolbar({
             size="sm"
             onClick={onSave}
             disabled={isSaving}
-            className="flex items-center gap-2 h-9 shrink-0 shadow-lg shadow-primary/20"
+            className="flex items-center gap-2 h-9 shrink-0 bg-green-600 hover:bg-green-700 shadow-lg shadow-primary/20"
           >
             <Save className="h-4 w-4" />
             <span className="hidden xs:inline">{t("common.save")}</span>
@@ -106,45 +112,53 @@ export function ActionToolbar({
           </Button>
         </div>
       ) : (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onEditToggle}
-          className="flex items-center gap-2 h-9 group transition-all hover:border-primary/50"
-        >
-          <Edit3 className="h-4 w-4 transition-transform group-hover:rotate-12" />
-          <span className="hidden xs:inline">{t("common.edit")}</span>
-        </Button>
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onEditToggle}
+            className="flex items-center gap-2 h-9 group transition-all hover:border-primary/50"
+          >
+            <Edit3 className="h-4 w-4 transition-transform group-hover:rotate-12" />
+            <span className="hidden xs:inline">{t("common.edit")}</span>
+          </Button>
+          {nonEditExtra}
+        </>
       )}
 
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onImport}
-        className="flex items-center gap-2 h-9 shrink-0"
-        title={t("common.import")}
-      >
-        <Upload className="h-4 w-4" />
-        <span className="hidden sm:inline">{t("common.import")}</span>
-      </Button>
-
-      {exportDropdown ? exportDropdown : (
+      {!hideImport && (
         <Button
           variant="outline"
           size="sm"
-          onClick={onExport}
-          disabled={isExporting}
+          onClick={onImport}
           className="flex items-center gap-2 h-9 shrink-0"
-          title={t("common.export")}
+          title={t("common.import")}
         >
-          {isExporting ? (
-            <span className="animate-spin">...</span>
-          ) : (
-            <Download className="h-4 w-4" />
-          )}
-          <span className="hidden sm:inline">{t("common.export")}</span>
+          <Upload className="h-4 w-4" />
+          <span className="hidden sm:inline">{t("common.import")}</span>
         </Button>
       )}
+
+      {!hideExport &&
+        (exportDropdown ? (
+          exportDropdown
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onExport}
+            disabled={isExporting}
+            className="flex items-center gap-2 h-9 shrink-0"
+            title={t("common.export")}
+          >
+            {isExporting ? (
+              <span className="animate-spin">...</span>
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">{t("common.export")}</span>
+          </Button>
+        ))}
 
       <div className="hidden lg:flex items-center gap-1 p-1 border rounded-lg h-9 bg-accent/30 shadow-inner">
         <button

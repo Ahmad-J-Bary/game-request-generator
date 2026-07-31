@@ -7,15 +7,10 @@ import { Card, CardContent } from "@grq/ui/atoms/card";
 import { Badge } from "@grq/ui/atoms/badge";
 import { cn } from "@grq/ui/lib/utils";
 import {
-  Download,
-  Upload,
   Edit3,
-  Save,
-  X,
   CheckSquare,
   ArrowLeft,
   ArrowRight,
-  MoreVertical,
   User,
   GitBranch,
 } from "lucide-react";
@@ -23,10 +18,10 @@ import type {
   TimelineColumnData as ColumnData,
   ColumnData as ExportColumnData,
 } from "@grq/ui/organisms/tables/AccountDataTable";
+import { ActionToolbar } from "@grq/ui/molecules/ActionToolbar";
 import { BackButton } from "@grq/ui/molecules/BackButton";
 import { ImportDialog } from "@grq/ui/molecules/ImportDialog";
 import { ExportDialog } from "@grq/ui/molecules/ExportDialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@grq/ui/atoms/popover";
 import { Label } from "@grq/ui/atoms/label";
 import { Button } from "@grq/ui/atoms/button";
 import { BranchTransferDialog } from "@grq/ui/organisms/BranchTransferDialog";
@@ -547,7 +542,7 @@ export default function AccountDetailPage() {
               accountId,
               accountName: account!.name,
               gameId: account!.game_id,
-              gameName: gameName || 'Unknown',
+              gameName: gameName || t("common.unknown"),
               eventToken: computedEventToken,
               durationMs: levelTimeSpentMs,
               levelId: levelIdNum,
@@ -667,7 +662,7 @@ export default function AccountDetailPage() {
               accountId,
               accountName: account!.name,
               gameId: account!.game_id,
-              gameName: gameName || 'Unknown',
+              gameName: gameName || t("common.unknown"),
               eventToken: eventDef?.event_token || '',
               durationMs: calculatedTimeSpent,
               requestType: 'Purchase Event',
@@ -1000,12 +995,153 @@ export default function AccountDetailPage() {
         </div>
         <Card>
           <CardContent className="p-6 text-center">
-            Account not found
+            {t("accounts.notFound")}
           </CardContent>
         </Card>
       </div>
     );
   }
+
+  const editModeExtra = (
+    <div className="hidden lg:flex items-center gap-2 px-3 py-2 border rounded-lg bg-muted/50 h-9">
+      <Button
+        type="button"
+        variant={rangeFillMode ? "default" : "outline"}
+        size="sm"
+        onClick={() => setRangeFillMode((prev) => !prev)}
+        className={`h-7 px-2 text-[11px] font-semibold transition-all ${
+          rangeFillMode
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        }`}
+        title={t("accounts.rangeFillHint")}
+      >
+        {rangeFillMode
+          ? t("accounts.rangeFillOn")
+          : t("accounts.rangeFillOff")}
+      </Button>
+      <input
+        type="checkbox"
+        id="complete-all"
+        checked={completeAllChecked}
+        onChange={(e) => handleCompleteAllChange(e.target.checked)}
+        className="h-4 w-4"
+      />
+      <label
+        htmlFor="complete-all"
+        className="text-xs font-medium flex items-center gap-1 cursor-pointer"
+      >
+        {t("accounts.completeAll")}
+      </label>
+    </div>
+  );
+
+  const nonEditExtra = (
+    <>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() =>
+          navigate(`/accounts/edit/${account?.id}`, {
+            state: { account, selectedGameId },
+          })
+        }
+        className="flex items-center gap-2 h-9 shrink-0"
+        title={t("accounts.editAccountInfo")}
+      >
+        <User className="h-4 w-4" />
+        <span className="hidden xs:inline">
+          {t("accounts.editAccount")}
+        </span>
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setShowBranchTransferDialog(true)}
+        className="flex items-center gap-2 h-9 shrink-0"
+        title={t("accounts.branchTransfer.title")}
+      >
+        <GitBranch className="h-4 w-4" />
+        <span className="hidden xs:inline">
+          {t("accounts.branchTransfer.title")}
+        </span>
+      </Button>
+    </>
+  );
+
+  const mobilePopoverExtra = isEditMode ? (
+    <div className="space-y-2 pt-2 border-t">
+      <Label className="text-[10px] uppercase text-muted-foreground font-bold">
+        {t("common.edit")}
+      </Label>
+
+      <Button
+        type="button"
+        variant={rangeFillMode ? "default" : "outline"}
+        size="sm"
+        onClick={() => setRangeFillMode((prev) => !prev)}
+        className={`w-full justify-start gap-2 h-9 ${
+          rangeFillMode
+            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+            : "text-muted-foreground"
+        }`}
+      >
+        <Edit3 className="h-4 w-4" />
+        {rangeFillMode
+          ? t("accounts.rangeFillOn")
+          : t("accounts.rangeFillOff")}
+      </Button>
+      <p className="text-[11px] text-muted-foreground px-1">
+        {t("accounts.rangeFillHint")}
+      </p>
+
+      <div className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-orange-500/10 border-orange-500/20 text-orange-600">
+        <input
+          type="checkbox"
+          id="complete-all-mobile"
+          checked={completeAllChecked}
+          onChange={(e) => handleCompleteAllChange(e.target.checked)}
+          className="h-4 w-4"
+        />
+        <label
+          htmlFor="complete-all-mobile"
+          className="text-sm font-medium flex items-center gap-2 cursor-pointer select-none"
+        >
+          <CheckSquare className="h-4 w-4" />
+          {t("accounts.completeAll")}
+        </label>
+      </div>
+    </div>
+  ) : (
+    <div className="space-y-2 pt-2 border-t">
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={() =>
+          navigate(`/accounts/edit/${account?.id}`, {
+            state: { account, selectedGameId },
+          })
+        }
+        className="w-full justify-start gap-2 h-9"
+        title={t("accounts.editAccountInfo")}
+      >
+        <User className="h-4 w-4" />
+        {t("accounts.editAccount")}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setShowBranchTransferDialog(true)}
+        className="w-full justify-start gap-2 h-9"
+        title={t("accounts.branchTransfer.title")}
+      >
+        <GitBranch className="h-4 w-4" />
+        {t("accounts.branchTransfer.title")}
+      </Button>
+    </div>
+  );
 
   return (
     <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6 min-h-[calc(100vh-4rem)] relative flex flex-col">
@@ -1051,278 +1187,21 @@ export default function AccountDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 self-end lg:self-auto">
-            {/* Desktop Secondary Actions */}
-            <div className="hidden lg:flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowImportDialog(true)}
-                className="flex items-center gap-2"
-              >
-                <Upload className="h-4 w-4" />
-                {t("common.import", "Import")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowExportDialog(true)}
-                className="flex items-center gap-2"
-              >
-                <Download className="h-4 w-4" />
-                {t("common.export", "Export")}
-              </Button>
-              <div className="flex items-center gap-2 px-2 py-1 border rounded h-9">
-                <label className="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="account-detail-mode-desktop"
-                    checked={mode === "event-only"}
-                    onChange={() => setMode("event-only")}
-                    className="w-3 h-3"
-                  />
-                  <span className="text-xs">{t("common.eventOnly")}</span>
-                </label>
-                <label className="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="account-detail-mode-desktop"
-                    checked={mode === "all"}
-                    onChange={() => setMode("all")}
-                    className="w-3 h-3"
-                  />
-                  <span className="text-xs">{t("common.all")}</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Mobile More Actions Popover */}
-            <div className="lg:hidden">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 w-9 p-0">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-3 space-y-4" align="end">
-                  <div className="space-y-2">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">
-                      {t("common.view")}
-                    </Label>
-                    <div className="flex flex-col gap-2 p-2 border rounded bg-accent/20">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="account-detail-mode-mobile"
-                          checked={mode === "event-only"}
-                          onChange={() => setMode("event-only")}
-                        />
-                        <span className="text-sm">{t("common.eventOnly")}</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="account-detail-mode-mobile"
-                          checked={mode === "all"}
-                          onChange={() => setMode("all")}
-                        />
-                        <span className="text-sm">{t("common.all")}</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {isEditMode && (
-                    <div className="space-y-2 pt-2 border-t">
-                      <Label className="text-[10px] uppercase text-muted-foreground font-bold">
-                        {t("common.edit")}
-                      </Label>
-
-                      <Button
-                        type="button"
-                        variant={rangeFillMode ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setRangeFillMode((prev) => !prev)}
-                        className={`w-full justify-start gap-2 h-9 ${
-                          rangeFillMode
-                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        <Edit3 className="h-4 w-4" />
-                        {rangeFillMode
-                          ? t("accounts.rangeFillOn", "Range Fill: ON")
-                          : t("accounts.rangeFillOff", "Range Fill")}
-                      </Button>
-                      <p className="text-[11px] text-muted-foreground px-1">
-                        {t(
-                          "accounts.rangeFillHint",
-                          "Tap any checkbox to fill from start to that point",
-                        )}
-                      </p>
-
-                      <div className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-orange-500/10 border-orange-500/20 text-orange-600">
-                        <input
-                          type="checkbox"
-                          id="complete-all-mobile"
-                          checked={completeAllChecked}
-                          onChange={(e) =>
-                            handleCompleteAllChange(e.target.checked)
-                          }
-                          className="h-4 w-4"
-                        />
-                        <label
-                          htmlFor="complete-all-mobile"
-                          className="text-sm font-medium flex items-center gap-2 cursor-pointer select-none"
-                        >
-                          <CheckSquare className="h-4 w-4" />
-                          {t("accounts.completeAll", "Complete All")}
-                        </label>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-2 pt-2 border-t">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">
-                      {t("common.actions")}
-                    </Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowImportDialog(true)}
-                        className="justify-start gap-2 h-9 text-xs px-2"
-                      >
-                        <Upload className="h-3.5 w-3.5" />
-                        {t("common.import")}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowExportDialog(true)}
-                        className="justify-start gap-2 h-9 text-xs px-2"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        {t("common.export")}
-                      </Button>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="h-8 w-[1px] bg-border mx-1" />
-
-            {/* Primary Actions */}
-            <div className="flex items-center gap-2">
-              {isEditMode ? (
-                <>
-                  {/* Desktop Edit Helpers */}
-                  <div className="hidden lg:flex items-center gap-2 px-3 py-2 border rounded-lg bg-muted/50 h-9">
-                    <Button
-                      type="button"
-                      variant={rangeFillMode ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setRangeFillMode((prev) => !prev)}
-                      className={`h-7 px-2 text-[11px] font-semibold transition-all ${
-                        rangeFillMode
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                      title={t(
-                        "accounts.rangeFillHint",
-                        "Tap any checkbox to fill from start to that point",
-                      )}
-                    >
-                      {rangeFillMode
-                        ? t("accounts.rangeFillOn", "Range Fill: ON")
-                        : t("accounts.rangeFillOff", "Range Fill")}
-                    </Button>
-                    <input
-                      type="checkbox"
-                      id="complete-all"
-                      checked={completeAllChecked}
-                      onChange={(e) =>
-                        handleCompleteAllChange(e.target.checked)
-                      }
-                      className="h-4 w-4"
-                    />
-                    <label
-                      htmlFor="complete-all"
-                      className="text-xs font-medium flex items-center gap-1 cursor-pointer"
-                    >
-                      {t("accounts.completeAll")}
-                    </label>
-                  </div>
-
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleSaveProgress}
-                    className="flex items-center gap-2 h-9 bg-green-600 hover:bg-green-700"
-                  >
-                    <Save className="h-4 w-4" />
-                    <span className="hidden xs:inline">
-                      {t("common.save", "Save")}
-                    </span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCancelEdit}
-                    className="flex items-center gap-2 h-9"
-                  >
-                    <X className="h-4 w-4" />
-                    <span className="hidden xs:inline">
-                      {t("common.cancel", "Cancel")}
-                    </span>
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleEditToggle}
-                    className="flex items-center gap-2 h-9"
-                  >
-                    <Edit3 className="h-4 w-4" />
-                    <span className="hidden xs:inline">
-                      {t("common.edit", "Edit")}
-                    </span>
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() =>
-                      navigate(`/accounts/edit/${account?.id}`, {
-                        state: { account, selectedGameId },
-                      })
-                    }
-                    className="flex items-center gap-2 h-9"
-                    title={t("accounts.editAccountInfo", "Edit Account Info")}
-                  >
-                    <User className="h-4 w-4" />
-                    <span className="hidden xs:inline">
-                      {t("accounts.editAccount", "Edit Account")}
-                    </span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowBranchTransferDialog(true)}
-                    className="flex items-center gap-2 h-9"
-                    title={t("accounts.branchTransfer.title")}
-                  >
-                    <GitBranch className="h-4 w-4" />
-                    <span className="hidden xs:inline">
-                      {t("accounts.branchTransfer.title")}
-                    </span>
-                  </Button>
-                </>
-              )}
-            </div>
-
-            <BackButton
-              to={
+            <ActionToolbar
+              mode={mode}
+              onModeChange={setMode}
+              isEditMode={isEditMode}
+              onEditToggle={handleEditToggle}
+              onSave={handleSaveProgress}
+              onCancel={handleCancelEdit}
+              onImport={() => setShowImportDialog(true)}
+              onExport={() => setShowExportDialog(true)}
+              hideImport
+              hideExport
+              editModeExtra={editModeExtra}
+              nonEditExtra={nonEditExtra}
+              mobilePopoverExtra={mobilePopoverExtra}
+              backTo={
                 selectedGameId
                   ? `/accounts/detail?gameId=${selectedGameId}`
                   : undefined
@@ -1334,8 +1213,7 @@ export default function AccountDetailPage() {
           <div className="flex items-center gap-3 px-4 py-2 bg-accent/20 rounded-t-xl border-x border-t border-border/50">
             <div className="h-5 w-1 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
             <h3 className="text-sm font-bold text-foreground tracking-tight flex items-center gap-2 flex-1">
-              {account.branch_name ||
-                t("branches.defaultBranch", "Default Branch")}
+              {account.branch_name || t("branches.defaultBranch")}
             </h3>
           </div>
           <Card className="rounded-t-none border-t-0 shadow-lg shadow-black/5 bg-background/40 backdrop-blur-sm">
@@ -1402,7 +1280,7 @@ export default function AccountDetailPage() {
                 variant="outline"
                 onClick={() => navigate(`/accounts/${prevAccount.id}`)}
                 className="flex items-center gap-2 bg-background"
-                title={`${t("common.previous", "Previous")}: ${prevAccount.name}`}
+                title={`${t("common.previous")}: ${prevAccount.name}`}
               >
                 <ArrowLeft className="h-4 w-4" />
                 <span className="hidden sm:inline">{prevAccount.name}</span>
@@ -1415,7 +1293,7 @@ export default function AccountDetailPage() {
                 variant="outline"
                 onClick={() => navigate(`/accounts/${nextAccount.id}`)}
                 className="flex items-center gap-2 bg-background"
-                title={`${t("common.next", "Next")}: ${nextAccount.name}`}
+                title={`${t("common.next")}: ${nextAccount.name}`}
               >
                 <span className="hidden sm:inline">{nextAccount.name}</span>
                 <ArrowRight className="h-4 w-4" />

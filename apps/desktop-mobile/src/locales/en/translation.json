@@ -22,6 +22,8 @@
     "copy": "Copy",
     "copied": "Copied!",
     "noData": "No data available",
+    "noLevels": "No levels or purchase events",
+    "pick": "Pick",
     "selectDate": "Select Date",
     "actions": "Actions",
     "accounts": "Accounts",
@@ -39,6 +41,8 @@
     "select": "Select",
     "default": "Default",
     "clear": "Clear",
+    "unknown": "Unknown",
+    "loadFailed": "Failed to load",
     "on": "On",
     "off": "Off",
     "live": "Live",
@@ -72,6 +76,7 @@
     "addGame": "Add Game",
     "createdAt": "Created At",
     "deleteConfirm": "Are you sure you want to delete this game?",
+    "deleteTitle": "Delete Game",
     "deleteSuccess": "Game deleted successfully",
     "addSuccess": "Game added successfully",
     "updateSuccess": "Game updated successfully",
@@ -91,6 +96,7 @@
     "title": "Accounts",
     "addAccount": "Add Account",
     "editAccount": "Edit Account",
+    "editAccountInfo": "Edit Account Info",
     "deleteAccount": "Delete Account",
     "accountName": "Account Name",
     "accountNamePlaceholder": "Enter account name",
@@ -106,15 +112,19 @@
     "addSuccess": "Account added successfully",
     "updateSuccess": "Account updated successfully",
     "noAccounts": "No accounts found. Add your first account!",
+    "notFound": "Account not found",
     "detailTitle": "Accounts Detail",
     "detailSubtitle": "Detailed view of accounts' levels (Vertical / Horizontal)",
     "viewDetails": "View Details",
     "account": "Account",
     "pickDate": "Pick a date",
     "pickTime": "Pick a time",
+    "selectedTime": "Selected Time",
     "country": "Country",
+    "selectCountry": "Select country",
     "rangeFillOn": "Range Fill: On",
     "rangeFillOff": "Range Fill: Off",
+    "rangeFillHint": "Tap any checkbox to fill from start to that point",
     "branchTransfer": {
       "title": "Transfer Branch",
       "description": "Move this account to a different branch, preserving progress",
@@ -218,6 +228,7 @@
     "noTasksDescription": "Click \"Generate Today's Tasks\" to see all scheduled requests for your accounts.",
     "generateTasks": "Generate Today's Tasks",
     "generateTasksLoading": "Generating tasks...",
+    "refreshingTasks": "Updating tasks...",
     "generateTasksSuccess": "Generated {{count}} batches",
     "generateTasksError": "Error generating daily tasks",
     "taskCount_one": "{{count}} task",
@@ -388,6 +399,7 @@
     "title": "Import Data",
     "description": "Import levels, purchase events, and accounts from an Excel file.",
     "instructions": "Select an Excel file (.xlsx or .xls) with the following sheets:",
+    "selectGameFirst": "Select a game first",
     "selectFile": "Select File",
     "confirm": "Import Data",
     "success": "Successfully imported {{count}} items",
@@ -419,8 +431,11 @@
   "export": {
     "title": "Export Data",
     "gameDescription": "Export all levels, purchase events, and accounts for this game.",
+    "gameDetailDescription": "Export levels and purchase events for this game.",
     "accountDescription": "Export data for this account.",
+    "accountDetailDescription": "Export account data with level and purchase event dates.",
     "allDescription": "Export all accounts from all games.",
+    "allGamesDetailDescription": "Export levels and purchase events for all games.",
     "format": "Data will be exported as an Excel file (.xlsx) with separate sheets for different data types.",
     "confirm": "Export",
     "success": "Data exported successfully",
@@ -450,6 +465,8 @@
   "settings": {
     "title": "Settings",
     "description": "Manage your app configuration and preferences.",
+    "tools": "Tools",
+    "saveFailed": "Failed to save",
     "appearance": {
       "title": "Appearance",
       "reset": "Reset to Default"
@@ -503,7 +520,8 @@
       "restoreSuccess": "Database restored to pre-import state successfully!",
       "restoreFailed": "Restore failed: {{error}}",
       "acceptBtn": "✓ Accept current as latest",
-      "acceptSuccess": "Current database accepted as latest version."
+      "acceptSuccess": "Current database accepted as latest version.",
+      "acceptFailed": "Failed to accept current as latest"
     },
     "reset": "Reset to Default",
     "sendReport": "Send Excel Report to Telegram",
@@ -598,6 +616,9 @@
       "backupInProgress": "Creating backup...",
       "backupHint": "On each app start, the database is compared with the latest backup. If different, a new timestamped copy (backup_YYYYMMDD_HHMMSS.sqlite) is created automatically. Backups older than 2 days are cleaned up."
     }
+  },
+  "theme": {
+    "toggle": "Toggle Theme"
   },
   "colorSettings": {
     "title": "Color Customization",

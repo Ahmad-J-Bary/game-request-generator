@@ -218,7 +218,7 @@ export function AccountDataTable({
                     className="w-16 h-6 p-0 text-xs hover:bg-accent justify-center"
                   >
                     <Calendar className="h-3 w-3 mr-1" />
-                    {dateText === "-" ? "Pick" : dateText}
+                    {dateText === "-" ? t("common.pick") : dateText}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -354,7 +354,7 @@ export function AccountDataTable({
   if (columns.length === 0) {
     return (
       <div className="py-8 text-center text-muted-foreground">
-        No levels or purchase events
+        {t("common.noLevels")}
       </div>
     );
   }
@@ -530,7 +530,7 @@ export function AccountDataTable({
                                       ] as Date,
                                       "MMM d",
                                     )
-                                  : "Pick"}
+                                  : t("common.pick")}
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent
@@ -575,11 +575,11 @@ export function AccountDataTable({
                             >
                               <Calendar className="h-3 w-3 mr-1" />
                               {tempPurchaseDates[col.id as number]
-                                ? format(
-                                    tempPurchaseDates[col.id as number] as Date,
-                                    "MMM d",
-                                  )
-                                : "Pick"}
+                                  ? format(
+                                      tempPurchaseDates[col.id as number] as Date,
+                                      "MMM d",
+                                    )
+                                  : t("common.pick")}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="center">

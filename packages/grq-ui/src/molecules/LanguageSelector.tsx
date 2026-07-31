@@ -18,7 +18,7 @@ export function LanguageSelector() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon">
           <Languages className="h-5 w-5" />
-          <span className="sr-only">{t('language.select')}</span>
+          <span className="sr-only">{t('settings.language.select')}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -26,13 +26,13 @@ export function LanguageSelector() {
           onClick={() => setLanguage('en')}
           className={language === 'en' ? 'bg-accent' : ''}
         >
-          {t('language.english')}
+          {t('settings.language.english')}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => setLanguage('ar')}
           className={language === 'ar' ? 'bg-accent' : ''}
         >
-          {t('language.arabic')}
+          {t('settings.language.arabic')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

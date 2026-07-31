@@ -370,7 +370,7 @@ export function AccountsDataTable({
   if (columns.length === 0) {
     return (
       <div className="py-8 text-center text-muted-foreground">
-        No levels or purchase events
+        {t("common.noLevels")}
       </div>
     );
   }
@@ -463,7 +463,7 @@ export function AccountsDataTable({
                       <CalendarIcon className="h-3 w-3 mr-1" />
                       {purchaseDateOverride
                         ? format(purchaseDateOverride, "MMM d")
-                        : "Pick"}
+                        : t("common.pick")}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="center">
@@ -542,7 +542,7 @@ export function AccountsDataTable({
                     <CalendarIcon className="h-3 w-3 mr-1" />
                     {purchaseDateOverride
                       ? format(purchaseDateOverride, "MMM d")
-                      : "Pick"}
+                      : t("common.pick")}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="center">

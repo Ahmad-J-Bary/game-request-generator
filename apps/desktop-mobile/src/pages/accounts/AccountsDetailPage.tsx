@@ -32,6 +32,7 @@ import {
 } from "@grq/ui/atoms/dropdown-menu";
 import { PageHeader } from "@grq/ui/molecules/PageHeader";
 import { ActionToolbar } from "@grq/ui/molecules/ActionToolbar";
+import { Label } from "@grq/ui/atoms/label";
 import {
   Download,
   ChevronDown,
@@ -39,6 +40,7 @@ import {
   Search,
   GitBranch,
   FileText,
+  CheckSquare,
 } from "lucide-react";
 
 import { useAccounts } from "@grq/core/hooks/useAccounts";
@@ -294,6 +296,7 @@ function AccountsDetailContent({
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [rangeFillMode, setRangeFillMode] = useState(false);
+  const [completeAllChecked, setCompleteAllChecked] = useState(false);
   const [tempProgress, setTempProgress] = useState<{
     levels: Record<string, boolean>;
     purchases: Record<string, boolean>;
@@ -403,6 +406,7 @@ function AccountsDetailContent({
       setTempPurchaseDates(purchaseDates);
     } else {
       setRangeFillMode(false);
+      setCompleteAllChecked(false);
     }
     setIsEditMode(!isEditMode);
   };
@@ -415,7 +419,7 @@ function AccountsDetailContent({
     context?: {
       columns: ColumnData[];
       rangeFillMode?: boolean;
-      hiddenSessionLevelIds?: number[];
+      hiddenSessionLevels?: { id: number; daysOffset: number }[];
     },
   ) => {
     if (!options?.rangeFromStart && !context?.rangeFillMode) {
@@ -512,10 +516,11 @@ function AccountsDetailContent({
     })();
 
     if (Number.isFinite(targetDayFromColumn)) {
-      const hiddenSessionLevelIds = context.hiddenSessionLevelIds ?? [];
-      hiddenSessionLevelIds.forEach((levelId) => {
-        newLevels[`${targetAccountId}_${String(levelId)}`] = completed;
-      });
+      (context.hiddenSessionLevels ?? [])
+        .filter((lvl) => lvl.daysOffset <= targetDayFromColumn)
+        .forEach((lvl) => {
+          newLevels[`${targetAccountId}_${String(lvl.id)}`] = completed;
+        });
     }
 
     setTempProgress((prev) => ({
@@ -528,6 +533,40 @@ function AccountsDetailContent({
         ...newPurchases,
       },
     }));
+  };
+
+  const handleCompleteAllChange = async (checked: boolean) => {
+    setCompleteAllChecked(checked);
+    if (!checked) {
+      setTempProgress({ levels: {}, purchases: {} });
+      return;
+    }
+
+    const newLevels: Record<string, boolean> = {};
+    const newPurchases: Record<string, boolean> = {};
+
+    // For every branch, mark every level and purchase event as complete for
+    // every account in that branch, using the same composite keys
+    // ("accountId_levelId" / "accountId_purchaseEventId") as the save logic.
+    for (const branch of branches) {
+      const branchAccounts = accounts.filter(
+        (a) => a.branch_id === branch.id,
+      );
+      const [branchLevels, branchPurchaseEvents] = await Promise.all([
+        TauriService.getGameLevels(branch.id),
+        TauriService.getGamePurchaseEvents(branch.id),
+      ]);
+      for (const acc of branchAccounts) {
+        for (const lvl of branchLevels) {
+          newLevels[`${acc.id}_${lvl.id}`] = true;
+        }
+        for (const pe of branchPurchaseEvents) {
+          newPurchases[`${acc.id}_${pe.id}`] = true;
+        }
+      }
+    }
+
+    setTempProgress({ levels: newLevels, purchases: newPurchases });
   };
 
   const handlePurchaseDateChange = (compositeId: number, date: Date | null) => {
@@ -844,7 +883,7 @@ function AccountsDetailContent({
             accountId: pu.account_id,
             accountName: account.name,
             gameId: account.game_id,
-            gameName: gameNameCache.get(account.game_id) || 'Unknown',
+            gameName: gameNameCache.get(account.game_id) || t("common.unknown"),
             eventToken: purchaseEventToken,
             durationMs: pu.time_spent || computeTaskDuration(1000),
             requestType: 'Purchase Event',
@@ -858,6 +897,7 @@ function AccountsDetailContent({
 
     setIsEditMode(false);
     setRangeFillMode(false);
+    setCompleteAllChecked(false);
     window.dispatchEvent(
       new CustomEvent("progress-updated", {
         detail: { accountId: accounts.map((a) => a.id) },
@@ -920,35 +960,82 @@ function AccountsDetailContent({
     </DropdownMenu>
   );
 
-  const rangeFillButton = (
-    <Button
-      type="button"
-      variant={rangeFillMode ? "default" : "outline"}
-      size="sm"
-      onClick={() => setRangeFillMode((prev) => !prev)}
-      className={`h-9 shrink-0 transition-all ${
-        rangeFillMode
-          ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-          : "text-muted-foreground hover:text-foreground"
-      }`}
-      title={t("accounts.rangeFillHint")}
-    >
-      <Edit3 className="h-4 w-4 mr-1" />
-      <span className="hidden xs:inline">
-        {rangeFillMode ? t("accounts.rangeFillOn") : t("accounts.rangeFillOff")}
-      </span>
-    </Button>
+  const editModeExtra = (
+    <div className="hidden lg:flex items-center gap-2 px-3 py-2 border rounded-lg bg-muted/50 h-9">
+      <Button
+        type="button"
+        variant={rangeFillMode ? "default" : "outline"}
+        size="sm"
+        onClick={() => setRangeFillMode((prev) => !prev)}
+        className={`h-7 px-2 text-[11px] font-semibold transition-all ${
+          rangeFillMode
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        }`}
+        title={t("accounts.rangeFillHint")}
+      >
+        {rangeFillMode
+          ? t("accounts.rangeFillOn")
+          : t("accounts.rangeFillOff")}
+      </Button>
+      <input
+        type="checkbox"
+        id="complete-all"
+        checked={completeAllChecked}
+        onChange={(e) => handleCompleteAllChange(e.target.checked)}
+        className="h-4 w-4"
+      />
+      <label
+        htmlFor="complete-all"
+        className="text-xs font-medium flex items-center gap-1 cursor-pointer"
+      >
+        {t("accounts.completeAll")}
+      </label>
+    </div>
   );
 
   const mobilePopoverExtra = isEditMode ? (
     <div className="space-y-2 pt-2 border-t">
-      <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">
+      <Label className="text-[10px] uppercase text-muted-foreground font-bold">
         {t("common.edit")}
-      </p>
-      {rangeFillButton}
+      </Label>
+
+      <Button
+        type="button"
+        variant={rangeFillMode ? "default" : "outline"}
+        size="sm"
+        onClick={() => setRangeFillMode((prev) => !prev)}
+        className={`w-full justify-start gap-2 h-9 ${
+          rangeFillMode
+            ? "bg-primary text-primary-foreground hover:bg-primary/90"
+            : "text-muted-foreground"
+        }`}
+      >
+        <Edit3 className="h-4 w-4" />
+        {rangeFillMode
+          ? t("accounts.rangeFillOn")
+          : t("accounts.rangeFillOff")}
+      </Button>
       <p className="text-[11px] text-muted-foreground px-1">
         {t("accounts.rangeFillHint")}
       </p>
+
+      <div className="flex items-center gap-2 px-3 py-2 border rounded-lg bg-orange-500/10 border-orange-500/20 text-orange-600">
+        <input
+          type="checkbox"
+          id="complete-all-mobile"
+          checked={completeAllChecked}
+          onChange={(e) => handleCompleteAllChange(e.target.checked)}
+          className="h-4 w-4"
+        />
+        <label
+          htmlFor="complete-all-mobile"
+          className="text-sm font-medium flex items-center gap-2 cursor-pointer select-none"
+        >
+          <CheckSquare className="h-4 w-4" />
+          {t("accounts.completeAll")}
+        </label>
+      </div>
     </div>
   ) : undefined;
 
@@ -963,12 +1050,13 @@ function AccountsDetailContent({
           onSave={handleSaveProgress}
           onCancel={() => {
             setRangeFillMode(false);
+            setCompleteAllChecked(false);
             setIsEditMode(false);
           }}
           onImport={() => setShowImportDialog(true)}
           onExport={() => {}}
           exportDropdown={exportDropdown}
-          editModeExtra={rangeFillButton}
+          editModeExtra={editModeExtra}
           mobilePopoverExtra={mobilePopoverExtra}
         />
       </PageHeader>
@@ -1070,7 +1158,7 @@ interface BranchSectionProps {
     context?: {
       columns: ColumnData[];
       rangeFillMode?: boolean;
-      hiddenSessionLevelIds?: number[];
+      hiddenSessionLevels?: { id: number; daysOffset: number }[];
     },
   ) => void;
   tempPurchaseDates: Record<number, Date | null>;
@@ -1459,17 +1547,21 @@ function BranchSection({
             purchaseProgress={purchaseProgress}
             isEditMode={isEditMode}
             tempProgress={tempProgress}
+            rangeFillMode={rangeFillMode}
             onProgressChange={(type, id, completed, options) =>
               onProgressChange(type, id, completed, options, {
                 columns,
                 rangeFillMode,
-                hiddenSessionLevelIds: levels
+                hiddenSessionLevels: levels
                   .filter(
                     (l) =>
                       l.level_name === "-" &&
                       Number.isFinite(Number(l.days_offset)),
                   )
-                  .map((l) => l.id),
+                  .map((l) => ({
+                    id: l.id,
+                    daysOffset: Number(l.days_offset),
+                  })),
               })
             }
             tempPurchaseDates={tempPurchaseDates}

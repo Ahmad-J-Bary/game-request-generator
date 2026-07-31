@@ -22,6 +22,8 @@
     "copy": "نسخ",
     "copied": "تم النسخ!",
     "noData": "لا توجد بيانات متاحة",
+    "noLevels": "لا توجد مستويات أو أحداث شراء",
+    "pick": "اختيار",
     "selectDate": "اختر التاريخ",
     "actions": "الإجراءات",
     "accounts": "الحسابات",
@@ -39,6 +41,8 @@
     "select": "اختيار",
     "default": "افتراضي",
     "clear": "مسح",
+    "unknown": "غير معروف",
+    "loadFailed": "فشل التحميل",
     "on": "تشغيل",
     "off": "إيقاف",
     "live": "مباشر",
@@ -72,6 +76,7 @@
     "addGame": "إضافة لعبة",
     "createdAt": "تاريخ الإنشاء",
     "deleteConfirm": "هل أنت متأكد من حذف هذه اللعبة؟",
+    "deleteTitle": "حذف اللعبة",
     "deleteSuccess": "تم حذف اللعبة بنجاح",
     "addSuccess": "تمت إضافة اللعبة بنجاح",
     "updateSuccess": "تم تحديث اللعبة بنجاح",
@@ -91,6 +96,7 @@
     "title": "الحسابات",
     "addAccount": "إضافة حساب",
     "editAccount": "تعديل حساب",
+    "editAccountInfo": "تعديل معلومات الحساب",
     "deleteAccount": "حذف حساب",
     "accountName": "اسم الحساب",
     "accountNamePlaceholder": "أدخل اسم الحساب",
@@ -106,15 +112,19 @@
     "addSuccess": "تمت إضافة الحساب بنجاح",
     "updateSuccess": "تم تحديث الحساب بنجاح",
     "noAccounts": "لا توجد حسابات. أضف حسابك الأول!",
+    "notFound": "الحساب غير موجود",
     "detailTitle": "تفاصيل الحسابات",
     "detailSubtitle": "عرض تفصيلي لمستويات الحسابات (عمودي / أفقي)",
     "viewDetails": "عرض التفاصيل",
     "account": "الحساب",
     "pickDate": "اختر تاريخاً",
     "pickTime": "اختر وقتاً",
+    "selectedTime": "الوقت المحدد",
     "country": "الدولة",
+    "selectCountry": "اختر الدولة",
     "rangeFillOn": "ملء النطاق: مفعل",
     "rangeFillOff": "ملء النطاق: غير مفعل",
+    "rangeFillHint": "انقر على أي خانة لملء من البداية حتى هذه النقطة",
     "branchTransfer": {
       "title": "نقل الفرع",
       "description": "نقل هذا الحساب إلى فرع مختلف مع الحفاظ على التقدم",
@@ -218,6 +228,7 @@
     "noTasksDescription": "اضغط على \"توليد مهام اليوم\" لرؤية جميع الطلبات المجدولة لحساباتك.",
     "generateTasks": "توليد مهام اليوم",
     "generateTasksLoading": "جاري توليد المهام...",
+    "refreshingTasks": "جارٍ تحديث المهام...",
     "generateTasksSuccess": "تم توليد {{count}} دفعة",
     "generateTasksError": "خطأ في توليد المهام اليومية",
     "taskCount_one": "{{count}} مهمة",
@@ -388,6 +399,7 @@
     "title": "استيراد البيانات",
     "description": "استيراد المستويات وأحداث الشراء والحسابات من ملف Excel.",
     "instructions": "اختر ملف Excel (.xlsx أو .xls) بالأوراق التالية:",
+    "selectGameFirst": "اختر لعبة أولاً",
     "selectFile": "اختر الملف",
     "confirm": "استيراد البيانات",
     "success": "تم الاستيراد بنجاح {{count}} عنصر",
@@ -419,8 +431,11 @@
   "export": {
     "title": "تصدير البيانات",
     "gameDescription": "تصدير جميع المستويات وأحداث الشراء والحسابات لهذه اللعبة.",
+    "gameDetailDescription": "تصدير المستويات وأحداث الشراء لهذه اللعبة.",
     "accountDescription": "تصدير بيانات هذا الحساب.",
+    "accountDetailDescription": "تصدير بيانات الحساب مع تواريخ المستويات وأحداث الشراء.",
     "allDescription": "تصدير جميع الحسابات من جميع الألعاب.",
+    "allGamesDetailDescription": "تصدير المستويات وأحداث الشراء لجميع الألعاب.",
     "format": "سيتم تصدير البيانات كملف Excel (.xlsx) مع أوراق منفصلة لأنواع البيانات المختلفة.",
     "confirm": "تصدير",
     "success": "تم تصدير البيانات بنجاح",
@@ -450,6 +465,8 @@
   "settings": {
     "title": "الإعدادات",
     "description": "إدارة تكوين التطبيق وتفضيلاتك.",
+    "tools": "أدوات",
+    "saveFailed": "فشل الحفظ",
     "appearance": {
       "title": "المظهر",
       "reset": "إعادة تعيين إلى الافتراضي"
@@ -503,7 +520,8 @@
       "restoreSuccess": "تمت استعادة قاعدة البيانات إلى الحالة التي قبل الاستيراد بنجاح!",
       "restoreFailed": "فشلت الاستعادة: {{error}}",
       "acceptBtn": "✓ قبول الحالية كآخر نسخة",
-      "acceptSuccess": "تم قبول قاعدة البيانات الحالية كآخر نسخة."
+      "acceptSuccess": "تم قبول قاعدة البيانات الحالية كآخر نسخة.",
+      "acceptFailed": "فشل قبول النسخة الحالية كآخر نسخة"
     },
     "reset": "إعادة تعيين إلى الافتراضي",
     "sendReport": "إرسال تقرير إكسل للتيليجرام",
@@ -599,6 +617,9 @@
       "botTokenPlaceholder": "مثال: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
       "chatIdPlaceholder": "مثال: -100123456789"
     }
+  },
+  "theme": {
+    "toggle": "تبديل المظهر"
   },
   "colorSettings": {
     "title": "تخصيص الألوان",

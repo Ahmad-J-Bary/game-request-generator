@@ -853,7 +853,7 @@ export default function GameDetailPage({
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("games.deleteTitle", "Delete Game")}</AlertDialogTitle>
+            <AlertDialogTitle>{t("games.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
               {t("games.deleteConfirm")}
             </AlertDialogDescription>
