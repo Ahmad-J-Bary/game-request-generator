@@ -131,6 +131,8 @@ export function ImportDialog({ open, onOpenChange, gameId, branchId }: ImportDia
 
         queryClient.invalidateQueries();
         window.dispatchEvent(new CustomEvent('data-changed'));
+        window.dispatchEvent(new CustomEvent('progress-updated'));
+        window.dispatchEvent(new CustomEvent('accounts-updated'));
 
         if (result.errors.length > 0) {
           console.warn('Import errors:', result.errors);

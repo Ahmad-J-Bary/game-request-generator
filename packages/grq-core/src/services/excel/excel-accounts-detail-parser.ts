@@ -3,6 +3,7 @@
 import type { Level, PurchaseEvent, Account } from '@grq/api-bindings';
 import {
   detectStartCol,
+  detectSpecialColumns,
   isPurchaseEvent,
   parseAccountDateStr,
   parseTimeStr,
@@ -36,13 +37,15 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
     return { levels, purchaseEvents, accounts };
   }
 
-  const parseAccountRow = (row: any[]): Partial<Account> | null => {
+  const parseAccountRow = (row: any[], sessionCol = -1): Partial<Account> | null => {
     if (!row || row.length < 3) return null;
     const accountName = row[0] ? String(row[0]).trim() : '';
     if (!accountName) return null;
 
     const rawDate = row[1];
-    const startDateStr = rawDate instanceof Date ? rawDate.toISOString().split('T')[0] : rawDate ? String(rawDate).trim() : '';
+    // Pass rawDate directly so parseAccountDateStr handles Date objects,
+    // D-MMM strings ("1-Jul"), and all other formats for every row.
+    const parsedDateFromRaw = parseAccountDateStr(rawDate);
 
     const rawTime = row[2];
     const startTimeStr = rawTime instanceof Date
@@ -54,11 +57,17 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
       request_template: 'Needs to be filled in - imported from Excel export',
     };
 
-    const parsedDate = parseAccountDateStr(startDateStr);
-    if (parsedDate) account.start_date = parsedDate;
+    if (parsedDateFromRaw) account.start_date = parsedDateFromRaw;
 
     const parsedTime = parseTimeStr(startTimeStr || rawTime);
     if (parsedTime) account.start_time = parsedTime;
+
+    if (sessionCol >= 0 && row.length > sessionCol && row[sessionCol] !== undefined && row[sessionCol] !== null) {
+      const cell = String(row[sessionCol]).trim();
+      if (cell !== '-' && cell !== '') {
+        (account as any).sessionDate = cell;
+      }
+    }
 
     return account;
   };
@@ -156,6 +165,9 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
     }
     if (accountRowIdx === -1) { i += 5; continue; }
 
+    const specialCols = detectSpecialColumns(rows[accountRowIdx]);
+    const sessionCol = specialCols.sessionCol;
+
     let groupEnd = rows.length;
     for (let j = accountRowIdx + 1; j < rows.length; j++) {
       const r = rows[j];
@@ -167,7 +179,7 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
     }
 
     for (let j = accountRowIdx + 1; j < groupEnd; j++) {
-      const account = parseAccountRow(rows[j]);
+      const account = parseAccountRow(rows[j], sessionCol);
       if (account) {
         (account as any).branchName = currentBranchName;
         accounts.push(account);

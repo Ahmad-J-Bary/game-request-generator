@@ -861,3 +861,661 @@ describe('Session processor per-account overrides', () => {
     // This test verifies the fallback behavior exists.
   });
 });
+
+// ===== parseAccountDateStr — multi-format date parsing =====
+const MONTHS_SHORT_LOCAL = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+
+function parseAccountDateStrTest(rawDate: any): string | undefined {
+  if (!rawDate) return undefined;
+
+  if (rawDate instanceof Date) {
+    if (isNaN(rawDate.getTime())) return undefined;
+    const y = rawDate.getFullYear();
+    const m = String(rawDate.getMonth() + 1).padStart(2, '0');
+    const d = String(rawDate.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  const dateStr = String(rawDate).trim();
+  if (!dateStr || dateStr === '-') return undefined;
+
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return dateStr;
+  }
+
+  // MM/DD/YYYY or M/D/YYYY
+  const slashMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const p1 = parseInt(slashMatch[1], 10);
+    const p2 = parseInt(slashMatch[2], 10);
+    const year = parseInt(slashMatch[3], 10);
+    let month = p1 - 1;
+    let day = p2;
+    if (p1 > 12) { day = p1; month = p2 - 1; }
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) {
+      return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+
+  // DD-Mon-YYYY
+  const dashMatch = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+  if (dashMatch) {
+    const day = parseInt(dashMatch[1], 10);
+    const monthStr = dashMatch[2].toLowerCase();
+    const year = parseInt(dashMatch[3], 10);
+    const monthIndex = MONTHS_SHORT_LOCAL.indexOf(monthStr);
+    if (monthIndex >= 0) {
+      const d = new Date(year, monthIndex, day);
+      if (!isNaN(d.getTime())) {
+        return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+    }
+  }
+
+  // DD-Mon (e.g. "1-Jul")
+  const shortDashMatch = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+  if (shortDashMatch) {
+    const day = parseInt(shortDashMatch[1], 10);
+    const monthStr = shortDashMatch[2].toLowerCase();
+    const year = new Date().getFullYear();
+    const monthIndex = MONTHS_SHORT_LOCAL.indexOf(monthStr);
+    if (monthIndex >= 0) {
+      const d = new Date(year, monthIndex, day);
+      if (!isNaN(d.getTime())) {
+        return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+    }
+  }
+
+  // General fallback
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  return undefined;
+}
+
+describe('parseAccountDateStr — multi-format date parsing for all account rows', () => {
+  it('parses JS Date object correctly', () => {
+    const d = new Date(2025, 6, 1); // July 1, 2025
+    assert.strictEqual(parseAccountDateStrTest(d), '2025-07-01');
+  });
+
+  it('parses YYYY-MM-DD string', () => {
+    assert.strictEqual(parseAccountDateStrTest('2025-07-01'), '2025-07-01');
+  });
+
+  it('parses MM/DD/YYYY string', () => {
+    assert.strictEqual(parseAccountDateStrTest('7/1/2025'), '2025-07-01');
+  });
+
+  it('parses DD/MM/YYYY when day > 12', () => {
+    // 15/07/2025 → day=15, month=07
+    assert.strictEqual(parseAccountDateStrTest('15/7/2025'), '2025-07-15');
+  });
+
+  it('parses DD-Mon-YYYY (e.g. "1-Jul-2025")', () => {
+    assert.strictEqual(parseAccountDateStrTest('1-Jul-2025'), '2025-07-01');
+  });
+
+  it('parses DD-Mon (e.g. "1-Jul") using current year', () => {
+    const year = new Date().getFullYear();
+    const result = parseAccountDateStrTest('1-Jul');
+    assert.strictEqual(result, `${year}-07-01`);
+  });
+
+  it('returns undefined for empty string', () => {
+    assert.strictEqual(parseAccountDateStrTest(''), undefined);
+  });
+
+  it('returns undefined for dash', () => {
+    assert.strictEqual(parseAccountDateStrTest('-'), undefined);
+  });
+
+  it('returns undefined for null', () => {
+    assert.strictEqual(parseAccountDateStrTest(null), undefined);
+  });
+
+  it('returns undefined for invalid Date object', () => {
+    const d = new Date('invalid');
+    assert.strictEqual(parseAccountDateStrTest(d), undefined);
+  });
+
+  it('all account rows: row1 ISO, row2 Date object, row3 D-MMM-YYYY, row4 D-MMM all parse successfully', () => {
+    const row1 = parseAccountDateStrTest('2025-07-01');
+    const row2 = parseAccountDateStrTest(new Date(2025, 6, 1));
+    const row3 = parseAccountDateStrTest('1-Jul-2025');
+    const year = new Date().getFullYear();
+    const row4 = parseAccountDateStrTest('1-Jul');
+
+    assert.strictEqual(row1, '2025-07-01', 'row1 ISO format');
+    assert.strictEqual(row2, '2025-07-01', 'row2 Date object');
+    assert.strictEqual(row3, '2025-07-01', 'row3 DD-Mon-YYYY format');
+    assert.strictEqual(row4, `${year}-07-01`, 'row4 DD-Mon short format');
+
+    // All must be defined — none is undefined
+    assert.ok(row1 !== undefined, 'row1 must not be undefined');
+    assert.ok(row2 !== undefined, 'row2 must not be undefined');
+    assert.ok(row3 !== undefined, 'row3 must not be undefined');
+    assert.ok(row4 !== undefined, 'row4 must not be undefined');
+  });
+});
+
+
+// ===== Multi-group Sheet Parser: Non-account Row Skipping Tests =====
+
+/**
+ * Simulates what the sheet parser does: skip header rows that appear
+ * between account groups in multi-group sheets.
+ */
+function simulateSkipNonAccountRows(rows: string[][]): string[] {
+  const results: string[] = [];
+  let foundFirstAccountHeader = false;
+  for (const row of rows) {
+    if (!row || !row[0]) continue;
+    const firstCell = row[0].toString().trim();
+    const lowerFirst = firstCell.toLowerCase();
+    if (lowerFirst.startsWith('branch:') || lowerFirst.includes('event token')) continue;
+    // New skip logic
+    if (lowerFirst === 'account' || lowerFirst === 'level name' || lowerFirst === 'days offset' || lowerFirst === 'time spent' || lowerFirst === 'total') continue;
+    if (/^\d+$/.test(firstCell) && firstCell.length <= 4) continue;
+    results.push(firstCell);
+    if (lowerFirst.includes('account')) foundFirstAccountHeader = true;
+  }
+  return results;
+}
+
+describe('Multi-group row skipping', () => {
+  it('skips Level Name, Days Offset, Time Spent, Account header rows', () => {
+    // Simulates rows from a 2-group sheet: first group accounts,
+    // then branch header, second group headers, second group accounts
+    const rows = [
+      ['AccountA', '1-Jul-2025', '10:00', '-', '-', '-', '5-Jul'],
+      ['AccountB', '1-Jul-2025', '12:00', '-', '-', '-', '3-Jul'],
+      ['Branch: Event A', '', '', '', '', '', ''],
+      ['Event Token', 'evt_day0', 'evt_day2', 'evt_day5', '', '', ''],
+      ['Level Name', 'Day 0', 'Day 2', 'Day 5', '', '', ''],
+      ['Days Offset', '0', '2', '5', '', '', ''],
+      ['Time Spent', '180', '300', '500', '', '', ''],
+      ['Account', 'Start Date', 'Time', '1-Jan', '2-Jan (C)', '-', 'Session'],
+      ['AccountC', '1-Jul-2025', '09:00', '-', '-', '-', '7-Jul'],
+      ['AccountD', '1-Jul-2025', '14:00', '-', '-', '-', '2-Jul'],
+    ];
+
+    const accountNames = simulateSkipNonAccountRows(rows);
+    // Should only include real account names (AccountA, AccountB, AccountC, AccountD)
+    // NOT the header rows (Level Name, Days Offset, Time Spent, Account, Event Token)
+    assert.strictEqual(accountNames.length, 4, 'Should have exactly 4 account names');
+    assert.ok(accountNames.includes('AccountA'), 'Should include AccountA');
+    assert.ok(accountNames.includes('AccountB'), 'Should include AccountB');
+    assert.ok(accountNames.includes('AccountC'), 'Should include AccountC');
+    assert.ok(accountNames.includes('AccountD'), 'Should include AccountD');
+    assert.ok(!accountNames.includes('Level Name'), 'Should exclude Level Name');
+    assert.ok(!accountNames.includes('Days Offset'), 'Should exclude Days Offset');
+    assert.ok(!accountNames.includes('Time Spent'), 'Should exclude Time Spent');
+    assert.ok(!accountNames.includes('Account'), 'Should exclude Account header');
+    assert.ok(!accountNames.includes('Event Token'), 'Should exclude Event Token');
+  });
+
+  it('skips rows with pure numeric first cell (days offset, time spent)', () => {
+    const rows = [
+      ['180', '300', '500', '', '', '', ''],
+      ['0', '2', '5', '', '', '', ''],
+      ['AccountC', '1-Jul-2025', '09:00', '-', '-', '-', '7-Jul'],
+    ];
+
+    const accountNames = simulateSkipNonAccountRows(rows);
+    assert.strictEqual(accountNames.length, 1, 'Should only have 1 account name');
+    assert.strictEqual(accountNames[0], 'AccountC', 'Should have AccountC');
+  });
+
+  it('does not skip account names that look like numbers but are > 4 digits', () => {
+    const rows = [
+      ['12345', '1-Jul-2025', '10:00', '-', '-', '-', '5-Jul'],
+    ];
+    const accountNames = simulateSkipNonAccountRows(rows);
+    assert.strictEqual(accountNames.length, 1, 'Should allow 5-digit account name');
+  });
+});
+
+// ===== Session Date Overrides Building Tests =====
+
+/**
+ * Simulates the sessionDateOverrides building logic from persistAll.
+ * This tests the new comprehensive fallback (step 1: accountSessionDates).
+ */
+interface MockAccount {
+  name: string;
+  id: number;
+  sessionDate?: string;
+  gameId: number;
+}
+interface MockSessionDateOverride {
+  accountId: number;
+  sessionDate: string;
+}
+
+function buildSessionDateOverridesStep1(
+  accountSessionDates: Map<string, string>,
+  accountCache: Map<string, number>,  // key = "gameId_accountName"
+  gameCache: Map<string, number>,     // key = "gamename" → gameId
+  dbAccounts: Map<number, MockAccount[]>,  // gameId → accounts[]
+): MockSessionDateOverride[] {
+  const result: MockSessionDateOverride[] = [];
+  const seenIds = new Set<number>();
+
+  for (const [mapKey, sessionDateStr] of accountSessionDates.entries()) {
+    const pipeIdx = mapKey.indexOf('|');
+    if (pipeIdx < 0) continue;
+    const lowerGameName = mapKey.substring(0, pipeIdx);
+    const lowerAccName = mapKey.substring(pipeIdx + 1);
+
+    let gid = gameCache.get(lowerGameName);
+    if (!gid) continue;
+
+    // Direct cache lookup
+    let aid = accountCache.get(`${gid}_${lowerAccName}`);
+
+    if (!aid) {
+      // Fallback: scan all cache keys ending with this name
+      for (const [ckey, caid] of accountCache.entries()) {
+        if (ckey.endsWith(`_${lowerAccName}`)) {
+          aid = caid;
+          break;
+        }
+      }
+    }
+
+    if (!aid) {
+      // DB fallback
+      const gameAccounts = dbAccounts.get(gid) || [];
+      const match = gameAccounts.find(a => a.name.toLowerCase() === lowerAccName);
+      if (match) {
+        aid = match.id;
+      }
+    }
+
+    if (aid && !seenIds.has(aid)) {
+      seenIds.add(aid);
+      result.push({ accountId: aid, sessionDate: sessionDateStr });
+    }
+  }
+  return result;
+}
+
+describe('Session date overrides building (step 1: accountSessionDates)', () => {
+  it('finds all 3 accounts via direct cache hit', () => {
+    const accountSessionDates = new Map<string, string>([
+      ['testgame|accouna', '5-Jul'],
+      ['testgame|accounb', '3-Jul'],
+      ['testgame|accounc', '7-Jul'],
+    ]);
+    const accountCache = new Map<string, number>([
+      ['42_accouna', 101],
+      ['42_accounb', 102],
+      ['42_accounc', 103],
+    ]);
+    const gameCache = new Map<string, number>([['testgame', 42]]);
+    const dbAccounts = new Map<number, MockAccount[]>(); // empty, not needed
+
+    const overrides = buildSessionDateOverridesStep1(accountSessionDates, accountCache, gameCache, dbAccounts);
+    assert.strictEqual(overrides.length, 3, 'Should find all 3 accounts');
+    const a101 = overrides.find(o => o.accountId === 101);
+    const a102 = overrides.find(o => o.accountId === 102);
+    const a103 = overrides.find(o => o.accountId === 103);
+    assert.ok(a101, 'Should find account 101');
+    assert.strictEqual(a101!.sessionDate, '5-Jul');
+    assert.ok(a102, 'Should find account 102');
+    assert.strictEqual(a102!.sessionDate, '3-Jul');
+    assert.ok(a103, 'Should find account 103');
+    assert.strictEqual(a103!.sessionDate, '7-Jul');
+  });
+
+  it('finds accounts missing from direct cache via cache key scan fallback', () => {
+    // accounB is cached with a different gameId prefix (different game or stale entry)
+    const accountSessionDates = new Map<string, string>([
+      ['testgame|accouna', '5-Jul'],
+      ['testgame|accounb', '3-Jul'],
+    ]);
+    const accountCache = new Map<string, number>([
+      ['42_accouna', 101],
+      ['99_accounb', 102],  // different gameId prefix
+    ]);
+    const gameCache = new Map<string, number>([['testgame', 42]]);
+    const dbAccounts = new Map<number, MockAccount[]>();
+
+    const overrides = buildSessionDateOverridesStep1(accountSessionDates, accountCache, gameCache, dbAccounts);
+    assert.strictEqual(overrides.length, 2, 'Should find both accounts');
+    const a101 = overrides.find(o => o.accountId === 101);
+    const a102 = overrides.find(o => o.accountId === 102);
+    assert.ok(a101, 'Should find account 101 (direct cache hit)');
+    assert.ok(a102, 'Should find account 102 (cache scan fallback)');
+  });
+
+  it('finds accounts via DB fallback when cache miss', () => {
+    const accountSessionDates = new Map<string, string>([
+      ['testgame|accounta', '5-Jul'],
+      ['testgame|accountb', '3-Jul'],
+    ]);
+    const accountCache = new Map<string, number>([
+      ['42_accounta', 101],
+    ]);
+    const gameCache = new Map<string, number>([['testgame', 42]]);
+    const dbAccounts = new Map<number, MockAccount[]>([
+      [42, [
+        { name: 'AccountA', id: 101, gameId: 42 },
+        { name: 'AccountB', id: 102, gameId: 42 },
+      ]],
+    ]);
+
+    const overrides = buildSessionDateOverridesStep1(accountSessionDates, accountCache, gameCache, dbAccounts);
+    assert.strictEqual(overrides.length, 2, 'Should find both accounts');
+    const a101 = overrides.find(o => o.accountId === 101);
+    const a102 = overrides.find(o => o.accountId === 102);
+    assert.ok(a101, 'Should find account 101 (cache hit)');
+    assert.ok(a102, 'Should find account 102 (DB fallback)');
+    assert.strictEqual(a102!.sessionDate, '3-Jul');
+  });
+});
+
+// ===== Per-account isCompleted verification tests =====
+
+/**
+ * Verifies that each account's progress entries carry the correct isCompleted
+ * when running through the full parser flow (session cutoff + cascade).
+ */
+interface TestProgress {
+  accountName: string;
+  token: string;
+  isCompleted: boolean;
+  sessionDate?: string;
+}
+
+function simulateMultiAccountProgress(
+  headers: { token: string; daysOffset: number; isPurchase: boolean }[],
+  accounts: { name: string; startDate: string; sessionDate?: string; cells: string[] }[],
+): TestProgress[] {
+  const MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const parseDMMMD = (s: string, y: number): Date | null => {
+    const m = s.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+    if (!m) return null;
+    const mi = MONTHS.indexOf(m[2].toLowerCase());
+    if (mi < 0) return null;
+    const d = new Date(y, mi, parseInt(m[1]));
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const results: TestProgress[] = [];
+  for (const acct of accounts) {
+    const startDate = new Date(acct.startDate);
+    const refYear = startDate.getFullYear();
+
+    // Parse cells
+    const parsed = headers.map((h, ci) => {
+      const cell = acct.cells[ci] || '-';
+      const isC = cell.endsWith('(C)');
+      const dateStr = isC ? cell.replace('(C)', '').trim() : (cell.match(/^\d{1,2}-[A-Za-z]{3}$/) ? cell : '');
+      const hasDate = cell !== '-' && cell !== '';
+      return { header: h, isCompleted: isC, dateStr, hasDate: true };
+    });
+
+    // Apply session cutoff
+    if (acct.sessionDate) {
+      for (const evt of parsed) {
+        if (evt.isCompleted) continue;
+        if (evt.header.daysOffset === undefined) continue;
+        const evtDate = new Date(startDate.getTime() + evt.header.daysOffset * 86400000);
+        const evtDateStr = `${evtDate.getDate()}-${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][evtDate.getMonth()]}`;
+        const sessionParsed = parseDMMMD(acct.sessionDate, refYear);
+        const evtParsed = parseDMMMD(evtDateStr, refYear);
+        if (sessionParsed && evtParsed && evtParsed.getTime() <= sessionParsed.getTime()) {
+          evt.isCompleted = true;
+        }
+      }
+    }
+
+    // Per-type cascade
+    let maxLevel = -1, maxPurchase = -1;
+    for (const evt of parsed) {
+      if (evt.isCompleted && evt.header.daysOffset !== undefined) {
+        if (evt.header.isPurchase) maxPurchase = Math.max(maxPurchase, evt.header.daysOffset);
+        else maxLevel = Math.max(maxLevel, evt.header.daysOffset);
+      }
+    }
+
+    // Generate entries
+    for (const evt of parsed) {
+      let isC = evt.isCompleted;
+      if (!isC && evt.header.daysOffset !== undefined) {
+        if (!evt.header.isPurchase && maxLevel >= 0 && evt.header.daysOffset <= maxLevel) isC = true;
+        if (evt.header.isPurchase && maxPurchase >= 0 && evt.header.daysOffset <= maxPurchase) isC = true;
+      }
+      results.push({
+        accountName: acct.name,
+        token: evt.header.token,
+        isCompleted: isC,
+        sessionDate: acct.sessionDate,
+      });
+    }
+  }
+  return results;
+}
+
+describe('Multi-account per-row progress generation', () => {
+  const headers = [
+    { token: 'evt_day0', daysOffset: 0, isPurchase: false },
+    { token: 'evt_day2', daysOffset: 2, isPurchase: false },
+    { token: 'evt_day5', daysOffset: 5, isPurchase: false },
+    { token: 'purchase_day0', daysOffset: 0, isPurchase: true },
+  ];
+
+  it('each account gets its own session cutoff applied independently', () => {
+    const accounts = [
+      // AccountA: Session 3-Jan → completes days 0,2 (but not 5) via cutoff
+      { name: 'AccountA', startDate: '2025-01-01', sessionDate: '3-Jan', cells: ['-', '-', '-', '-'] },
+      // AccountB: Session 5-Jan → completes days 0,2,5 via cutoff
+      { name: 'AccountB', startDate: '2025-01-01', sessionDate: '5-Jan', cells: ['-', '-', '-', '-'] },
+      // AccountC: no session → nothing completed via cutoff
+      { name: 'AccountC', startDate: '2025-01-01', cells: ['-', '-', '-', '-'] },
+    ];
+
+    const progress = simulateMultiAccountProgress(headers, accounts);
+
+    // AccountA: Session 3-Jan → days 0,2 ≤ 3-Jan
+    const acctAEntries = progress.filter(e => e.accountName === 'AccountA');
+    assert.strictEqual(acctAEntries.length, 4, 'AccountA should have 4 entries');
+    const aEvt0 = acctAEntries.find(e => e.token === 'evt_day0');
+    const aEvt2 = acctAEntries.find(e => e.token === 'evt_day2');
+    const aEvt5 = acctAEntries.find(e => e.token === 'evt_day5');
+    const aPurchase = acctAEntries.find(e => e.token === 'purchase_day0');
+    assert.ok(aEvt0?.isCompleted, 'AccountA: evt_day0 should be completed (≤ 3-Jan)');
+    assert.ok(aEvt2?.isCompleted, 'AccountA: evt_day2 should be completed (≤ 3-Jan)');
+    assert.ok(!aEvt5?.isCompleted, 'AccountA: evt_day5 should NOT be completed (6-Jan > 3-Jan)');
+    assert.ok(aPurchase?.isCompleted, 'AccountA: purchase_day0 should be completed (≤ 3-Jan)');
+
+    // AccountB: Session 5-Jan → days 0,2,5 ≤ 5-Jan
+    const acctBEntries = progress.filter(e => e.accountName === 'AccountB');
+    const bEvt0 = acctBEntries.find(e => e.token === 'evt_day0');
+    const bEvt2 = acctBEntries.find(e => e.token === 'evt_day2');
+    const bEvt5 = acctBEntries.find(e => e.token === 'evt_day5');
+    const bPurchase = acctBEntries.find(e => e.token === 'purchase_day0');
+    assert.ok(bEvt0?.isCompleted, 'AccountB: evt_day0 should be completed (≤ 5-Jan)');
+    assert.ok(bEvt2?.isCompleted, 'AccountB: evt_day2 should be completed (≤ 5-Jan)');
+    assert.ok(!bEvt5?.isCompleted, 'AccountB: evt_day5 should NOT be completed (6-Jan > 5-Jan)');
+    assert.ok(bPurchase?.isCompleted, 'AccountB: purchase_day0 should be completed (≤ 5-Jan)');
+
+    // AccountC: no session → nothing completed
+    const acctCEntries = progress.filter(e => e.accountName === 'AccountC');
+    acctCEntries.forEach(e => {
+      assert.ok(!e.isCompleted, `AccountC: ${e.token} should NOT be completed (no session date)`);
+    });
+  });
+
+  it('session date is correctly stamped on each account\'s progress entries', () => {
+    const accounts = [
+      { name: 'AccountX', startDate: '2025-06-01', sessionDate: '5-Jul', cells: ['-', '-', '-', '-'] },
+      { name: 'AccountY', startDate: '2025-06-01', sessionDate: '10-Jul', cells: ['-', '-', '-', '-'] },
+    ];
+
+    const progress = simulateMultiAccountProgress(headers, accounts);
+    const xEntries = progress.filter(e => e.accountName === 'AccountX');
+    const yEntries = progress.filter(e => e.accountName === 'AccountY');
+
+    xEntries.forEach(e => assert.strictEqual(e.sessionDate, '5-Jul', 'AccountX entries carry sessionDate 5-Jul'));
+    yEntries.forEach(e => assert.strictEqual(e.sessionDate, '10-Jul', 'AccountY entries carry sessionDate 10-Jul'));
+  });
+
+  it('(C) markers + session cutoff: cascade does not cross between levels and purchases', () => {
+    const accounts = [
+      // AccountA: Level evt_day5 has (C) → cascades to earlier levels only (not purchases)
+      // Purchases have no (C) markers → not completed (no session cutoff overrides them)
+      { name: 'AccountA', startDate: '2025-01-01', cells: ['-', '-', '5-Jan (C)', '-'] },
+      // AccountB: Purchase purchase_day0 has (C) → purchase completed. No level (C) → levels not completed.
+      { name: 'AccountB', startDate: '2025-01-01', cells: ['-', '-', '-', '1-Jan (C)'] },
+    ];
+
+    const progress = simulateMultiAccountProgress(headers, accounts);
+
+    // AccountA: Level offset 5 has (C) → levels 0,2,5 completed. No purchase (C) → no purchases.
+    const aLevels = progress.filter(e => e.accountName === 'AccountA' && !e.token.startsWith('purchase'));
+    const aPurchases = progress.filter(e => e.accountName === 'AccountA' && e.token.startsWith('purchase'));
+    aLevels.forEach(e => assert.ok(e.isCompleted, `AccountA level ${e.token} should be completed (cascade from (C) at day 5)`));
+    aPurchases.forEach(e => assert.ok(!e.isCompleted, `AccountA purchase ${e.token} should NOT be completed (no purchase (C) markers)`));
+
+    // AccountB: Purchase purchase_day0 has (C) → purchase completed. No level (C) → levels not completed.
+    const bLevels = progress.filter(e => e.accountName === 'AccountB' && !e.token.startsWith('purchase'));
+    const bPurchases = progress.filter(e => e.accountName === 'AccountB' && e.token.startsWith('purchase'));
+    bLevels.forEach(e => assert.ok(!e.isCompleted, `AccountB level ${e.token} should NOT be completed (no level (C) markers)`));
+    bPurchases.forEach(e => assert.ok(e.isCompleted, `AccountB purchase ${e.token} should be completed ((C) at day 0)`));
+  });
+
+  it('each account with different start dates gets different computed event dates', () => {
+    const headers2 = [
+      { token: 'evt_day3', daysOffset: 3, isPurchase: false },
+    ];
+    const accounts = [
+      // AccountA: start 1-Jan → day3 = 4-Jan. Session 4-Jan → completed.
+      { name: 'AccountA', startDate: '2025-01-01', sessionDate: '4-Jan', cells: ['-'] },
+      // AccountB: start 5-Jan → day3 = 8-Jan. Session 4-Jan → NOT completed.
+      { name: 'AccountB', startDate: '2025-01-05', sessionDate: '4-Jan', cells: ['-'] },
+    ];
+
+    const progress = simulateMultiAccountProgress(headers2, accounts);
+    const aEntry = progress.find(e => e.accountName === 'AccountA');
+    const bEntry = progress.find(e => e.accountName === 'AccountB');
+    assert.ok(aEntry?.isCompleted, 'AccountA: day3 should be completed (event date 4-Jan ≤ session 4-Jan)');
+    assert.ok(!bEntry?.isCompleted, 'AccountB: day3 should NOT be completed (event date 8-Jan > session 4-Jan)');
+  });
+
+  it('all accounts in a multi-account sheet produce same number of progress entries', () => {
+    const headers3 = [
+      { token: 'evt_day0', daysOffset: 0, isPurchase: false },
+      { token: 'evt_day3', daysOffset: 3, isPurchase: false },
+      { token: 'evt_day7', daysOffset: 7, isPurchase: false },
+      { token: 'purchase_day0', daysOffset: 0, isPurchase: true },
+    ];
+    const accounts = [
+      { name: 'AccA', startDate: '2025-01-01', sessionDate: '5-Jan', cells: ['-', '-', '-', '-'] },
+      { name: 'AccB', startDate: '2025-01-01', sessionDate: '5-Jan', cells: ['-', '-', '-', '-'] },
+      { name: 'AccC', startDate: '2025-01-01', sessionDate: '5-Jan', cells: ['-', '-', '-', '-'] },
+      { name: 'AccD', startDate: '2025-01-01', sessionDate: '5-Jan', cells: ['-', '-', '-', '-'] },
+    ];
+
+    const progress = simulateMultiAccountProgress(headers3, accounts);
+    const accNames = [...new Set(progress.map(e => e.accountName))];
+    assert.strictEqual(accNames.length, 4, 'All 4 accounts should have progress entries');
+    const countsPerAcc = accNames.map(n => progress.filter(e => e.accountName === 'AccA').length);
+    assert.ok(countsPerAcc.every(c => c === countsPerAcc[0]), 'Every account should have the same number of entries');
+  });
+});
+
+// ===== Multi-group style: different headers per account =====
+describe('Multi-group style progress generation (different headers per account)', () => {
+  it('accounts with different header configs each get correct isCompleted', () => {
+    // Simulates two groups: Group 1 has events at offsets 0,3; Group 2 has events at offsets 5,7
+    const headersGroup1 = [
+      { name: 'Early A', isPurchase: false, token: 'evt_day0', daysOffset: 0 },
+      { name: 'Early B', isPurchase: false, token: 'evt_day3', daysOffset: 3 },
+    ];
+    const headersGroup2 = [
+      { name: 'Late A', isPurchase: false, token: 'evt_day5', daysOffset: 5 },
+      { name: 'Late B', isPurchase: false, token: 'evt_day7', daysOffset: 7 },
+    ];
+    const startDate = new Date(2025, 0, 1);
+
+    // Account A from Group 1: session 2-Jan → completes offset 0 (1-Jan ≤ 2-Jan)
+    // Entry for offset 3 (4-Jan > 2-Jan) is NOT included (not completed and no cell data)
+    const entriesA = generateProgressForRow(
+      ['-', '-'], 'AccA', 'TestGame', '2-Jan', startDate, headersGroup1,
+    );
+    // Account B from Group 2: session 8-Jan → completes both offset 5 (6-Jan ≤ 8-Jan) and offset 7 (8-Jan ≤ 8-Jan)
+    const entriesB = generateProgressForRow(
+      ['-', '-'], 'AccB', 'TestGame', '8-Jan', startDate, headersGroup2,
+    );
+
+    // Verify Account A
+    assert.strictEqual(entriesA.length, 1, 'AccA: 1 entry (only day 0 completed, day 3 skipped)');
+    const a0 = entriesA.find(e => e.token === 'evt_day0');
+    assert.ok(a0, 'AccA: evt_day0 should be present');
+    assert.ok(a0!.isCompleted, 'AccA: evt_day0 completed (1-Jan ≤ 2-Jan)');
+
+    // Verify Account B
+    assert.strictEqual(entriesB.length, 2, 'AccB: 2 entries');
+    const b5 = entriesB.find(e => e.token === 'evt_day5');
+    const b7 = entriesB.find(e => e.token === 'evt_day7');
+    assert.ok(b5?.isCompleted, 'AccB: evt_day5 completed (6-Jan ≤ 8-Jan)');
+    assert.ok(b7?.isCompleted, 'AccB: evt_day7 completed (8-Jan ≤ 8-Jan)');
+
+    // Combined: all entries together from both groups
+    const allEntries = [...entriesA, ...entriesB];
+    assert.strictEqual(allEntries.length, 3, '3 entries total across 2 groups (1+2)');
+    assert.strictEqual(allEntries.filter(e => e.isCompleted).length, 3, 'all 3 entries completed');
+  });
+
+  it('group-specific (C) markers and cascade work independently', () => {
+    // Group 1: levels with (C) at day 3 → cascades to earlier levels
+    // Group 2: levels without (C) and different session date
+    const headersGroup1 = [
+      { name: 'Level 0', isPurchase: false, token: 'grp1_day0', daysOffset: 0 },
+      { name: 'Level 3', isPurchase: false, token: 'grp1_day3', daysOffset: 3 },
+      { name: 'Level 5', isPurchase: false, token: 'grp1_day5', daysOffset: 5 },
+    ];
+    const headersGroup2 = [
+      { name: 'Event X', isPurchase: false, token: 'grp2_day1', daysOffset: 1 },
+      { name: 'Event Y', isPurchase: false, token: 'grp2_day4', daysOffset: 4 },
+    ];
+    const startDate = new Date(2025, 0, 1);
+
+    // Group 1: (C) at day 3 (4-Jan) → cascades to day 0 (1-Jan). Day 5 (6-Jan) not completed.
+    const entriesG1 = generateProgressForRow(
+      ['-', '4-Jan (C)', '-'], 'Group1Acc', 'G', undefined, startDate, headersGroup1,
+    );
+    // Group 2: Session 4-Jan → completes day 1 (2-Jan), not day 4 (5-Jan > 4-Jan)
+    const entriesG2 = generateProgressForRow(
+      ['-', '-'], 'Group2Acc', 'G', '4-Jan', startDate, headersGroup2,
+    );
+
+    // Group 1 assertions: 2 entries (day 0 cascade, day 3 (C)), day 5 omitted
+    assert.strictEqual(entriesG1.length, 2, 'Group1: 2 entries (day 0 cascade, day 3 (C))');
+    const g1d0 = entriesG1.find(e => e.token === 'grp1_day0');
+    const g1d3 = entriesG1.find(e => e.token === 'grp1_day3');
+    const g1d5 = entriesG1.find(e => e.token === 'grp1_day5');
+    assert.ok(g1d0?.isCompleted, 'Group1: day 0 completed (cascade from (C) at day 3)');
+    assert.ok(g1d3?.isCompleted, 'Group1: day 3 completed (has (C))');
+    assert.strictEqual(g1d5, undefined, 'Group1: day 5 omitted (not completed, no date cell)');
+
+    // Group 2 assertions: 1 entry (day 1 session cutoff), day 4 omitted
+    assert.strictEqual(entriesG2.length, 1, 'Group2: 1 entry (day 1 session cutoff)');
+    const g2d1 = entriesG2.find(e => e.token === 'grp2_day1');
+    const g2d4 = entriesG2.find(e => e.token === 'grp2_day4');
+    assert.ok(g2d1?.isCompleted, 'Group2: day 1 completed (≤ session 4-Jan)');
+    assert.strictEqual(g2d4, undefined, 'Group2: day 4 omitted (5-Jan > 4-Jan, not completed)');
+  });
+});

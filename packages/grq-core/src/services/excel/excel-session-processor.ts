@@ -23,72 +23,45 @@ interface SessionCompletionDetail {
   markedAsCompleted: boolean;
 }
 
-function processAccount(
-  account: any,
-  sessionOnlyLevels: any[],
-  gameName: string,
-  overrideDateStr?: string,
-): Promise<SessionCompletionDetail[]> {
-  return (async () => {
-    const results: SessionCompletionDetail[] = [];
-    const startDate = parseDate(account.start_date);
-    if (!startDate) return results;
+function getInterpolatedTimeSpent(day: number, gameLevels: any[]): number {
+  if (gameLevels.length === 0) return 0;
 
-    let levelProgress: any[];
-    try {
-      levelProgress = await TauriService.getAccountLevelProgress(account.id);
-    } catch {
-      return results;
-    }
+  const numeric = gameLevels
+    .filter((l) => typeof l.days_offset === 'number' && l.level_name !== '-')
+    .sort((a, b) => a.days_offset - b.days_offset);
 
-    const progressMap = new Map<number, boolean>();
-    levelProgress.forEach((p: any) => {
-      if (p.is_completed) progressMap.set(p.level_id, true);
-    });
+  if (numeric.length === 0) return 0;
 
-    for (const level of sessionOnlyLevels) {
-      if (progressMap.has(level.id)) continue;
-      if (level.days_offset == null) continue;
+  const exact = numeric.find((l) => l.days_offset === day);
+  if (exact && exact.time_spent) return exact.time_spent;
 
-      const eventDate = addDays(startDate, level.days_offset);
-      const eventDateDMMM = formatDateShort(eventDate);
+  const prevReal = [...numeric].reverse().find((l) => l.days_offset < day);
+  const nextReal = numeric.find((l) => l.days_offset > day);
 
-      let cutoffDate: Date;
-      if (overrideDateStr) {
-        const parsed = parseDMMMDate(overrideDateStr, startDate.getFullYear());
-        cutoffDate = parsed || new Date();
-      } else {
-        cutoffDate = new Date();
-      }
+  if (nextReal && !prevReal) {
+    const firstRealDay = nextReal.days_offset;
+    const increment = (nextReal.time_spent || 0) / (firstRealDay + 1);
+    return Math.round((day + 1) * increment);
+  }
 
-      if (eventDate.getTime() <= cutoffDate.getTime()) {
-        try {
-          await TauriService.createLevelProgress({ account_id: account.id, level_id: level.id });
-        } catch { /* ignore duplicate */ }
-        await TauriService.updateLevelProgress({
-          account_id: account.id,
-          level_id: level.id,
-          is_completed: true,
-        });
-        results.push({
-          gameName,
-          accountId: account.id,
-          accountName: account.name,
-          levelId: level.id,
-          levelToken: level.event_token || '',
-          computedDate: eventDateDMMM,
-          wasAlreadyCompleted: false,
-          markedAsCompleted: true,
-        });
-      }
-    }
-    return results;
-  })();
+  if (prevReal && nextReal) {
+    const ratio = (day - prevReal.days_offset) / (nextReal.days_offset - prevReal.days_offset);
+    return Math.round((prevReal.time_spent || 0) + ratio * ((nextReal.time_spent || 0) - (prevReal.time_spent || 0)));
+  }
+
+  if (prevReal && !nextReal) {
+    return prevReal.time_spent || 0;
+  }
+
+  return 0;
 }
 
 /**
  * Apply Session completion for a specific game's accounts.
  * Uses per-account session date overrides (from import) when available.
+ * Creates session-only levels in `game_levels` if missing, and marks
+ * `account_level_progress` and `account_purchase_event_progress` as completed
+ * for all accounts up to their Session cutoff date.
  */
 export async function applySessionCompletionForGame(
   gameId: number,
@@ -113,35 +86,137 @@ export async function applySessionCompletionForGame(
     const branches = await TauriService.getGameBranches(gameId);
     const allAccounts = await TauriService.getAccounts(gameId);
 
-    const branchPromises = branches.map(async (branch) => {
+    for (const branch of branches) {
       const branchAccounts = allAccounts.filter((a: any) => a.branch_id === branch.id);
-      if (branchAccounts.length === 0) return;
+      if (branchAccounts.length === 0) continue;
 
-      const levels = await TauriService.getGameLevels(branch.id);
-      const sessionOnlyLevels = levels.filter((l: any) => l.level_name === '-');
-      if (sessionOnlyLevels.length === 0) return;
+      let levels = await TauriService.getGameLevels(branch.id);
 
-      result.totalSessionLevelsFound += sessionOnlyLevels.length * branchAccounts.length;
+      let baseToken = 'lvl';
+      if (levels.length > 0 && levels[0].event_token) {
+        baseToken = levels[0].event_token.split('_day')[0];
+      }
 
-      const accountPromises = branchAccounts.map(async (account: any) => {
+      for (const account of branchAccounts) {
         result.totalAccountsScanned++;
+
+        const startDate = parseDate(account.start_date);
+        if (!startDate) continue;
+
         const overrideDateStr = sessionDateOverrides?.get(account.id);
-        const details = await processAccount(account, sessionOnlyLevels, game.name, overrideDateStr);
-        if (details.length > 0) {
-          result.completedByCutoff += details.length;
-          result.details.push(...details);
+        let cutoffDate: Date;
+        if (overrideDateStr) {
+          const parsed = parseDMMMDate(overrideDateStr, startDate.getFullYear());
+          cutoffDate = parsed || new Date();
+        } else {
+          cutoffDate = new Date();
         }
-      });
 
-      await Promise.all(accountPromises);
-    });
+        const diffMs = cutoffDate.getTime() - startDate.getTime();
+        const maxCutoffOffset = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        if (maxCutoffOffset < 0) continue;
 
-    await Promise.all(branchPromises);
+        const targetOffsets = new Set<number>();
+        levels.forEach((l: any) => {
+          if (l.days_offset != null && l.days_offset <= maxCutoffOffset) {
+            targetOffsets.add(l.days_offset);
+          }
+        });
+        for (let d = 0; d <= maxCutoffOffset; d++) {
+          targetOffsets.add(d);
+        }
+
+        result.totalSessionLevelsFound += targetOffsets.size;
+
+        let levelProgress: any[] = [];
+        try {
+          levelProgress = await TauriService.getAccountLevelProgress(account.id);
+        } catch (_) {}
+        const completedLevelSet = new Set<number>();
+        levelProgress.forEach((p: any) => {
+          if (p.is_completed) completedLevelSet.add(p.level_id);
+        });
+
+        for (const offset of targetOffsets) {
+          const eventDate = addDays(startDate, offset);
+          if (eventDate.getTime() > cutoffDate.getTime()) continue;
+
+          const sessionToken = `${baseToken}_day${offset}`;
+
+          let sessionLevel = levels.find(
+            (l: any) => l.level_name === '-' && l.event_token === sessionToken && l.days_offset === offset,
+          );
+
+          if (!sessionLevel) {
+            const interpolatedSpent = getInterpolatedTimeSpent(offset, levels);
+            const finalTimeSpent = interpolatedSpent > 0 ? interpolatedSpent : Math.max(1, offset + 1);
+
+            try {
+              const newLevelId = await TauriService.addLevel({
+                game_id: gameId,
+                branch_id: branch.id,
+                level_name: '-',
+                event_token: sessionToken,
+                days_offset: offset,
+                time_spent: finalTimeSpent,
+                is_bonus: false,
+              });
+              sessionLevel = {
+                id: newLevelId,
+                game_id: gameId,
+                branch_id: branch.id,
+                level_name: '-',
+                event_token: sessionToken,
+                days_offset: offset,
+                time_spent: finalTimeSpent,
+                is_bonus: false,
+              };
+              levels.push(sessionLevel);
+            } catch (err) {
+              const freshLevels = await TauriService.getGameLevels(branch.id);
+              levels = freshLevels;
+              sessionLevel = levels.find(
+                (l: any) => l.level_name === '-' && l.event_token === sessionToken && l.days_offset === offset,
+              );
+            }
+          }
+
+          if (sessionLevel && !completedLevelSet.has(sessionLevel.id)) {
+            try {
+              await TauriService.createLevelProgress({ account_id: account.id, level_id: sessionLevel.id });
+            } catch (_) {}
+            await TauriService.updateLevelProgress({
+              account_id: account.id,
+              level_id: sessionLevel.id,
+              is_completed: true,
+            });
+            completedLevelSet.add(sessionLevel.id);
+            result.completedByCutoff++;
+            result.details.push({
+              gameName: game.name,
+              accountId: account.id,
+              accountName: account.name,
+              levelId: sessionLevel.id,
+              levelToken: sessionToken,
+              computedDate: formatDateShort(eventDate),
+              wasAlreadyCompleted: false,
+              markedAsCompleted: true,
+            });
+          }
+        }
+
+        // Real levels (level_name !== '-') and purchase events are completed
+        // exclusively by the parser-level session cutoff + cascade logic during
+        // importProgressMatrix. The session processor only handles session-only
+        // levels so it does NOT duplicate or override the parser's isCompleted
+        // determinations.
+      }
+    }
 
     result.alreadyCompleted = result.totalSessionLevelsFound - result.completedByCutoff;
     if (result.alreadyCompleted < 0) result.alreadyCompleted = 0;
 
-    console.log(`[SessionProcessor] Game ${game.name}: scanned=${result.totalAccountsScanned} sessionLevels=${result.totalSessionLevelsFound} completed=${result.completedByCutoff} alreadyDone=${result.alreadyCompleted}`);
+    console.log(`[SessionProcessor] Game ${game.name}: scanned=${result.totalAccountsScanned} sessionLevels=${result.totalSessionLevelsFound} completed=${result.completedByCutoff}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error in session processor';
     result.errors.push(message);

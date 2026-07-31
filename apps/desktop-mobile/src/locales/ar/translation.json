@@ -36,6 +36,7 @@
     "export": "تصدير",
     "data": "البيانات",
     "none": "لا يوجد",
+    "select": "اختيار",
     "default": "افتراضي",
     "clear": "مسح",
     "on": "تشغيل",
@@ -411,6 +412,8 @@
     "filesProcessed": "ملفات تمت معالجتها",
     "templatesImportedSuccessfully": "قوالب تم استيرادها بنجاح",
     "importedTemplatesLabel": "القوالب المستوردة:",
+    "importSummary": "ملخص الاستيراد",
+    "partial": "جزئي",
     "errorsLabel": "الأخطاء:"
   },
   "export": {

@@ -1,4 +1,4 @@
-// ===== Excel Sheet Parser (orchestrator) =====
+﻿// ===== Excel Sheet Parser (orchestrator) =====
 
 import XLSX from 'xlsx-js-style';
 import { readExcelFile } from './excel-file-operations';
@@ -42,6 +42,13 @@ export interface ImportData {
     completionDate?: string;
     sessionDate?: string;
   }[];
+  /**
+   * Maps "gameName|accountName" (lowercase) to the Session column date string (e.g. "30-Jul")
+   * for every account row parsed from the Excel sheet.
+   * Used by the import-persistence layer to complete session-only requests per-account
+   * even when the account has no explicit progress entries in data.progress.
+   */
+  accountSessionDates: Map<string, string>;
   fullCompletionUpToDate?: string;
   completedToday?: any[];
 }
@@ -55,7 +62,8 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
       levels: [],
       purchaseEvents: [],
       accounts: [],
-      progress: []
+      progress: [],
+      accountSessionDates: new Map<string, string>(),
     };
 
     for (const sheetName of workbook.SheetNames) {
@@ -154,156 +162,213 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
           result.levels.push(...parsedData.levels);
           result.purchaseEvents.push(...parsedData.purchaseEvents);
 
-          let headerOffset = 0;
-          while (headerOffset < matrixData.length && String(matrixData[headerOffset]?.[0] ?? '').toLowerCase().startsWith('branch:')) {
-            headerOffset++;
-          }
-
-          let accountHeaderRow = -1;
-          for (let i = headerOffset + 3; i < Math.min(headerOffset + 10, matrixData.length); i++) {
-            if (matrixData[i] && matrixData[i][0] && matrixData[i][0].toString().toLowerCase().includes('account')) {
-              accountHeaderRow = i;
-              break;
+          // ===== Multi-group account detail progress parsing =====
+          // Iterate through each group independently, using its own
+          // column configuration (colHeaders, sessionCol, timeCol, startCol).
+          // This mirrors the group iteration logic in parseAccountsDetailVerticalLayout
+          // so that accounts in groups 2+ also get correct session/event parsing.
+          let groupPos = 0;
+          while (groupPos < matrixData.length) {
+            // Skip empty rows
+            while (groupPos < matrixData.length && (!matrixData[groupPos] || matrixData[groupPos].length === 0 || !matrixData[groupPos][0])) {
+              groupPos++;
             }
-          }
+            if (groupPos >= matrixData.length) break;
 
-          let dataRowsStart = accountHeaderRow !== -1 ? accountHeaderRow + 1 : headerOffset + 4;
-
-          const maxCols = Math.max(...matrixData.slice(headerOffset, headerOffset + 4).map(row => row.length));
-          let startCol = detectStartCol(matrixData.slice(headerOffset), maxCols);
-
-          const colHeaders: { name: string; isPurchase: boolean; token: string; daysOffset?: number }[] = [];
-          for (let col = startCol; col < maxCols; col++) {
-            const tokenRaw = matrixData[headerOffset] && matrixData[headerOffset][col] !== undefined && matrixData[headerOffset][col] !== null ? matrixData[headerOffset][col] : '';
-            const token = tokenRaw.toString().trim();
-            const nameRaw = matrixData[headerOffset + 1] && matrixData[headerOffset + 1][col] !== undefined && matrixData[headerOffset + 1][col] !== null ? matrixData[headerOffset + 1][col] : '';
-            const name = nameRaw.toString().trim();
-            const daysOffsetRaw = matrixData[headerOffset + 2] && matrixData[headerOffset + 2][col] !== undefined && matrixData[headerOffset + 2][col] !== null ? matrixData[headerOffset + 2][col] : '';
-            const daysOffsetStr = daysOffsetRaw.toString().trim();
-            const daysOffset = !isNaN(Number(daysOffsetStr)) ? parseInt(daysOffsetStr, 10) : undefined;
-            const timeSpentRaw = matrixData[headerOffset + 3] && matrixData[headerOffset + 3][col] !== undefined && matrixData[headerOffset + 3][col] !== null ? matrixData[headerOffset + 3][col] : '';
-            const timeSpentStr = timeSpentRaw.toString().trim();
-            if (token && token.toLowerCase() !== 'event token') {
-              colHeaders.push({ name, token, isPurchase: isPurchaseEvent(name, timeSpentStr), daysOffset });
-            } else {
-              colHeaders.push({ name: '', token: '', isPurchase: false, daysOffset: undefined });
+            // Skip branch: header rows
+            while (groupPos < matrixData.length && String(matrixData[groupPos]?.[0] ?? '').toLowerCase().startsWith('branch:')) {
+              groupPos++;
             }
-          }
+            if (groupPos + 5 > matrixData.length) break;
 
-          let sessionCol = -1;
-          let timeCol = -1;
-          if (accountHeaderRow >= 0 && matrixData[accountHeaderRow]) {
-            const cols = detectSpecialColumns(matrixData[accountHeaderRow]);
-            sessionCol = cols.sessionCol;
-            timeCol = cols.timeCol;
-          }
+            // Basic validity: group header must have event tokens in columns beyond index 0
+            const grpValid = matrixData[groupPos]?.some(
+              (v: any, ci: number) => ci > 0 && v != null && String(v).trim() && !String(v).toLowerCase().includes('event token'),
+            );
+            if (!grpValid) { groupPos++; continue; }
 
-          for (let i = dataRowsStart; i < matrixData.length; i++) {
-            const row = matrixData[i];
-            if (!row || !row[0]) continue;
-            const firstCell = row[0].toString().trim();
-            if (firstCell.toLowerCase().startsWith('branch:') || firstCell.toLowerCase().includes('event token')) continue;
-            const accountName = firstCell;
+            const grpStart = groupPos;
 
-            let timeValue: number | undefined;
-            if (timeCol >= 0 && row.length > timeCol && row[timeCol] !== undefined && row[timeCol] !== null) {
-              const cell = row[timeCol].toString().trim();
-              if (cell !== '-' && cell !== '') {
-                const n = Number(cell);
-                if (!isNaN(n) && isFinite(n)) timeValue = n;
-              }
-            }
-            const completionThreshold = timeValue !== undefined ? Math.round(timeValue / 1000) : undefined;
-
-            let sessionDateStr: string | undefined;
-            if (sessionCol >= 0 && row.length > sessionCol && row[sessionCol] !== undefined && row[sessionCol] !== null) {
-              const cell = row[sessionCol].toString().trim();
-              if (cell !== '-' && cell !== '') sessionDateStr = cell;
-            }
-
-            let accountStartDate: Date | undefined;
-            const parsedDate = parseAccountDateStr(row[1]?.toString().trim() || '');
-            if (parsedDate) accountStartDate = new Date(parsedDate);
-            if (!accountStartDate) {
-              const raw = row[1]?.toString().trim();
-              if (raw) {
-                const d = new Date(raw);
-                if (!isNaN(d.getTime())) accountStartDate = d;
+            // Find group end: next branch: row or end of data
+            let grpEnd = matrixData.length;
+            for (let g = grpStart + 1; g < matrixData.length; g++) {
+              if (matrixData[g] && matrixData[g][0] && String(matrixData[g][0]).toLowerCase().startsWith('branch:')) {
+                grpEnd = g;
+                break;
               }
             }
 
-            const computeEvtDateStr = (daysOffset: number): string => {
-              if (!accountStartDate) return '';
-              return computeEventDateStr(accountStartDate, daysOffset);
-            };
+            // === Build column configuration for this group ===
+            const grpHeaders = matrixData.slice(grpStart, Math.min(grpStart + 4, grpEnd));
+            const maxCols = Math.max(...grpHeaders.map((r: any[]) => r.length));
+            const startCol = detectStartCol(grpHeaders, maxCols);
 
-            const refYear = accountStartDate?.getFullYear();
-
-            const rowEvents: {
-              header: typeof colHeaders[0];
-              isCompleted: boolean;
-              dateStr: string;
-              hasDateCell: boolean;
-            }[] = [];
-            for (let col = startCol; col < row.length; col++) {
-              const header = colHeaders[col - startCol];
-              if (!header || !header.token) continue;
-
-              const cellVal = row[col] ? row[col].toString().trim() : '';
-              const { isCompleted, dateStr, hasDateCell } = parseCellCompletion(cellVal);
-              rowEvents.push({ header, isCompleted, dateStr, hasDateCell });
-            }
-
-            if (sessionDateStr && accountStartDate) {
-              for (const evt of rowEvents) {
-                if (evt.isCompleted) continue;
-                if (evt.header.daysOffset === undefined) continue;
-                const evtDateStr = computeEvtDateStr(evt.header.daysOffset);
-                if (evtDateStr && dateStrLte(evtDateStr, sessionDateStr, refYear)) {
-                  evt.isCompleted = true;
-                }
-              }
-            }
-
-            let maxLevelFromC = -1;
-            let maxPurchaseFromC = -1;
-            for (const evt of rowEvents) {
-              if (!evt.isCompleted || evt.header.daysOffset === undefined) continue;
-              if (evt.header.isPurchase) {
-                if (evt.header.daysOffset > maxPurchaseFromC) maxPurchaseFromC = evt.header.daysOffset;
+            const colHeaders: { name: string; isPurchase: boolean; token: string; daysOffset?: number }[] = [];
+            for (let col = startCol; col < maxCols; col++) {
+              const tokenRaw = matrixData[grpStart] && matrixData[grpStart][col] !== undefined && matrixData[grpStart][col] !== null ? matrixData[grpStart][col] : '';
+              const token = tokenRaw.toString().trim();
+              const nameRaw = matrixData[grpStart + 1] && matrixData[grpStart + 1][col] !== undefined && matrixData[grpStart + 1][col] !== null ? matrixData[grpStart + 1][col] : '';
+              const name = nameRaw.toString().trim();
+              const daysOffsetRaw = matrixData[grpStart + 2] && matrixData[grpStart + 2][col] !== undefined && matrixData[grpStart + 2][col] !== null ? matrixData[grpStart + 2][col] : '';
+              const daysOffsetStr = daysOffsetRaw.toString().trim();
+              const daysOffset = !isNaN(Number(daysOffsetStr)) ? parseInt(daysOffsetStr, 10) : undefined;
+              const timeSpentRaw = matrixData[grpStart + 3] && matrixData[grpStart + 3][col] !== undefined && matrixData[grpStart + 3][col] !== null ? matrixData[grpStart + 3][col] : '';
+              const timeSpentStr = timeSpentRaw.toString().trim();
+              if (token && token.toLowerCase() !== 'event token') {
+                colHeaders.push({ name, token, isPurchase: isPurchaseEvent(name, timeSpentStr), daysOffset });
               } else {
-                if (evt.header.daysOffset > maxLevelFromC) maxLevelFromC = evt.header.daysOffset;
+                colHeaders.push({ name: '', token: '', isPurchase: false, daysOffset: undefined });
               }
             }
 
-            const maxLevelOffset = maxLevelFromC >= 0 ? maxLevelFromC : completionThreshold;
-            const maxPurchaseOffset = maxPurchaseFromC >= 0 ? maxPurchaseFromC : completionThreshold;
-
-            for (const evt of rowEvents) {
-              let { isCompleted, header, dateStr, hasDateCell } = evt;
-
-              if (!isCompleted && header.daysOffset !== undefined) {
-                if (!header.isPurchase && maxLevelOffset !== undefined && header.daysOffset <= maxLevelOffset) {
-                  isCompleted = true;
-                }
-                if (header.isPurchase && maxPurchaseOffset !== undefined && header.daysOffset <= maxPurchaseOffset) {
-                  isCompleted = true;
-                }
-              }
-
-              if (isCompleted || hasDateCell) {
-                  result.progress.push({
-                    gameName,
-                    accountName,
-                    levelName: header.isPurchase ? undefined : header.name,
-                    purchaseToken: header.isPurchase ? header.token : undefined,
-                    token: header.token,
-                    isCompleted,
-                    completionDate: dateStr || undefined,
-                    sessionDate: sessionDateStr || undefined,
-                  });
+            // === Find account header row for this group ===
+            let accountHeaderRow = -1;
+            for (let i = grpStart + 4; i < Math.min(grpStart + 10, grpEnd); i++) {
+              if (matrixData[i] && matrixData[i][0] && matrixData[i][0].toString().toLowerCase().includes('account')) {
+                accountHeaderRow = i;
+                break;
               }
             }
+
+            // === Detect Session and Time columns from the account header row ===
+            let sessionCol = -1;
+            let timeCol = -1;
+            if (accountHeaderRow >= 0 && matrixData[accountHeaderRow]) {
+              const cols = detectSpecialColumns(matrixData[accountHeaderRow]);
+              sessionCol = cols.sessionCol;
+              timeCol = cols.timeCol;
+            }
+
+            // === Compute padding target so every data row in this group has all needed columns ===
+            const effectiveMinCols = Math.max(
+              maxCols,
+              sessionCol >= 0 ? sessionCol + 1 : 0,
+              timeCol >= 0 ? timeCol + 1 : 0,
+            );
+
+            const dataRowsStart = accountHeaderRow >= 0 ? accountHeaderRow + 1 : grpStart + 4;
+
+            // === Process account data rows for this group ===
+            for (let i = dataRowsStart; i < grpEnd; i++) {
+              const row = matrixData[i];
+              if (!row || !row[0]) continue;
+              const firstCell = row[0].toString().trim();
+              const lowerFirst = firstCell.toLowerCase();
+              if (lowerFirst.startsWith('branch:') || lowerFirst.includes('event token')) continue;
+              if (lowerFirst === 'account' || lowerFirst === 'level name' || lowerFirst === 'days offset' || lowerFirst === 'time spent' || lowerFirst === 'total') continue;
+              if (/^\d+$/.test(firstCell) && firstCell.length <= 4) continue;
+
+              // Pad row to effectiveMinCols so session/time/event columns are always accessible
+              while (row.length < effectiveMinCols) {
+                row.push(undefined);
+              }
+
+              const accountName = firstCell;
+
+              let timeValue: number | undefined;
+              if (timeCol >= 0 && row.length > timeCol && row[timeCol] !== undefined && row[timeCol] !== null) {
+                const cell = row[timeCol].toString().trim();
+                if (cell !== '-' && cell !== '') {
+                  const n = Number(cell);
+                  if (!isNaN(n) && isFinite(n)) timeValue = n;
+                }
+              }
+              const completionThreshold = timeValue !== undefined ? Math.round(timeValue / 1000) : undefined;
+
+              let sessionDateStr: string | undefined;
+              if (sessionCol >= 0 && row.length > sessionCol && row[sessionCol] !== undefined && row[sessionCol] !== null) {
+                const cell = row[sessionCol].toString().trim();
+                if (cell !== '-' && cell !== '') sessionDateStr = cell;
+              }
+
+              // Record session date for this account so import-persistence can use it
+              // even for accounts that produce no progress entries in data.progress.
+              if (sessionDateStr) {
+                const sessionMapKey = `${gameName.toLowerCase()}|${accountName.toLowerCase()}`;
+                result.accountSessionDates.set(sessionMapKey, sessionDateStr);
+              }
+
+              let accountStartDate: Date | undefined;
+              const parsedDateStr = parseAccountDateStr(row[1]);
+              if (parsedDateStr) {
+                accountStartDate = new Date(parsedDateStr);
+              }
+
+              const computeEvtDateStr = (daysOffset: number): string => {
+                if (!accountStartDate) return '';
+                return computeEventDateStr(accountStartDate, daysOffset);
+              };
+
+              const refYear = accountStartDate?.getFullYear();
+
+              const rowEvents: {
+                header: typeof colHeaders[0];
+                isCompleted: boolean;
+                dateStr: string;
+                hasDateCell: boolean;
+              }[] = [];
+              for (let col = startCol; col < row.length && col - startCol < colHeaders.length; col++) {
+                const header = colHeaders[col - startCol];
+                if (!header || !header.token) continue;
+
+                const cellVal = row[col] ? row[col].toString().trim() : '';
+                const { isCompleted, dateStr, hasDateCell } = parseCellCompletion(cellVal);
+                rowEvents.push({ header, isCompleted, dateStr, hasDateCell });
+              }
+
+              if (sessionDateStr && accountStartDate) {
+                for (const evt of rowEvents) {
+                  if (evt.isCompleted) continue;
+                  if (evt.header.daysOffset === undefined) continue;
+                  const evtDateStr = computeEvtDateStr(evt.header.daysOffset);
+                  if (evtDateStr && dateStrLte(evtDateStr, sessionDateStr, refYear)) {
+                    evt.isCompleted = true;
+                  }
+                }
+              }
+
+              let maxLevelFromC = -1;
+              let maxPurchaseFromC = -1;
+              for (const evt of rowEvents) {
+                if (!evt.isCompleted || evt.header.daysOffset === undefined) continue;
+                if (evt.header.isPurchase) {
+                  if (evt.header.daysOffset > maxPurchaseFromC) maxPurchaseFromC = evt.header.daysOffset;
+                } else {
+                  if (evt.header.daysOffset > maxLevelFromC) maxLevelFromC = evt.header.daysOffset;
+                }
+              }
+
+              const maxLevelOffset = maxLevelFromC >= 0 ? maxLevelFromC : completionThreshold;
+              const maxPurchaseOffset = maxPurchaseFromC >= 0 ? maxPurchaseFromC : completionThreshold;
+
+              for (const evt of rowEvents) {
+                let { isCompleted, header, dateStr, hasDateCell } = evt;
+
+                if (!isCompleted && header.daysOffset !== undefined) {
+                  if (!header.isPurchase && maxLevelOffset !== undefined && header.daysOffset <= maxLevelOffset) {
+                    isCompleted = true;
+                  }
+                  if (header.isPurchase && maxPurchaseOffset !== undefined && header.daysOffset <= maxPurchaseOffset) {
+                    isCompleted = true;
+                  }
+                }
+
+                if (isCompleted || hasDateCell) {
+                    result.progress.push({
+                      gameName,
+                      accountName,
+                      levelName: header.isPurchase ? undefined : header.name,
+                      purchaseToken: header.isPurchase ? header.token : undefined,
+                      token: header.token,
+                      isCompleted,
+                      completionDate: dateStr || undefined,
+                      sessionDate: sessionDateStr || undefined,
+                    });
+                }
+              }
+            }
+
+            groupPos = grpEnd;
           }
         } else if (isVerticalGameDetailFormat(matrixData)) {
           const parsedData = parseVerticalLayoutData(matrixData);

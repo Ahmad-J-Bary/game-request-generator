@@ -5,7 +5,6 @@ import {
   TableBody,
   TableCell,
   TableHead,
-  TableHeader,
   TableRow,
 } from '@grq/ui/atoms/table';
 import { Button } from '@grq/ui/atoms/button';

@@ -36,6 +36,7 @@
     "export": "Export",
     "data": "Data",
     "none": "None",
+    "select": "Select",
     "default": "Default",
     "clear": "Clear",
     "on": "On",
@@ -411,6 +412,8 @@
     "filesProcessed": "files processed",
     "templatesImportedSuccessfully": "templates imported successfully",
     "importedTemplatesLabel": "Imported templates:",
+    "importSummary": "Import Summary",
+    "partial": "Partial",
     "errorsLabel": "Errors:"
   },
   "export": {

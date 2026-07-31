@@ -83,47 +83,85 @@ export function isPurchaseEvent(name: string, timeSpentStr: string): boolean {
 }
 
 /**
- * Parse a date string in various formats and return ISO date string YYYY-MM-DD.
- * Supports: MM/DD/YYYY, YYYY-MM-DD, DD-Mon-YYYY, and Date objects.
+ * Parse a date value in various formats (Date object, MM/DD/YYYY, YYYY-MM-DD, DD-Mon-YYYY, DD-Mon)
+ * and return ISO date string YYYY-MM-DD.
  */
-export function parseAccountDateStr(dateStr: string): string | undefined {
-  if (!dateStr) return undefined;
+export function parseAccountDateStr(rawDate: any): string | undefined {
+  if (!rawDate) return undefined;
 
-  let parsedDate: Date | null = null;
+  if (rawDate instanceof Date) {
+    if (isNaN(rawDate.getTime())) return undefined;
+    const y = rawDate.getFullYear();
+    const m = String(rawDate.getMonth() + 1).padStart(2, '0');
+    const d = String(rawDate.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
 
-  // MM/DD/YYYY
+  const dateStr = String(rawDate).trim();
+  if (!dateStr || dateStr === '-') return undefined;
+
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return dateStr;
+  }
+
+  // MM/DD/YYYY or M/D/YYYY or DD/MM/YYYY
   const slashMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slashMatch) {
-    const month = parseInt(slashMatch[1]) - 1;
-    const day = parseInt(slashMatch[2]);
-    const year = parseInt(slashMatch[3]);
-    parsedDate = new Date(year, month, day);
-    if (!isNaN(parsedDate.getTime())) {
+    const p1 = parseInt(slashMatch[1], 10);
+    const p2 = parseInt(slashMatch[2], 10);
+    const year = parseInt(slashMatch[3], 10);
+
+    let month = p1 - 1;
+    let day = p2;
+    if (p1 > 12) {
+      day = p1;
+      month = p2 - 1;
+    }
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) {
       return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
   }
 
-  // YYYY-MM-DD
-  if (!parsedDate && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    parsedDate = new Date(dateStr);
-    if (!isNaN(parsedDate.getTime())) return dateStr;
-  }
-
-  // DD-Mon-YYYY (e.g. "15-Jan-2025")
-  if (!parsedDate) {
-    const dashMatch = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
-    if (dashMatch) {
-      const day = parseInt(dashMatch[1]);
-      const monthStr = dashMatch[2].toLowerCase();
-      const year = parseInt(dashMatch[3]);
-      const monthIndex = MONTHS_SHORT.indexOf(monthStr);
-      if (monthIndex >= 0) {
-        parsedDate = new Date(year, monthIndex, day);
-        if (!isNaN(parsedDate.getTime())) {
-          return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        }
+  // DD-Mon-YYYY (e.g. "15-Jan-2025" or "1-Jul-2025")
+  const dashMatch = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+  if (dashMatch) {
+    const day = parseInt(dashMatch[1], 10);
+    const monthStr = dashMatch[2].toLowerCase();
+    const year = parseInt(dashMatch[3], 10);
+    const monthIndex = MONTHS_SHORT.indexOf(monthStr);
+    if (monthIndex >= 0) {
+      const d = new Date(year, monthIndex, day);
+      if (!isNaN(d.getTime())) {
+        return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       }
     }
+  }
+
+  // DD-Mon (e.g. "1-Jul" or "15-Jan")
+  const shortDashMatch = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})$/);
+  if (shortDashMatch) {
+    const day = parseInt(shortDashMatch[1], 10);
+    const monthStr = shortDashMatch[2].toLowerCase();
+    const year = new Date().getFullYear();
+    const monthIndex = MONTHS_SHORT.indexOf(monthStr);
+    if (monthIndex >= 0) {
+      const d = new Date(year, monthIndex, day);
+      if (!isNaN(d.getTime())) {
+        return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+    }
+  }
+
+  // General fallback
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   }
 
   return undefined;

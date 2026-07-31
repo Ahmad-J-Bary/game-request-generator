@@ -83,9 +83,13 @@ export function ProgressProvider({
     };
 
     window.addEventListener("progress-updated", handleProgressUpdate);
+    window.addEventListener("data-changed", handleProgressUpdate);
+    window.addEventListener("accounts-updated", handleProgressUpdate);
 
     return () => {
       window.removeEventListener("progress-updated", handleProgressUpdate);
+      window.removeEventListener("data-changed", handleProgressUpdate);
+      window.removeEventListener("accounts-updated", handleProgressUpdate);
     };
   }, [accounts]);
 

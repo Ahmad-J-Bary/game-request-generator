@@ -105,20 +105,113 @@ export class ImportPersistenceService {
       await importProgressMatrix(data, cache, result);
       await restoreCompletedToday(data.completedToday, cache);
 
-      // Build session date overrides from progress entries so the session processor
-      // uses the original per-row Session column date instead of current date.
+      // Build per-account session date overrides.
+      // Priority: data.accountSessionDates (populated directly from every Excel row)
+      // Fallback: data.progress entries that carry sessionDate.
+      // This ensures ALL imported accounts get their session-only requests completed,
+      // not just the accounts that happened to produce progress entries.
       const sessionDateOverrides = new Map<number, string>();
+
+      // 1. Populate from the authoritative accountSessionDates map (all rows)
+      if (data.accountSessionDates && data.accountSessionDates.size > 0) {
+        const step1GameCache = {};
+        for (const [mapKey, sessionDateStr] of data.accountSessionDates.entries()) {
+          const pipeIdx = mapKey.indexOf('|');
+          if (pipeIdx < 0) continue;
+          const lowerGameName = mapKey.substring(0, pipeIdx);
+          const lowerAccName = mapKey.substring(pipeIdx + 1);
+          let gid = cache.gameCache[lowerGameName];
+          if (!gid && contextGameId) gid = contextGameId;
+          if (!gid) {
+            for (const [ckey, caid] of Object.entries(cache.accountCache)) {
+              if (ckey.endsWith(`_${lowerAccName}`)) {
+                sessionDateOverrides.set(caid, sessionDateStr);
+                break;
+              }
+            }
+            continue;
+          }
+          let aid = cache.accountCache[`${gid}_${lowerAccName}`];
+          if (!aid) {
+            for (const [ckey, caid] of Object.entries(cache.accountCache)) {
+              if (ckey.endsWith(`_${lowerAccName}`)) {
+                aid = caid;
+                break;
+              }
+            }
+          }
+          if (!aid) {
+            if (!step1GameCache[gid]) {
+              try { step1GameCache[gid] = await TauriService.getAccounts(gid); } catch (_) { step1GameCache[gid] = []; }
+            }
+            const match = step1GameCache[gid].find((a) => a.name?.toLowerCase() === lowerAccName);
+            if (match) {
+              aid = match.id;
+              cache.accountCache[`${gid}_${lowerAccName}`] = aid;
+            }
+          }
+          if (aid && !sessionDateOverrides.has(aid)) {
+            sessionDateOverrides.set(aid, sessionDateStr);
+          }
+        }
+      }
+
+      // 2. Populate directly from imported accounts (if sessionDate was attached to account)
+      for (const a of data.accounts) {
+        const sessionDateStr = (a as any).sessionDate;
+        if (!sessionDateStr) continue;
+        const lowerGameName = ((a as any).gameName || '').trim().toLowerCase();
+        const lowerAccName = (a.name || '').trim().toLowerCase();
+        let gid = cache.gameCache[lowerGameName];
+        if (!gid && contextGameId) gid = contextGameId;
+        if (gid) {
+          const aid = cache.accountCache[`${gid}_${lowerAccName}`];
+          if (aid && !sessionDateOverrides.has(aid)) {
+            sessionDateOverrides.set(aid, sessionDateStr);
+          }
+        } else {
+          for (const [ckey, caid] of Object.entries(cache.accountCache)) {
+            if (ckey.endsWith(`_${lowerAccName}`) && !sessionDateOverrides.has(caid)) {
+              sessionDateOverrides.set(caid, sessionDateStr);
+              break;
+            }
+          }
+        }
+      }
+
+      // 3. Fallback: supplement from progress entries for any account still missing
       for (const p of data.progress) {
         if (!p.sessionDate) continue;
         const lowerGameName = p.gameName?.trim().toLowerCase();
-        if (!lowerGameName) continue;
-        const gid = cache.gameCache[lowerGameName];
+        const lowerAccName = p.accountName.toLowerCase();
+        let gid = lowerGameName ? cache.gameCache[lowerGameName] : contextGameId;
         if (!gid) continue;
-        const accKey = `${gid}_${p.accountName.toLowerCase()}`;
-        const aid = cache.accountCache[accKey];
-        if (aid) {
+        let aid = cache.accountCache[`${gid}_${lowerAccName}`];
+        if (!aid) {
+          for (const [ckey, caid] of Object.entries(cache.accountCache)) {
+            if (ckey.endsWith(`_${lowerAccName}`)) {
+              aid = caid;
+              break;
+            }
+          }
+        }
+        if (!aid) {
+          try {
+            const allAccs = await TauriService.getAccounts(gid);
+            const match = allAccs.find((a) => a.name?.toLowerCase() === lowerAccName);
+            if (match) { aid = match.id; cache.accountCache[`${gid}_${lowerAccName}`] = aid; }
+          } catch (_) {}
+        }
+        if (aid && !sessionDateOverrides.has(aid)) {
           sessionDateOverrides.set(aid, p.sessionDate);
         }
+      }
+
+      // Log override summary per step for debugging
+      console.log(`[ImportPersistence] sessionDateOverrides total=${sessionDateOverrides.size} (step1=${data.accountSessionDates?.size || 0} mapEntries, step2=${data.accounts.filter((a: any) => (a as any).sessionDate).length} accountDates, step3 supplements)`);
+      if (sessionDateOverrides.size > 0) {
+        const overrideEntries = [...sessionDateOverrides.entries()].map(([aid, dt]) => `${aid}=${dt}`).join(', ');
+        console.log(`[ImportPersistence] Override map: ${overrideEntries}`);
       }
 
       // Collect all affected game IDs (levels, accounts, and context).
@@ -133,7 +226,8 @@ export class ImportPersistenceService {
       });
       if (contextGameId) affectedGameIds.add(contextGameId);
 
-      // Apply Session completion logic to affected games.
+      // Apply per-account session-only completion AFTER all data has been imported.
+      // Using per-account overrides ensures every row is handled independently.
       console.log(`[ImportPersistence] Running session processor for ${affectedGameIds.size} games with ${sessionDateOverrides.size} account overrides`);
       for (const gid of affectedGameIds) {
         try {
@@ -141,6 +235,13 @@ export class ImportPersistenceService {
         } catch (err) {
           console.error(`[ImportPersistence] Session processor error for game ${gid}:`, err);
         }
+      }
+
+      // Additional per-account pass: for each imported account that has a session date,
+      // ensure session-only levels created DURING this import are also completed.
+      // This covers the case where session-only levels didn't exist yet before import.
+      if (sessionDateOverrides.size > 0) {
+        await applySessionCompletionPerAccount(cache, sessionDateOverrides, data, result);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -245,6 +346,7 @@ async function importAccounts(
   result: PersistenceResult,
 ): Promise<void> {
   const gameEventSequenceCache: Record<number, any[]> = {};
+  const fetchedGameAccounts = new Set<number>();
 
   for (const account of accounts) {
     try {
@@ -258,20 +360,45 @@ async function importAccounts(
       const lowerAccName = account.name?.toLowerCase() || '';
       const cacheKey = `${targetGameId}_${lowerAccName}`;
 
-      if (cache.accountCache[cacheKey]) {
-        continue;
+      // Pre-fetch existing DB accounts for this game once to ensure cache has their IDs
+      if (!fetchedGameAccounts.has(targetGameId)) {
+        fetchedGameAccounts.add(targetGameId);
+        try {
+          const dbAccs = await TauriService.getAccounts(targetGameId);
+          dbAccs.forEach((da: any) => {
+            if (da.name) {
+              cache.accountCache[`${targetGameId}_${da.name.toLowerCase()}`] = da.id;
+            }
+          });
+        } catch (_) {}
       }
 
-      const accId = await TauriService.addAccount({
-        ...account,
-        game_id: targetGameId,
-        branch_id: targetBranchId,
-        request_template: account.request_template || 'Needs to be filled in - imported from Excel export',
-        country: (account as any).country || 'UNITED STATES (US)',
-      } as any);
+      let accId = cache.accountCache[cacheKey];
 
-      cache.accountCache[cacheKey] = accId;
-      result.importedCount++;
+      if (!accId) {
+        try {
+          accId = await TauriService.addAccount({
+            ...account,
+            game_id: targetGameId,
+            branch_id: targetBranchId,
+            request_template: account.request_template || 'Needs to be filled in - imported from Excel export',
+            country: (account as any).country || 'UNITED STATES (US)',
+          } as any);
+
+          cache.accountCache[cacheKey] = accId;
+          result.importedCount++;
+        } catch (addErr) {
+          // If adding failed, try fetching existing accounts again
+          try {
+            const dbAccs = await TauriService.getAccounts(targetGameId);
+            const existing = dbAccs.find((da: any) => da.name?.toLowerCase() === lowerAccName);
+            if (existing) {
+              accId = existing.id;
+              cache.accountCache[cacheKey] = accId;
+            }
+          } catch (_) {}
+        }
+      }
 
       // Progress restoration (milestone + global backfill)
       const lastCompletedToken = (account as any).lastCompletedToken;
@@ -332,10 +459,10 @@ async function importAccounts(
             }
             if (item.kind === 'level') {
               try { await TauriService.createLevelProgress({ account_id: accId, level_id: item.id }); } catch (e) { /* ignore */ }
-              await TauriService.updateLevelProgress({ account_id: accId, level_id: item.id, is_completed: true });
+              await TauriService.updateLevelProgress({ account_id: accId, level_id: item.id, is_completed: true, bypass_cooldown: true });
             } else {
               try { await TauriService.createPurchaseEventProgress({ account_id: accId, purchase_event_id: item.id, days_offset: 0, time_spent: 0 }); } catch (e) { /* ignore */ }
-              await TauriService.updatePurchaseEventProgress({ account_id: accId, purchase_event_id: item.id, is_completed: true });
+              await TauriService.updatePurchaseEventProgress({ account_id: accId, purchase_event_id: item.id, is_completed: true, bypass_cooldown: true });
             }
           }
 
@@ -363,6 +490,31 @@ async function importProgressMatrix(
   let processedCount = 0;
   let skippedNoIds = 0;
   let skippedNoAccount = 0;
+  let cacheWarmedAccount = 0;
+
+  // Warm up account cache: ensure every account in data.accounts is cached
+  // before we iterate progress entries, preventing silent skips for accounts 2+.
+  for (const acc of data.accounts) {
+    const lowerGameName = ((acc as any).gameName || '').trim().toLowerCase();
+    const lowerAccName = (acc.name || '').trim().toLowerCase();
+    if (!lowerGameName || !lowerAccName) continue;
+    const gid = cache.gameCache[lowerGameName];
+    if (!gid) continue;
+    const cacheKey = `${gid}_${lowerAccName}`;
+    if (cache.accountCache[cacheKey]) continue;
+    try {
+      const accounts = await TauriService.getAccounts(gid);
+      const existing = accounts.find((a: any) => a.name?.toLowerCase() === lowerAccName);
+      if (existing) {
+        cache.accountCache[cacheKey] = existing.id;
+        cacheWarmedAccount++;
+      }
+    } catch (_) {}
+  }
+  if (cacheWarmedAccount > 0) {
+    console.log(`[ImportProgressMatrix] Cache warm-up: added ${cacheWarmedAccount} account(s) from DB`);
+  }
+
   for (const p of data.progress) {
     try {
       const ids = await cache.getOrCreateGameAndBranch(p.gameName, (p as any).branchName);
@@ -398,11 +550,15 @@ async function importProgressMatrix(
             const existing = accounts.find(
               (a: any) => a.name?.toLowerCase() === p.accountName.toLowerCase(),
             );
-            if (existing) aid = existing.id;
+            if (existing) {
+              aid = existing.id;
+              cache.accountCache[`${gid}_${p.accountName.toLowerCase()}`] = aid;
+            }
           } catch (_) {}
         }
         if (!aid) {
           skippedNoAccount++;
+          console.warn(`[ImportProgressMatrix] Skipping progress entry for ${p.accountName}/${p.token}: no account found in cache or DB`);
           continue;
         }
       }
@@ -413,16 +569,24 @@ async function importProgressMatrix(
       );
 
       if (p.levelName !== undefined) {
-        // Try to find the level: cache → database search → create on the fly
-        let lid = cache.levelCache[`${gid}_${lowerToken}_Session Only`];
+        // Determine cache key based on level type
+        const isSessionOnly = p.levelName === '-';
+        const cacheTypeSuffix = isSessionOnly ? 'Session Only' : 'Level Event';
+        let lid = cache.levelCache[`${gid}_${lowerToken}_${cacheTypeSuffix}`]
+               || cache.levelCache[`${gid}_${lowerToken}_Session Only`]
+               || cache.levelCache[`${gid}_${lowerToken}_Level Event`]
+               || cache.levelCache[`${gid}_${lowerToken}_Level Session`];
         if (!lid) {
-          // Search in the database for this session's levels
+          // Search in the database for this level
           try {
             const gameLevels = await TauriService.getGameLevels(bid);
-            const existing = gameLevels.find(l => l.event_token?.toLowerCase() === lowerToken);
+            const existing = gameLevels.find((l: any) =>
+              l.event_token?.toLowerCase() === lowerToken &&
+              (isSessionOnly ? l.level_name === '-' : l.level_name !== '-')
+            );
             if (existing) {
               lid = existing.id;
-              cache.levelCache[`${gid}_${lowerToken}_Session Only`] = lid;
+              cache.levelCache[`${gid}_${lowerToken}_${cacheTypeSuffix}`] = lid;
             }
           } catch (_) { /* ignore db error */ }
         }
@@ -440,12 +604,12 @@ async function importProgressMatrix(
               time_spent: 0,
               is_bonus: false,
             } as any);
-            cache.levelCache[`${gid}_${lowerToken}_Session Only`] = lid;
+            cache.levelCache[`${gid}_${lowerToken}_${cacheTypeSuffix}`] = lid;
           } catch (_) { /* ignore creation failure */ }
         }
         if (lid) {
           try { await TauriService.createLevelProgress({ account_id: aid, level_id: lid }); } catch (e) { /* ignore */ }
-          await TauriService.updateLevelProgress({ account_id: aid, level_id: lid, is_completed: p.isCompleted });
+          await TauriService.updateLevelProgress({ account_id: aid, level_id: lid, is_completed: p.isCompleted, bypass_cooldown: true });
         }
       } else if (p.purchaseToken !== undefined) {
         const peid = cache.purchaseCache[`${gid}_${lowerToken}_Purchase Event`];
@@ -476,7 +640,7 @@ async function importProgressMatrix(
           }
 
           try { await TauriService.createPurchaseEventProgress({ account_id: aid, purchase_event_id: peid, days_offset: calculatedDaysOffset, time_spent: 0 }); } catch (e) { /* ignore */ }
-          await TauriService.updatePurchaseEventProgress({ account_id: aid, purchase_event_id: peid, is_completed: p.isCompleted, days_offset: calculatedDaysOffset });
+          await TauriService.updatePurchaseEventProgress({ account_id: aid, purchase_event_id: peid, is_completed: p.isCompleted, days_offset: calculatedDaysOffset, bypass_cooldown: true });
         }
       }
       processedCount++;
@@ -492,59 +656,84 @@ async function importProgressMatrix(
   if (skippedNoIds > 0 || skippedNoAccount > 0) {
     console.warn(`[ImportProgressMatrix] progressEntries=${data.progress.length} processed=${processedCount} skippedNoIds=${skippedNoIds} skippedNoAccount=${skippedNoAccount}`);
   }
-  console.log(`[ImportProgressMatrix] Done: ${processedCount}/${data.progress.length} entries processed`);
+  const accountNames = [...new Set(data.progress.map(p => p.accountName))];
+  console.log(`[ImportProgressMatrix] Done: ${processedCount}/${data.progress.length} entries across ${accountNames.length} account(s): [${accountNames.join(', ')}]`);
 
-  // === Inline Session completion pass ===
-  // Completes Session Only levels for each account using the per-row
-  // Session column date as cutoff. Runs even if the post-import session
-  // processor is called, as a redundant safety net.
-  const seenAccounts = new Set<string>();
-  for (const p of data.progress) {
-    if (!p.sessionDate) continue;
-    if (p.levelName === undefined) continue;
-    const accKeyBase = `${p.gameName || ''}|${p.accountName.toLowerCase()}`;
-    if (seenAccounts.has(accKeyBase)) continue;
-    seenAccounts.add(accKeyBase);
+}
 
+/**
+ * Per-account session-only completion pass.
+ * Called AFTER all levels, accounts, and progress have been imported.
+ * For every imported account that has a session date override, iterates over
+ * ALL session-only levels in its branch and marks those whose computed date
+ * is <= the session date as completed.
+ *
+ * Additionally scans data.accounts for any account with sessionDate that was
+ * not in sessionDateOverrides (catch-all for edge cases where cache lookups
+ * failed), ensuring every account with a session date gets processed.
+ *
+ * This correctly handles:
+ * - Accounts in rows 2..N (not just the first row)
+ * - Session-only levels that were created during this import run
+ * - Accounts from multi-group sheets across all groups
+ */
+async function applySessionCompletionPerAccount(
+  cache: ImportCache,
+  sessionDateOverrides: Map<number, string>,
+  data: ImportData,
+  result: PersistenceResult,
+): Promise<void> {
+  const branchSessionLevelsCache = new Map<number, any[]>();
+
+  // Helper: complete session-only levels for one account
+  const completeForAccount = async (aid: number, sessionDateStr: string): Promise<number> => {
+    let completedCount = 0;
     try {
-      const ids = await cache.getOrCreateGameAndBranch(p.gameName, (p as any).branchName);
-      if (!ids) continue;
-      const { targetGameId: gid, targetBranchId: bid } = ids;
+      const dbAccount = await TauriService.getAccountById(aid).catch(() => null);
 
-      const lowerAccName = p.accountName.toLowerCase();
-      let aid = cache.accountCache[`${gid}_${lowerAccName}`];
-      if (!aid) {
-        for (const [ckey, cid] of Object.entries(cache.accountCache)) {
-          if (ckey.endsWith(`_${lowerAccName}`)) { aid = cid as number; break; }
+      let accountStartDate: Date;
+      let branchId: number | undefined;
+
+      if (dbAccount) {
+        branchId = dbAccount.branch_id;
+        const rawStartDate = dbAccount.start_date
+          ? (dbAccount.start_date.includes('T') ? dbAccount.start_date.split('T')[0] : dbAccount.start_date)
+          : '';
+        accountStartDate = new Date(rawStartDate);
+      } else {
+        let startDate = '';
+        for (const [cacheKey, caid] of Object.entries(cache.accountCache)) {
+          if ((caid as number) !== aid) continue;
+          const underscoreIdx = cacheKey.indexOf('_');
+          if (underscoreIdx < 0) continue;
+          const lowerAccName = cacheKey.substring(underscoreIdx + 1);
+          const accData = data.accounts.find((a: any) => a.name?.toLowerCase() === lowerAccName);
+          if (accData?.start_date) { startDate = accData.start_date; break; }
+        }
+        if (!startDate) return 0;
+        accountStartDate = new Date(startDate.includes('T') ? startDate.split('T')[0] : startDate);
+      }
+
+      if (!branchId || isNaN(accountStartDate.getTime())) return 0;
+
+      const cutoffDate = parseDMMMDate(sessionDateStr, accountStartDate.getFullYear());
+      if (!cutoffDate) return 0;
+
+      if (!branchSessionLevelsCache.has(branchId)) {
+        try {
+          const levels = await TauriService.getGameLevels(branchId);
+          branchSessionLevelsCache.set(branchId, levels.filter((l: any) => l.level_name === '-'));
+        } catch (_) {
+          branchSessionLevelsCache.set(branchId, []);
         }
       }
-      if (!aid) {
-        try {
-          const accounts = await TauriService.getAccounts(gid);
-          const existing = accounts.find((a: any) => a.name?.toLowerCase() === lowerAccName);
-          if (existing) aid = existing.id;
-        } catch (_) {}
-      }
-      if (!aid) continue;
-
-      const accInfo = data.accounts.find((a: any) => a.name?.toLowerCase() === lowerAccName);
-      if (!accInfo?.start_date) continue;
-      const accountStartDate = new Date(accInfo.start_date);
-      if (isNaN(accountStartDate.getTime())) continue;
-
-      let sessionLevels: any[];
-      try {
-        sessionLevels = (await TauriService.getGameLevels(bid)).filter((l: any) => l.level_name === '-');
-      } catch (_) { continue; }
-      if (sessionLevels.length === 0) continue;
-
-      const cutoffDate = parseDMMMDate(p.sessionDate, accountStartDate.getFullYear());
-      if (!cutoffDate) continue;
+      const sessionLevels = branchSessionLevelsCache.get(branchId) || [];
+      if (sessionLevels.length === 0) return 0;
 
       let existingProgress: any[];
       try {
         existingProgress = await TauriService.getAccountLevelProgress(aid);
-      } catch (_) { continue; }
+      } catch (_) { return 0; }
       const completedSet = new Set<number>();
       existingProgress.forEach((ep: any) => { if (ep.is_completed) completedSet.add(ep.level_id); });
 
@@ -553,16 +742,45 @@ async function importProgressMatrix(
         if (level.days_offset == null) continue;
         const eventDate = new Date(accountStartDate.getTime() + level.days_offset * 24 * 60 * 60 * 1000);
         if (eventDate.getTime() <= cutoffDate.getTime()) {
-          try { await TauriService.createLevelProgress({ account_id: aid, level_id: level.id }); } catch (_) {}
-          await TauriService.updateLevelProgress({ account_id: aid, level_id: level.id, is_completed: true });
+          try { await TauriService.createLevelProgress({ account_id: aid, level_id: level.id }); } catch (_) { /* ignore duplicate */ }
+          await TauriService.updateLevelProgress({ account_id: aid, level_id: level.id, is_completed: true, bypass_cooldown: true });
+          completedCount++;
         }
       }
     } catch (error) {
       result.errors.push({
-        type: 'session-completion',
-        message: error instanceof Error ? error.message : 'Failed inline session completion',
-        item: p,
+        type: 'per-account-session-completion',
+        message: error instanceof Error ? error.message : 'Failed per-account session completion',
+        item: { aid, sessionDateStr },
       });
+    }
+    return completedCount;
+  };
+
+  // --- Pass 1: Process all accounts from sessionDateOverrides ---
+  for (const [aid, sessionDateStr] of sessionDateOverrides.entries()) {
+    const completedCount = await completeForAccount(aid, sessionDateStr);
+    if (completedCount > 0) {
+      console.log(`[ImportPersistence] Per-account session completion: account=${aid} sessionDate=${sessionDateStr} completed=${completedCount} session-only levels`);
+    }
+  }
+
+  // --- Pass 2: Catch-all for accounts that have sessionDate but were not
+  //     in sessionDateOverrides (e.g., cache lookup edge cases). ---
+  const processedAids = new Set(sessionDateOverrides.keys());
+  for (const acc of data.accounts) {
+    const sessionDateStr = (acc as any).sessionDate;
+    if (!sessionDateStr) continue;
+    const lowerGameName = ((acc as any).gameName || '').trim().toLowerCase();
+    const lowerAccName = (acc.name || '').trim().toLowerCase();
+    const gid = cache.gameCache[lowerGameName];
+    if (!gid) continue;
+    const aid = cache.accountCache[`${gid}_${lowerAccName}`];
+    if (!aid || processedAids.has(aid)) continue;
+    processedAids.add(aid);
+    const completedCount = await completeForAccount(aid, sessionDateStr);
+    if (completedCount > 0) {
+      console.log(`[ImportPersistence] Catch-all per-account session completion: account=${aid} sessionDate=${sessionDateStr} completed=${completedCount} session-only levels`);
     }
   }
 }
@@ -598,7 +816,7 @@ async function restoreCompletedToday(
         const peid = cache.purchaseCache[`${gid}_${lowerToken}_${type}`];
         if (peid) {
           try { await TauriService.createPurchaseEventProgress({ account_id: aid, purchase_event_id: peid, days_offset: 0, time_spent: 0 }); } catch (e) { /* ignore */ }
-          await TauriService.updatePurchaseEventProgress({ account_id: aid, purchase_event_id: peid, is_completed: true });
+          await TauriService.updatePurchaseEventProgress({ account_id: aid, purchase_event_id: peid, is_completed: true, bypass_cooldown: true });
         }
       } else if (type) {
         let targetLevelId = null;
@@ -634,7 +852,7 @@ async function restoreCompletedToday(
 
         if (targetLevelId) {
           try { await TauriService.createLevelProgress({ account_id: aid, level_id: targetLevelId }); } catch (e) { /* ignore */ }
-          await TauriService.updateLevelProgress({ account_id: aid, level_id: targetLevelId, is_completed: true });
+          await TauriService.updateLevelProgress({ account_id: aid, level_id: targetLevelId, is_completed: true, bypass_cooldown: true });
         }
       }
     } catch (error) {
@@ -645,3 +863,8 @@ async function restoreCompletedToday(
   await asyncStorageService.set(completedKey, completedList);
   window.dispatchEvent(new CustomEvent('daily-task-completed'));
 }
+
+
+
+
+

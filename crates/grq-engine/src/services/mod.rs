@@ -10,3 +10,6 @@ pub mod history_service;
 
 #[cfg(test)]
 pub mod account_service_tests;
+
+#[cfg(test)]
+pub mod progress_service_tests;
