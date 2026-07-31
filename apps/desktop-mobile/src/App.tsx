@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@grq/ui/atoms/sonner";
 import { TooltipProvider } from "@grq/ui/atoms/tooltip";
@@ -22,7 +21,6 @@ import HistoryReportPage from "./pages/daily-tasks/HistoryReportPage";
 // Settings
 import SettingsPage from "./pages/SettingsPage";
 import "./i18n";
-import { applySessionCompletionForAllAccounts } from "@grq/core/services/excel/excel-session-processor";
 
 const queryClient = new QueryClient();
 
@@ -42,10 +40,6 @@ function GameDetailPageWrapper() {
 }
 
 function AppContent() {
-  useEffect(() => {
-    applySessionCompletionForAllAccounts(3).catch(() => {});
-  }, []);
-
   return (
     <>
       <QueryClientProvider client={queryClient}>

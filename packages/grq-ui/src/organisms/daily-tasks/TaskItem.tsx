@@ -107,8 +107,8 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
 
   const { isReady, isBlocked, remainingTime } = timerState;
 
-  // Session Only tasks can always be completed regardless of timer state
-  const effectiveIsReady = isSessionOnlyTask || isReady;
+  // Session Only tasks follow the same wait/timer system as level events
+  const effectiveIsReady = isReady;
 
   // Calculate progress percentage for the cooldown (if applicable)
   const progressPercent = useMemo(() => {
@@ -208,7 +208,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
                       className="text-[10px] text-muted-foreground italic"
                     >
                       {t('dailyTasks.lastCompletion', {
-                        timeSpent: Math.round(completionRecord.timeSpent / 1000),
+                        timeSpent: Math.round(completionRecord.timeSpent),
                         completedAt: new Date(completionRecord.completionTime).toLocaleString()
                       })}
                     </motion.span>

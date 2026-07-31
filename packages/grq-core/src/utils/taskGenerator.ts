@@ -1,5 +1,9 @@
 import { TauriService } from "@grq/core/services/tauri.service";
-import { calculateFirstRequestAllowedTime } from "./daily-tasks.utils";
+import {
+  calculateFirstRequestAllowedTime,
+  parseAccountStartDate,
+} from "./daily-tasks.utils";
+import { calculateTimerState } from "./timer.utils";
 import type {
   Account,
   DailyRequestsResponse,
@@ -310,9 +314,24 @@ export class TaskGenerator {
                 account,
                 firstEvent.time_spent,
               );
+              // Build a robust, always-parseable start time so the first-request
+              // timer target is set even for AM/PM or otherwise unusual formats.
+              const parsedStart = parseAccountStartDate(account);
               pendingStartStates[account.id] = {
                 accountId: account.id,
-                startTime: `${account.start_date} ${account.start_time}`,
+                startTime: parsedStart
+                  ? `${parsedStart.getFullYear()}-${String(
+                      parsedStart.getMonth() + 1,
+                    ).padStart(2, "0")}-${String(
+                      parsedStart.getDate(),
+                    ).padStart(2, "0")}T${String(
+                      parsedStart.getHours(),
+                    ).padStart(2, "0")}:${String(
+                      parsedStart.getMinutes(),
+                    ).padStart(2, "0")}:${String(
+                      parsedStart.getSeconds(),
+                    ).padStart(2, "0")}`
+                  : `${account.start_date} ${account.start_time}`,
                 firstRequestAllowedAt: firstAllowedAt,
                 isInitialized: true,
               };
@@ -380,12 +399,27 @@ export class TaskGenerator {
                 completedTasks,
               };
 
-              // Only the first pending group is shown in the ready section;
-              // the UI timer (calculateTimerState in TaskItem) handles when it becomes ready.
-              // Subsequent pending groups always go to deferred and are blocked until the
-              // first group completes (via the sequential dependency check).
+              // Only the first pending group is shown in the ready section.
+              // Restore v1.4.9 routing: if the first task's timer is not ready yet,
+              // route it to deferred so it appears with its countdown. The UI timer
+              // (calculateTimerState in TaskItem) also handles readiness live.
+              // Subsequent pending groups always go to deferred and are blocked until
+              // the first group completes (via the sequential dependency check).
               if (index === 0) {
-                readyTasksInState.push(task);
+                const timerState = calculateTimerState(
+                  task,
+                  0,
+                  [],
+                  this.options.currentTime,
+                  this.options.accountCompletionRecords,
+                  this.options.accountStartStates,
+                  this.options.completedTasks,
+                );
+                if (timerState.isReady) {
+                  readyTasksInState.push(task);
+                } else {
+                  globalDeferredTasks.push(task);
+                }
               } else {
                 globalDeferredTasks.push(task);
               }

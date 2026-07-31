@@ -126,10 +126,10 @@ export const calculateTimerState = (
   if (completionRecord) {
     // Subsequent tasks: Wait from the moment the previous unit was finished
     // Target = Previous Completion Time + (Current Task TimeSpent - Previous Task TimeSpent)
-    // Legacy v1.4.9 semantics: timeSpent values are ms from Rust; the wait is the
-    // ms difference scaled by 1000 to preserve the original pacing.
-    const prevTimeSpent = completionRecord.timeSpent;
-    const waitDuration = Math.max(0, currentTimeSpent - prevTimeSpent);
+    // completionRecord.timeSpent is stored in SECONDS; requests are in ms from Rust.
+    // Convert the previous record to ms so the diff preserves the legacy v1.4.9 pacing.
+    const prevTimeSpentMs = (completionRecord.timeSpent ?? 0) * 1000;
+    const waitDuration = Math.max(0, currentTimeSpent - prevTimeSpentMs);
     totalWaitSec = waitDuration;
     targetTime = completionRecord.completionTime + waitDuration * 1000;
   } else if (startState && startState.startTime) {

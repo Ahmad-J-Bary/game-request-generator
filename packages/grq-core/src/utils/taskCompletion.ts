@@ -542,35 +542,6 @@ export class TaskCompletionHandler {
         };
 
         result = await ApiService.updateLevelProgress(updateRequest);
-
-        // For Level Event, also create/update the synthetic session level progress
-        if (finalRequestType === 'Level Event') {
-          try {
-            const sessionLvlId = await resolveSessionLevelId();
-            if (sessionLvlId) {
-              const sessProgs =
-                await TauriService.getAccountLevelProgress(accountId);
-              if (!sessProgs.some((p) => p.level_id === sessionLvlId)) {
-                await TauriService.createLevelProgress({
-                  account_id: accountId,
-                  level_id: sessionLvlId,
-                });
-              }
-              await ApiService.updateLevelProgress({
-                account_id: accountId,
-                level_id: sessionLvlId,
-                time_spent: updateTimeSpentMs,
-                is_completed: true,
-                bypass_cooldown: true,
-              });
-            }
-          } catch (err) {
-            console.warn(
-              '[completeTask] Failed to create/update session level progress:',
-              err,
-            );
-          }
-        }
       }
 
       const success =
@@ -634,7 +605,10 @@ export class TaskCompletionHandler {
             if (allGroupCompleted && groupIndices.includes(requestIndex)) {
               const completionRecord: AccountCompletionRecord = {
                 accountId,
-                timeSpent: group.time_spent,
+                // Store in seconds: the timer multiplies by 1000 to compare
+                // against ms-based request time_spent, and the UI renders this
+                // value directly as "{{timeSpent}}s".
+                timeSpent: Math.round(group.time_spent / 1000),
                 completionTime: now,
                 levelId: resolvedLevelId ?? 0,
                 eventToken: group.event_token,
@@ -695,7 +669,7 @@ export class TaskCompletionHandler {
           ...prev,
           [accountId]: {
             accountId,
-            timeSpent: request.time_spent || 0,
+            timeSpent: Math.round((request.time_spent || 0) / 1000),
             completionTime: now,
             levelId: resolvedLevelId ?? 0,
             eventToken: request.event_token || "",

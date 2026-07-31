@@ -41,7 +41,7 @@ const makeStartState = (overrides: any = {}) => ({
 
 const makeCompletionRecord = (overrides: any = {}) => ({
   accountId: 1,
-  timeSpent: 243000,
+  timeSpent: 243, // seconds (as stored in the completion record)
   completionTime: 1000000,
   levelId: 10,
   eventToken: 'evt-1',
@@ -142,6 +142,88 @@ describe('calculateTimerState — first task', () => {
   });
 });
 
+// ===== Session Only first task =====
+
+describe('calculateTimerState — Session Only first task', () => {
+  const makeSessionOnlyTask = (overrides: any = {}) =>
+    makeTask({
+      requests: [
+        {
+          event_token: 'evt-session',
+          level_id: null,
+          request_type: 'Session Only',
+          time_spent: 243000,
+        },
+      ],
+      requestGroups: [
+        {
+          event_token: 'evt-session',
+          time_spent: 243000,
+          requests: [],
+        },
+      ],
+      ...overrides,
+    });
+
+  it('is not ready until startTime + timeSpent * 1000 (subject to the wait system)', () => {
+    const startState = makeStartState();
+    const now = 1000000; // before the target
+    const state = calculateTimerState(
+      makeSessionOnlyTask(),
+      0,
+      [],
+      now,
+      {},
+      { 1: startState },
+      [],
+      [],
+      null,
+    );
+    assert.strictEqual(state.isReady, false);
+    assert.strictEqual(state.isBlocked, false);
+    assert.strictEqual(state.reason, 'initializing');
+    assert.strictEqual(state.comeBackTime!.getTime(), 1000000 + 243000 * 1000);
+
+    const readyState = calculateTimerState(
+      makeSessionOnlyTask(),
+      0,
+      [],
+      1000000 + 243000 * 1000 + 1000,
+      {},
+      { 1: startState },
+      [],
+      [],
+      null,
+    );
+    assert.strictEqual(readyState.isReady, true);
+  });
+
+  it('respects the next-task countdown driven by a seconds-unit completion record', () => {
+    const completionRecord = makeCompletionRecord({
+      completionTime: 1000000,
+      timeSpent: 243, // seconds
+    });
+    const task = makeSessionOnlyTask({
+      requestGroups: [{ event_token: 'evt-session-2', time_spent: 300000, requests: [] }],
+    });
+    const target = 1000000 + (300000 - 243 * 1000) * 1000;
+    const notReady = calculateTimerState(
+      task,
+      0,
+      [],
+      1000000 + 10000,
+      { 1: completionRecord },
+      {},
+      [],
+      [],
+      null,
+    );
+    assert.strictEqual(notReady.isReady, false);
+    assert.strictEqual(notReady.comeBackTime!.getTime(), target);
+    assert.strictEqual(notReady.totalWaitSec, 57000);
+  });
+});
+
 // ===== Subsequent task =====
 
 describe('calculateTimerState — subsequent task', () => {
@@ -149,11 +231,11 @@ describe('calculateTimerState — subsequent task', () => {
     const completionTime = 1000000;
     const completionRecord = makeCompletionRecord({
       completionTime,
-      timeSpent: 243000, // ms
+      timeSpent: 243, // seconds (converted to ms via *1000 for the diff)
     });
     const task = makeTask({ requestGroups: [{ event_token: 'evt-2', time_spent: 300000, requests: [] }] });
 
-    const target = completionTime + (300000 - 243000) * 1000; // 57000s wait
+    const target = completionTime + (300000 - 243 * 1000) * 1000; // 57000s wait
     const notReady = calculateTimerState(
       task,
       0,
@@ -187,7 +269,7 @@ describe('calculateTimerState — subsequent task', () => {
   it('is ready immediately when current task timeSpent is not greater than previous', () => {
     const completionRecord = makeCompletionRecord({
       completionTime: 1000000,
-      timeSpent: 300000,
+      timeSpent: 300, // seconds
     });
     const task = makeTask({ requestGroups: [{ event_token: 'evt-2', time_spent: 243000, requests: [] }] });
     const state = calculateTimerState(
