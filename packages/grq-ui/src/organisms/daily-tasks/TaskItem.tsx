@@ -208,7 +208,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
                       className="text-[10px] text-muted-foreground italic"
                     >
                       {t('dailyTasks.lastCompletion', {
-                        timeSpent: completionRecord.timeSpent,
+                        timeSpent: Math.round(completionRecord.timeSpent / 1000),
                         completedAt: new Date(completionRecord.completionTime).toLocaleString()
                       })}
                     </motion.span>

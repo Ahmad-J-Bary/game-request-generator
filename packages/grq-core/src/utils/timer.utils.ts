@@ -125,17 +125,21 @@ export const calculateTimerState = (
     const waitDuration = Math.max(0, currentTimeSpentSec - prevTimeSpentSec);
     targetTime = completionRecord.completionTime + waitDuration * 1000;
   } else {
-    // First task: use the later of currentTime and the account's start time
-    // to ensure a visible wait even when startTime is in the past.
+    // First task: the account's configured start time is the "zero" reference.
+    // Target = Account Start Time + (First Task TimeSpent in ms).
+    // Once that target is in the past, the task is ready immediately.
     reason = "initializing";
-    let baseTime = currentTime;
-    if (startState?.startTime) {
+    if (
+      typeof startState?.firstRequestAllowedAt === "number" &&
+      startState.firstRequestAllowedAt > 0
+    ) {
+      targetTime = startState.firstRequestAllowedAt;
+    } else if (startState?.startTime) {
       const parsedStart = new Date(startState.startTime).getTime();
       if (!isNaN(parsedStart)) {
-        baseTime = Math.max(currentTime, parsedStart);
+        targetTime = parsedStart + currentTimeSpentSec * 1000;
       }
     }
-    targetTime = baseTime + currentTimeSpentSec * 1000;
   }
 
   // Check if we need to wait
