@@ -20,6 +20,10 @@ interface RequestItemProps {
 export const RequestItem = React.memo(({ request, isCompleted, isReady, onComplete, onCopy, index, total }: RequestItemProps) => {
     const { t } = useTranslation();
 
+    // Each request carries its own level time (ms); fall back to the group
+    // pacing value when it's not available (e.g. legacy data).
+    const displayTimeSpent = request.time_spent;
+
     const getRequestTypeLabel = (type: string) => {
         if (type.includes('Session')) return t('requests.session');
         if (type.includes('Event')) return t('requests.event');
@@ -70,7 +74,7 @@ export const RequestItem = React.memo(({ request, isCompleted, isReady, onComple
 
                     <div className="flex items-center gap-1.5 px-2 py-1 bg-secondary/30 border border-secondary/20 rounded-lg text-xs font-mono text-muted-foreground shadow-sm">
                         <Clock className="h-3 w-3 opacity-60" />
-                        <span>{Math.round(request.time_spent)}s</span>
+                        <span>{Math.round(displayTimeSpent)}s</span>
                     </div>
                 </div>
 
@@ -79,7 +83,7 @@ export const RequestItem = React.memo(({ request, isCompleted, isReady, onComple
                         variant="outline"
                         size="sm"
                         disabled={!isReady}
-                        onClick={() => isReady && onCopy(request.content, request.event_token, request.time_spent)}
+                        onClick={() => isReady && onCopy(request.content, request.event_token, displayTimeSpent)}
                         className={cn(
                             "flex-1 sm:flex-none",
                             !isReady ? "opacity-30 cursor-not-allowed grayscale" : "hover:bg-primary hover:text-primary-foreground transition-colors"
@@ -115,7 +119,7 @@ export const RequestItem = React.memo(({ request, isCompleted, isReady, onComple
             </div>
 
             <div className="bg-muted/80 backdrop-blur-sm p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-40 overflow-y-auto border border-border/50">
-                {RequestProcessor.processRequestContent(request.content, request.event_token || '', request.time_spent).split('\n').map((line, i) => (
+                {RequestProcessor.processRequestContent(request.content, request.event_token || '', displayTimeSpent).split('\n').map((line, i) => (
                     <div key={i} className="whitespace-pre">
                         {line || ' '}
                     </div>

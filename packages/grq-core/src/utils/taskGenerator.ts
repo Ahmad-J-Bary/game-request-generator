@@ -4,6 +4,7 @@ import {
   parseAccountStartDate,
 } from "./daily-tasks.utils";
 import { calculateTimerState } from "./timer.utils";
+import { buildRequestGroups } from "./request-groups.utils";
 import type {
   Account,
   DailyRequestsResponse,
@@ -14,12 +15,6 @@ import type {
   AccountTaskAssignment,
   CompletedDailyTask,
 } from "@grq/api-bindings";
-
-interface RequestGroup {
-  event_token: string;
-  time_spent: number;
-  requests: DailyRequestsResponse["requests"];
-}
 
 export interface TaskGenerationOptions {
   games: any[];
@@ -270,35 +265,7 @@ export class TaskGenerator {
           }
 
           if (validRequests.length > 0) {
-            const requestGroups: RequestGroup[] = [];
-            for (const request of validRequests) {
-              const eventToken = request.event_token || "";
-              const existingGroup = requestGroups.find(
-                (g) =>
-                  g.event_token === eventToken &&
-                  g.time_spent === request.time_spent,
-              );
-              if (existingGroup) {
-                existingGroup.requests.push(request);
-                // Sort requests within the group: Session first, then Event
-                existingGroup.requests.sort((a, b) => {
-                  const typeA = (a.request_type || "").toString().toLowerCase();
-                  const typeB = (b.request_type || "").toString().toLowerCase();
-                  const isSessionA = typeA.includes("session");
-                  const isSessionB = typeB.includes("session");
-                  if (isSessionA && !isSessionB) return -1;
-                  if (!isSessionA && isSessionB) return 1;
-                  return 0;
-                });
-              } else {
-                requestGroups.push({
-                  event_token: eventToken,
-                  time_spent: request.time_spent,
-                  requests: [request],
-                });
-              }
-            }
-            requestGroups.sort((a, b) => a.time_spent - b.time_spent);
+            const requestGroups = buildRequestGroups(validRequests);
 
             // Calculate allowed start time if not already there
             const firstEvent = validRequests

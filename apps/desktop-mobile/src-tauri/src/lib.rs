@@ -1323,14 +1323,11 @@ fn get_daily_requests(
 
         let group_levels = levels_by_group.get(&group_key).unwrap();
 
-        // 1. Determine if anything in this group is completed and get locked time
-        let mut locked_time: Option<i64> = None;
+        // 1. Determine if the whole group is fully completed (then skip it below)
         let mut group_fully_completed = true;
         for l in group_levels {
             if let Some(prog) = level_progress_map.get(&l.id) {
-                if prog.is_completed && prog.target_date == Some(target_date.clone()) {
-                    locked_time = Some(prog.time_spent as i64);
-                } else {
+                if !(prog.is_completed && prog.target_date == Some(target_date.clone())) {
                     group_fully_completed = false;
                 }
             } else {
@@ -1338,38 +1335,15 @@ fn get_daily_requests(
             }
         }
 
-        // Also check if this exact group (token + date) was completed today in the NEW tracking table
-        if locked_time.is_none() {
-            locked_time = conn
-                .query_row(
-                    "SELECT time_spent FROM completed_daily_tasks
-                 WHERE account_id = ?1 AND event_token = ?2 AND completion_date = ?3 LIMIT 1",
-                    params![account_id, clean_event_token, target_date],
-                    |row| row.get(0),
-                )
-                .ok();
-        }
-
         // If the whole group is completed, skip it
         if group_fully_completed {
             continue;
         }
 
-        // 2. Pre-calculate time for this whole group
-        let time_spent = if let Some(t) = locked_time {
-            t
-        } else {
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            // Use the first level in the group to get base_time
-            let base_time = group_levels[0].time_spent;
-            let jitter = if base_time < 25 {
-                rng.gen_range(-100..=500)
-            } else {
-                rng.gen_range(-750..=1500)
-            };
-            (base_time as i64 * 1000) + jitter as i64
-        };
+        // 2. RNG for the group's unified pacing time. ONE jitter is drawn per
+        // (token, day) group and shared by the Session and its Event, so the two
+        // requests always carry the exact same time_spent value.
+        let mut rng = rand::thread_rng();
 
         // 3. Helper for processing content length
         let process_content_length = |content: String| -> String {
@@ -1401,6 +1375,12 @@ fn get_daily_requests(
             }
         });
 
+        // Unified group pacing (ms): ONE fresh jitter per (token, day), anchored
+        // on the first real (event) level so the Session and its Event never
+        // show a difference (e.g. base 25s + jitter 441 => 25441 for both).
+        let group_time_spent =
+            request_time_spent_ms(group_anchor_time(&sorted_group_levels), &mut rng);
+
         for l in sorted_group_levels {
             if l.level_name == "-" {
                 has_synthetic_level = true;
@@ -1410,11 +1390,14 @@ fn get_daily_requests(
 
             // We no longer skip completed individual levels here to keep the group intact in the UI
 
+            // Group-unified time (ms): shared by the Session and its Event.
+            let request_time_spent = group_time_spent;
+
             let mut base_request_content = template.clone();
             base_request_content =
                 base_request_content.replace("{event_token}", &clean_event_token);
             base_request_content =
-                base_request_content.replace("{time_spent}", &time_spent.to_string());
+                base_request_content.replace("{time_spent}", &request_time_spent.to_string());
             base_request_content = base_request_content.replace("{account_name}", &account.name);
             base_request_content =
                 base_request_content.replace("{game_id}", &account.game_id.to_string());
@@ -1430,7 +1413,7 @@ fn get_daily_requests(
                     "content": session_content,
                     "event_token": clean_event_token.clone(),
                     "level_id": l.id,
-                    "time_spent": time_spent,
+                    "time_spent": request_time_spent,
                     "timestamp": target_date.clone()
                 }));
             } else {
@@ -1443,7 +1426,7 @@ fn get_daily_requests(
                     "content": event_content,
                     "event_token": clean_event_token.clone(),
                     "level_id": l.id,
-                    "time_spent": time_spent,
+                    "time_spent": request_time_spent,
                     "timestamp": target_date.clone()
                 }));
             }
@@ -1459,11 +1442,15 @@ fn get_daily_requests(
         });
 
         if has_real_level && !has_synthetic_level && !has_db_session_for_token {
+            // Virtual session shares the group's unified pacing time so it never
+            // differs from the event it accompanies.
+            let virtual_session_time_spent = group_time_spent;
+
             let mut base_request_content = template.clone();
             base_request_content =
                 base_request_content.replace("{event_token}", &clean_event_token);
             base_request_content =
-                base_request_content.replace("{time_spent}", &time_spent.to_string());
+                base_request_content.replace("{time_spent}", &virtual_session_time_spent.to_string());
             base_request_content = base_request_content.replace("{account_name}", &account.name);
             base_request_content =
                 base_request_content.replace("{game_id}", &account.game_id.to_string());
@@ -1477,7 +1464,7 @@ fn get_daily_requests(
                 "content": session_content,
                 "event_token": clean_event_token.clone(),
                 "level_id": null,
-                "time_spent": time_spent,
+                "time_spent": virtual_session_time_spent,
                 "timestamp": target_date.clone()
             }));
         }
@@ -1791,6 +1778,90 @@ fn get_daily_requests(
 }
 
 // ==================== أوامر تاريخ المهام اليومية ====================
+
+/// Interpolates the session-only time (in seconds) for a given day using the
+/// surrounding REAL levels (`level_name != "-"`) as anchors. The day itself is
+/// treated as missing, so the value is independent of any event that shares the
+/// day. Mirrors the synthetic-level interpolation but only for real anchors.
+///
+/// No longer used by request generation (the virtual session now shares the
+/// group's unified time), kept for the interpolation tests.
+#[cfg(test)]
+fn session_interpolated_time(day: i32, levels: &[Level]) -> i32 {
+    let mut real_levels: Vec<&Level> = levels
+        .iter()
+        .filter(|l| l.level_name != "-")
+        .collect();
+    real_levels.sort_by_key(|l| l.days_offset);
+
+    if real_levels.is_empty() {
+        return 0;
+    }
+
+    let next_level = real_levels
+        .iter()
+        .filter(|l| l.days_offset > day)
+        .min_by_key(|l| l.days_offset)
+        .copied();
+    let prev_level = real_levels
+        .iter()
+        .filter(|l| l.days_offset < day)
+        .max_by_key(|l| l.days_offset)
+        .copied();
+
+    match (prev_level, next_level) {
+        (Some(prev), Some(next)) => {
+            let ratio = (day - prev.days_offset) as f64
+                / (next.days_offset - prev.days_offset) as f64;
+            (prev.time_spent as f64 + ratio * (next.time_spent - prev.time_spent) as f64).round()
+                as i32
+        }
+        (None, Some(next)) => {
+            let first_real_day = next.days_offset;
+            if first_real_day <= 0 {
+                next.time_spent
+            } else {
+                let increment = next.time_spent as f64 / (first_real_day + 1) as f64;
+                ((day + 1) as f64 * increment).round() as i32
+            }
+        }
+        (Some(prev), None) => prev.time_spent,
+        (None, None) => 0,
+    }
+}
+
+/// Returns the allowed jitter range (in ms) for a base time in seconds.
+fn jitter_range(base_seconds: i32) -> std::ops::RangeInclusive<i64> {
+    if base_seconds < 25 {
+        -100..=500
+    } else {
+        -750..=1500
+    }
+}
+
+/// Compute a time_spent (in ms) from a base time in seconds plus a fresh random
+/// jitter within the allowed range. Called ONCE per (token, day) group so the
+/// Session and its Event share the exact same value.
+fn request_time_spent_ms(
+    base_seconds: i32,
+    rng: &mut rand::rngs::ThreadRng,
+) -> i64 {
+    use rand::Rng;
+    let jitter = rng.gen_range(jitter_range(base_seconds));
+    (base_seconds as i64 * 1000) + jitter
+}
+
+/// Anchor base (seconds) for a request group: the first real (event) level's
+/// time, falling back to the session level when the group has no event.
+fn group_anchor_time(levels: &[Level]) -> i32 {
+    levels
+        .iter()
+        .find(|l| l.level_name != "-")
+        .map(|l| l.time_spent)
+        .or_else(|| levels.first().map(|l| l.time_spent))
+        .unwrap_or(243)
+}
+
 #[tauri::command]
 fn add_completed_task(
     state: tauri::State<AppState>,
@@ -2047,4 +2118,8 @@ pub fn run() {
 #[cfg(test)]
 #[path = "backup_tests.rs"]
 mod backup_tests;
+
+#[cfg(test)]
+#[path = "session_time_tests.rs"]
+mod session_time_tests;
 
