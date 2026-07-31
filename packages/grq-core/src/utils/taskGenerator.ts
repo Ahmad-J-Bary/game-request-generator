@@ -399,7 +399,7 @@ export class TaskGenerator {
               if (i > 0) {
                 const prevGroup = requestGroups[i - 1];
                 currentScheduledTime +=
-                  group.time_spent - prevGroup.time_spent;
+                  (group.time_spent - prevGroup.time_spent) * 1000;
               }
               scheduledTimes[account.id].push(currentScheduledTime);
             }

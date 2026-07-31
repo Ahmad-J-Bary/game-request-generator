@@ -51,9 +51,9 @@ const makeCompletionRecord = (overrides: any = {}) => ({
 // ===== First task readiness =====
 
 describe('calculateTimerState — first task', () => {
-  it('is ready immediately when firstRequestAllowedAt is in the past', () => {
-    const now = 2000000; // startTime + firstTaskTimeSpent (243s) long passed
-    const startState = makeStartState({ firstRequestAllowedAt: 1000000 + 243000 });
+  it('is ready immediately when the target time is in the past', () => {
+    const now = 300000000; // startTime + timeSpent * 1000 long passed
+    const startState = makeStartState();
     const state = calculateTimerState(
       makeTask(),
       0,
@@ -70,9 +70,10 @@ describe('calculateTimerState — first task', () => {
     assert.strictEqual(state.reason, 'ready');
   });
 
-  it('shows an initializing countdown when the account has not started yet', () => {
-    const now = 1000000; // before startTime + timeSpent
-    const startState = makeStartState({ firstRequestAllowedAt: 1000000 + 243000 });
+  it('shows an initializing countdown until startTime + timeSpent * 1000', () => {
+    const now = 1000000; // before startTime + timeSpent * 1000
+    const startState = makeStartState();
+    const expectedTarget = 1000000 + 243000 * 1000;
     const state = calculateTimerState(
       makeTask(),
       0,
@@ -86,25 +87,24 @@ describe('calculateTimerState — first task', () => {
     );
     assert.strictEqual(state.isReady, false);
     assert.strictEqual(state.reason, 'initializing');
-    assert.ok(state.remainingTime > 0);
-    assert.strictEqual(state.comeBackTime!.getTime(), 1000000 + 243000);
-    // total wait = the task's own time_spent in seconds (243)
-    assert.strictEqual(state.totalWaitSec, 243);
+    assert.strictEqual(state.remainingTime, 243000);
+    assert.strictEqual(state.comeBackTime!.getTime(), expectedTarget);
+    // total wait (in seconds) = timeSpent * 1000 ms / 1000 = timeSpent
+    assert.strictEqual(state.totalWaitSec, 243000);
   });
 
-  it('falls back to startTime + timeSpent when firstRequestAllowedAt is missing', () => {
-    const startState = makeStartState({
-      firstRequestAllowedAt: 0,
-    });
-    const parsedStart = new Date(startState.startTime).getTime();
-    const expectedTarget = parsedStart + 243000;
+  it('targets startTime + timeSpent * 1000 regardless of firstRequestAllowedAt', () => {
+    // Legacy v1.4.9 behavior: the timer never consults firstRequestAllowedAt,
+    // so a stale or missing persisted value must not shift the countdown.
+    const stale = makeStartState({ firstRequestAllowedAt: 1000000 + 243000 });
+    const expectedTarget = 1000000 + 243000 * 1000;
     const state = calculateTimerState(
       makeTask(),
       0,
       [],
       expectedTarget - 5000,
       {},
-      { 1: startState },
+      { 1: stale },
       [],
       [],
       null,
@@ -118,54 +118,12 @@ describe('calculateTimerState — first task', () => {
       [],
       expectedTarget + 5000,
       {},
-      { 1: startState },
+      { 1: stale },
       [],
       [],
       null,
     );
     assert.strictEqual(readyState.isReady, true);
-  });
-
-  it('ignores a stale firstRequestAllowedAt that is far off the derived target', () => {
-    // A leftover from an old build (start + timeSpent * 1000) would be ~3 days
-    // in the future relative to the correct target. It must be discarded.
-    const startState = makeStartState({
-      firstRequestAllowedAt: 1000000 + 243000 + 3 * 24 * 60 * 60 * 1000,
-    });
-    const expectedTarget = 1000000 + 243000;
-    const state = calculateTimerState(
-      makeTask(),
-      0,
-      [],
-      expectedTarget + 5000,
-      {},
-      { 1: startState },
-      [],
-      [],
-      null,
-    );
-    assert.strictEqual(state.isReady, true);
-  });
-
-  it('keeps a firstRequestAllowedAt that is close to the derived target', () => {
-    // A small legitimate delta (e.g. first group differs slightly from the task) is preserved.
-    const near = 1000000 + 243000 + 30 * 60 * 1000; // +30 min
-    const startState = makeStartState({
-      firstRequestAllowedAt: near,
-    });
-    const state = calculateTimerState(
-      makeTask(),
-      0,
-      [],
-      near - 5000,
-      {},
-      { 1: startState },
-      [],
-      [],
-      null,
-    );
-    assert.strictEqual(state.isReady, false);
-    assert.strictEqual(state.comeBackTime!.getTime(), near);
   });
 
   it('is ready immediately when there is no start state at all', () => {
@@ -195,7 +153,7 @@ describe('calculateTimerState — subsequent task', () => {
     });
     const task = makeTask({ requestGroups: [{ event_token: 'evt-2', time_spent: 300000, requests: [] }] });
 
-    const target = completionTime + (300 - 243) * 1000; // 57s wait
+    const target = completionTime + (300000 - 243000) * 1000; // 57000s wait
     const notReady = calculateTimerState(
       task,
       0,
@@ -209,8 +167,8 @@ describe('calculateTimerState — subsequent task', () => {
     );
     assert.strictEqual(notReady.isReady, false);
     assert.strictEqual(notReady.comeBackTime!.getTime(), target);
-    // total wait = the difference between the two time_spent values in seconds (57)
-    assert.strictEqual(notReady.totalWaitSec, 57);
+    // total wait (in seconds) = (300000 - 243000) * 1000 ms / 1000 = 57000
+    assert.strictEqual(notReady.totalWaitSec, 57000);
 
     const ready = calculateTimerState(
       task,

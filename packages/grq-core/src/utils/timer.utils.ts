@@ -53,7 +53,6 @@ export const calculateTimerState = (
   };
 
   const currentTimeSpent = getTaskTimeSpent(task);
-  const currentTimeSpentSec = currentTimeSpent / 1000;
 
   // Use caller-provided previousTask (O(1)) when available, otherwise search all batches
   if (previousTask === undefined) {
@@ -127,42 +126,20 @@ export const calculateTimerState = (
   if (completionRecord) {
     // Subsequent tasks: Wait from the moment the previous unit was finished
     // Target = Previous Completion Time + (Current Task TimeSpent - Previous Task TimeSpent)
-    // Both timeSpent values are in ms from Rust; convert to seconds for the wait formula.
-    const prevTimeSpentSec = completionRecord.timeSpent / 1000;
-    const waitDuration = Math.max(0, currentTimeSpentSec - prevTimeSpentSec);
+    // Legacy v1.4.9 semantics: timeSpent values are ms from Rust; the wait is the
+    // ms difference scaled by 1000 to preserve the original pacing.
+    const prevTimeSpent = completionRecord.timeSpent;
+    const waitDuration = Math.max(0, currentTimeSpent - prevTimeSpent);
     totalWaitSec = waitDuration;
     targetTime = completionRecord.completionTime + waitDuration * 1000;
-  } else {
+  } else if (startState && startState.startTime) {
     // First task: the account's configured start time is the "zero" reference.
-    // Target = Account Start Time + (First Task TimeSpent in ms).
-    // Once that target is in the past, the task is ready immediately.
+    // Target = Account Start Time + (First Task TimeSpent * 1000) as in v1.4.9.
     reason = "initializing";
-    totalWaitSec = currentTimeSpentSec;
-    const parsedStart = startState?.startTime
-      ? new Date(startState.startTime).getTime()
-      : NaN;
-    const derivedTarget =
-      !isNaN(parsedStart) ? parsedStart + currentTimeSpentSec * 1000 : 0;
-
-    const firstAllowedAt = startState?.firstRequestAllowedAt;
-
-    // Reject persisted firstRequestAllowedAt values that are clearly stale
-    // (e.g. written by an older build using different units). When it is
-    // not within a generous window of the startTime-derived target, recompute.
-    const staleFirstAllowed =
-      typeof firstAllowedAt === "number" &&
-      firstAllowedAt > 0 &&
-      derivedTarget > 0 &&
-      Math.abs(firstAllowedAt - derivedTarget) > 2 * 24 * 60 * 60 * 1000;
-
-    if (
-      typeof firstAllowedAt === "number" &&
-      firstAllowedAt > 0 &&
-      !staleFirstAllowed
-    ) {
-      targetTime = firstAllowedAt;
-    } else if (derivedTarget > 0) {
-      targetTime = derivedTarget;
+    const parsedStart = new Date(startState.startTime).getTime();
+    if (!isNaN(parsedStart)) {
+      targetTime = parsedStart + currentTimeSpent * 1000;
+      totalWaitSec = currentTimeSpent;
     }
   }
 

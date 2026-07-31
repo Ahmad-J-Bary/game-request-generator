@@ -70,7 +70,7 @@ export const RequestItem = React.memo(({ request, isCompleted, isReady, onComple
 
                     <div className="flex items-center gap-1.5 px-2 py-1 bg-secondary/30 border border-secondary/20 rounded-lg text-xs font-mono text-muted-foreground shadow-sm">
                         <Clock className="h-3 w-3 opacity-60" />
-                        <span>{Math.round(request.time_spent)}s</span>
+                        <span>{Math.round(request.time_spent / 1000)}s</span>
                     </div>
                 </div>
 
