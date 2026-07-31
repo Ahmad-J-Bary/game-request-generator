@@ -72,6 +72,7 @@ describe('Days Offset regex — locale-agnostic', () => {
 
 // ===== Purchase Event Detection Tests =====
 function isPurchaseEvent(name: string, timeSpentStr: string): boolean {
+  if (name === '-') return false;
   return name === '$$$' || timeSpentStr === '-' || timeSpentStr === '';
 }
 
@@ -94,6 +95,18 @@ describe('Purchase event detection', () => {
 
   it('returns false for normal event with zero timeSpent', () => {
     assert.strictEqual(isPurchaseEvent('Level 1', '0'), false);
+  });
+
+  it('returns false for session-only level with dash timeSpent', () => {
+    assert.strictEqual(isPurchaseEvent('-', '-'), false);
+  });
+
+  it('returns false for session-only level with empty timeSpent', () => {
+    assert.strictEqual(isPurchaseEvent('-', ''), false);
+  });
+
+  it('returns false for session-only level with numeric timeSpent', () => {
+    assert.strictEqual(isPurchaseEvent('-', '650'), false);
   });
 });
 
@@ -674,13 +687,18 @@ function generateProgressForRow(
 
   const refYear = startDate.getFullYear();
 
-  // Parse cells → events
+  // Parse cells → events. Mirrors the sheet parser's session-only token
+  // reconstruction: a Level Name "-" column gets the full per-day token
+  // (base_dayN) so each session day maps to a distinct level on import.
   const rowEvents: { header: typeof colHeaders[0]; isCompleted: boolean; dateStr: string; hasDateCell: boolean }[] = [];
   for (let c = 0; c < rowCells.length && c < colHeaders.length; c++) {
     const header = colHeaders[c];
     if (!header || !header.token) continue;
+    const effectiveHeader = header.name === '-' && header.daysOffset !== undefined
+      ? { ...header, token: `${header.token.split('_day')[0]}_day${header.daysOffset}` }
+      : header;
     const { isCompleted, dateStr, hasDateCell } = parseCell(rowCells[c]);
-    rowEvents.push({ header, isCompleted, dateStr, hasDateCell });
+    rowEvents.push({ header: effectiveHeader, isCompleted, dateStr, hasDateCell });
   }
 
   // Apply session cutoff: requests before the Session date complete; requests on the
@@ -886,6 +904,34 @@ describe('Multi-account progress generation', () => {
     );
     const d29 = entries.find(e => e.token === 'evt_day29');
     assert.ok(d29?.isCompleted, '(C) on boundary always completed');
+  });
+
+  it('session-only headers with a base token get per-day tokens and complete independently', () => {
+    // Mirrors the exported matrix: all Level Name cells are "-" and the Event
+    // Token row carries the base token "lvl" at offsets 0/2/5.
+    const headers = [
+      { name: '-', isPurchase: false, token: 'lvl', daysOffset: 0 },
+      { name: '-', isPurchase: false, token: 'lvl', daysOffset: 2 },
+      { name: '-', isPurchase: false, token: 'lvl', daysOffset: 5 },
+    ];
+    const startDate = new Date(2025, 0, 1);
+
+    // Explicit (C) on day 5 only → that day must complete, and each day must
+    // carry a distinct full token so importLevels does not merge them.
+    const entries = generateProgressForRow(
+      ['-', '-', '5-Jan (C)'], 'Acc', 'Game', undefined, startDate, headers,
+    );
+
+    const tokens = entries.map(e => e.token).sort();
+    assert.deepStrictEqual(tokens, ['lvl_day0', 'lvl_day2', 'lvl_day5'],
+      'each session day gets its own full per-day token');
+
+    const day0 = entries.find(e => e.token === 'lvl_day0');
+    const day2 = entries.find(e => e.token === 'lvl_day2');
+    const day5 = entries.find(e => e.token === 'lvl_day5');
+    assert.ok(day5?.isCompleted, 'day 5 explicit (C) completed');
+    assert.ok(day0?.isCompleted, 'day 0 completed via per-type cascade from day 5 (C)');
+    assert.ok(day2?.isCompleted, 'day 2 completed via per-type cascade from day 5 (C)');
   });
 });
 

@@ -216,8 +216,18 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
               const timeSpentStr = timeSpentRaw.toString().trim();
               const timeSpentNum = timeSpentStr !== '-' && timeSpentStr !== '' ? Number(timeSpentStr) : NaN;
               const timeSpent = !isNaN(timeSpentNum) && isFinite(timeSpentNum) ? timeSpentNum : undefined;
+
+              // Session-only columns (Level Name "-") share the same base token in
+              // the exported matrix (e.g. "lvl" at offsets 0/2/5). Rebuild the full
+              // per-day token (e.g. "lvl_day2") so progress entries map back to the
+              // correct per-day session level during persistence.
+              const isSessionOnlyCol = name === '-';
+              const effectiveToken = isSessionOnlyCol && daysOffset !== undefined
+                ? `${token.split('_day')[0]}_day${daysOffset}`
+                : token;
+
               if (token && token.toLowerCase() !== 'event token') {
-                colHeaders.push({ name, token, isPurchase: isPurchaseEvent(name, timeSpentStr), daysOffset, timeSpent });
+                colHeaders.push({ name, token: effectiveToken, isPurchase: isPurchaseEvent(name, timeSpentStr), daysOffset, timeSpent });
               } else {
                 colHeaders.push({ name: '', token: '', isPurchase: false, daysOffset: undefined, timeSpent: undefined });
               }

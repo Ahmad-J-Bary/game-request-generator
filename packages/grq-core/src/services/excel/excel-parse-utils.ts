@@ -77,8 +77,12 @@ export function detectSpecialColumns(headerRow: any[]): { sessionCol: number; ti
 
 /**
  * Check if a column represents a Purchase Event (rather than a Level).
+ * A column whose Level Name is "-" is always a session-only level and is
+ * never treated as a purchase event, even when its Time Spent cell is empty
+ * or "-" (which would otherwise look like a purchase marker).
  */
 export function isPurchaseEvent(name: string, timeSpentStr: string): boolean {
+  if (name === '-') return false;
   return name === '$$$' || timeSpentStr === '' || timeSpentStr === '-';
 }
 

@@ -98,12 +98,24 @@ export function parseAccountsDetailVerticalLayout(rows: any[][]): { levels: Part
         (pe as any).branchName = branchName;
         groupEvents.push(pe);
       } else {
-        const lvl: Partial<Level> = { event_token: eventToken, level_name: levelName };
+        let levelOffset: number | undefined;
         if (daysOffsetStr !== '-' && daysOffsetStr !== '') {
           const d = parseInt(daysOffsetStr, 10);
-          if (!isNaN(d)) lvl.days_offset = d;
-          else { const n = Number(daysOffsetStr); if (!isNaN(n) && isFinite(n)) lvl.days_offset = Math.floor(n); }
+          if (!isNaN(d)) levelOffset = d;
+          else { const n = Number(daysOffsetStr); if (!isNaN(n) && isFinite(n)) levelOffset = Math.floor(n); }
         }
+
+        // Session-only columns (Level Name "-") in a matrix share the same base
+        // token (e.g. "lvl") across every day. Rebuild the full per-day token
+        // (e.g. "lvl_day2") so each session level is imported as a distinct row
+        // and importLevels does not collapse them into a single level.
+        const isSessionOnly = levelName === '-';
+        const effectiveToken = isSessionOnly && levelOffset !== undefined
+          ? `${eventToken.split('_day')[0]}_day${levelOffset}`
+          : eventToken;
+
+        const lvl: Partial<Level> = { event_token: effectiveToken, level_name: levelName };
+        if (levelOffset !== undefined) lvl.days_offset = levelOffset;
         if (timeSpentStr !== '-' && timeSpentStr !== '') {
           const t = parseInt(timeSpentStr);
           if (!isNaN(t)) lvl.time_spent = t;
