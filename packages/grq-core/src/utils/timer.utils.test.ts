@@ -33,7 +33,7 @@ const makeTask = (overrides: any = {}) => ({
 
 const makeStartState = (overrides: any = {}) => ({
   accountId: 1,
-  startTime: '2026-01-01 00:00',
+  startTime: new Date(1000000).toISOString(), // consistent with the fake epochs used below
   firstRequestAllowedAt: 0,
   isInitialized: true,
   ...overrides,
@@ -88,15 +88,15 @@ describe('calculateTimerState — first task', () => {
     assert.strictEqual(state.reason, 'initializing');
     assert.ok(state.remainingTime > 0);
     assert.strictEqual(state.comeBackTime!.getTime(), 1000000 + 243000);
+    // total wait = the task's own time_spent in seconds (243)
+    assert.strictEqual(state.totalWaitSec, 243);
   });
 
   it('falls back to startTime + timeSpent when firstRequestAllowedAt is missing', () => {
     const startState = makeStartState({
       firstRequestAllowedAt: 0,
-      startTime: '2026-01-01 00:00',
     });
-    // parsedStart = Date.parse('2026-01-01 00:00') ms; add task timeSpent (243000 ms)
-    const parsedStart = new Date('2026-01-01 00:00').getTime();
+    const parsedStart = new Date(startState.startTime).getTime();
     const expectedTarget = parsedStart + 243000;
     const state = calculateTimerState(
       makeTask(),
@@ -124,6 +124,48 @@ describe('calculateTimerState — first task', () => {
       null,
     );
     assert.strictEqual(readyState.isReady, true);
+  });
+
+  it('ignores a stale firstRequestAllowedAt that is far off the derived target', () => {
+    // A leftover from an old build (start + timeSpent * 1000) would be ~3 days
+    // in the future relative to the correct target. It must be discarded.
+    const startState = makeStartState({
+      firstRequestAllowedAt: 1000000 + 243000 + 3 * 24 * 60 * 60 * 1000,
+    });
+    const expectedTarget = 1000000 + 243000;
+    const state = calculateTimerState(
+      makeTask(),
+      0,
+      [],
+      expectedTarget + 5000,
+      {},
+      { 1: startState },
+      [],
+      [],
+      null,
+    );
+    assert.strictEqual(state.isReady, true);
+  });
+
+  it('keeps a firstRequestAllowedAt that is close to the derived target', () => {
+    // A small legitimate delta (e.g. first group differs slightly from the task) is preserved.
+    const near = 1000000 + 243000 + 30 * 60 * 1000; // +30 min
+    const startState = makeStartState({
+      firstRequestAllowedAt: near,
+    });
+    const state = calculateTimerState(
+      makeTask(),
+      0,
+      [],
+      near - 5000,
+      {},
+      { 1: startState },
+      [],
+      [],
+      null,
+    );
+    assert.strictEqual(state.isReady, false);
+    assert.strictEqual(state.comeBackTime!.getTime(), near);
   });
 
   it('is ready immediately when there is no start state at all', () => {
@@ -167,6 +209,8 @@ describe('calculateTimerState — subsequent task', () => {
     );
     assert.strictEqual(notReady.isReady, false);
     assert.strictEqual(notReady.comeBackTime!.getTime(), target);
+    // total wait = the difference between the two time_spent values in seconds (57)
+    assert.strictEqual(notReady.totalWaitSec, 57);
 
     const ready = calculateTimerState(
       task,
@@ -222,6 +266,7 @@ describe('calculateTimerState — sequential dependency', () => {
     assert.strictEqual(state.isBlocked, true);
     assert.strictEqual(state.isReady, false);
     assert.strictEqual(state.reason, 'blocked');
+    assert.strictEqual(state.totalWaitSec, 0);
   });
 
   it('is not blocked when the previous task is completed', () => {
@@ -269,6 +314,7 @@ describe('calculateTimerState — global 1h cooldown', () => {
     assert.strictEqual(state.isReady, false);
     assert.strictEqual(state.reason, 'cooldown');
     assert.ok(state.remainingTime >= 3540); // ~59 min remain
+    assert.strictEqual(state.totalWaitSec, 3600);
   });
 
   it('is ready when the same-level completion is older than one hour', () => {

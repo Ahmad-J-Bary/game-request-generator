@@ -107,16 +107,16 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
 
   const { isReady, isBlocked, remainingTime } = timerState;
 
-  // Session Only tasks follow the same timer logic as other tasks
-  const effectiveIsReady = isReady;
+  // Session Only tasks can always be completed regardless of timer state
+  const effectiveIsReady = isSessionOnlyTask || isReady;
 
   // Calculate progress percentage for the cooldown (if applicable)
   const progressPercent = useMemo(() => {
     if (isReady || isBlocked) return 100;
-    const totalWait = (task.requests[0]?.time_spent || 3000) / 1000;
+    const totalWait = timerState.totalWaitSec;
     if (totalWait <= 0) return 100;
     return Math.max(0, Math.min(100, ((totalWait - remainingTime) / totalWait) * 100));
-  }, [isReady, isBlocked, remainingTime, task.requests]);
+  }, [isReady, isBlocked, remainingTime, timerState.totalWaitSec]);
 
   const getStatusBadge = () => {
     if (effectiveIsReady) {

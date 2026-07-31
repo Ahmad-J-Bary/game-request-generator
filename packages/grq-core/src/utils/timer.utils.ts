@@ -16,6 +16,11 @@ export interface TimerState {
   remainingTime: number;
   comeBackTime: Date | null;
   reason: "ready" | "blocked" | "cooldown" | "initializing";
+  /**
+   * Total duration (in seconds) of the current wait, used to render
+   * a meaningful countdown progress bar. 0 when ready or blocked.
+   */
+  totalWaitSec: number;
 }
 
 /**
@@ -111,11 +116,13 @@ export const calculateTimerState = (
       remainingTime: 0,
       comeBackTime: null,
       reason: "blocked",
+      totalWaitSec: 0,
     };
   }
 
   // 2. Calculate Target Availability Time
   let targetTime = 0;
+  let totalWaitSec = 0;
   let reason: TimerState["reason"] = "cooldown";
   if (completionRecord) {
     // Subsequent tasks: Wait from the moment the previous unit was finished
@@ -123,22 +130,39 @@ export const calculateTimerState = (
     // Both timeSpent values are in ms from Rust; convert to seconds for the wait formula.
     const prevTimeSpentSec = completionRecord.timeSpent / 1000;
     const waitDuration = Math.max(0, currentTimeSpentSec - prevTimeSpentSec);
+    totalWaitSec = waitDuration;
     targetTime = completionRecord.completionTime + waitDuration * 1000;
   } else {
     // First task: the account's configured start time is the "zero" reference.
     // Target = Account Start Time + (First Task TimeSpent in ms).
     // Once that target is in the past, the task is ready immediately.
     reason = "initializing";
+    totalWaitSec = currentTimeSpentSec;
+    const parsedStart = startState?.startTime
+      ? new Date(startState.startTime).getTime()
+      : NaN;
+    const derivedTarget =
+      !isNaN(parsedStart) ? parsedStart + currentTimeSpentSec * 1000 : 0;
+
+    const firstAllowedAt = startState?.firstRequestAllowedAt;
+
+    // Reject persisted firstRequestAllowedAt values that are clearly stale
+    // (e.g. written by an older build using different units). When it is
+    // not within a generous window of the startTime-derived target, recompute.
+    const staleFirstAllowed =
+      typeof firstAllowedAt === "number" &&
+      firstAllowedAt > 0 &&
+      derivedTarget > 0 &&
+      Math.abs(firstAllowedAt - derivedTarget) > 2 * 24 * 60 * 60 * 1000;
+
     if (
-      typeof startState?.firstRequestAllowedAt === "number" &&
-      startState.firstRequestAllowedAt > 0
+      typeof firstAllowedAt === "number" &&
+      firstAllowedAt > 0 &&
+      !staleFirstAllowed
     ) {
-      targetTime = startState.firstRequestAllowedAt;
-    } else if (startState?.startTime) {
-      const parsedStart = new Date(startState.startTime).getTime();
-      if (!isNaN(parsedStart)) {
-        targetTime = parsedStart + currentTimeSpentSec * 1000;
-      }
+      targetTime = firstAllowedAt;
+    } else if (derivedTarget > 0) {
+      targetTime = derivedTarget;
     }
   }
 
@@ -151,6 +175,7 @@ export const calculateTimerState = (
       remainingTime,
       comeBackTime: new Date(targetTime),
       reason: reason,
+      totalWaitSec,
     };
   }
 
@@ -193,6 +218,7 @@ export const calculateTimerState = (
         remainingTime,
         comeBackTime: new Date(globalCooldownTarget),
         reason: "cooldown",
+        totalWaitSec: 3600,
       };
     }
   }
@@ -204,6 +230,7 @@ export const calculateTimerState = (
     remainingTime: 0,
     comeBackTime: null,
     reason: "ready",
+    totalWaitSec: 0,
   };
 };
 
