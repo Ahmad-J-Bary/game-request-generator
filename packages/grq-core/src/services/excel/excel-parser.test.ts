@@ -281,13 +281,25 @@ const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct
 interface SessionCutoffEvent {
   daysOffset: number;
   isCompleted: boolean;
+  isPurchase?: boolean;
+  isSessionOnly?: boolean;
+  timeSpent?: number;
 }
 
+/**
+ * Simulates the Session date cutoff logic:
+ * Given a start_date and session date string (D-MMM),
+ * - mark events whose computed date is BEFORE the Session date as completed.
+ * - for events scheduled ON the Session date itself, complete only purchases,
+ *   session-only requests, or level events whose time_spent matches
+ *   round(Time/1000) within ±1 (completionThreshold).
+ */
 function applySessionCutoff(
-  events: { daysOffset: number; isCompleted: boolean }[],
+  events: SessionCutoffEvent[],
   startDateStr: string,
   sessionDateStr: string | undefined,
-): { daysOffset: number; isCompleted: boolean }[] {
+  completionThreshold?: number,
+): SessionCutoffEvent[] {
   if (!sessionDateStr) return events.map(e => ({ ...e }));
 
   const dashMatch = startDateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
@@ -300,6 +312,8 @@ function applySessionCutoff(
     if (!isNaN(d.getTime())) startDate = d;
   }
   if (!startDate) return events.map(e => ({ ...e }));
+  // Normalize to local midnight so the Session-date day is compared by calendar day.
+  startDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
 
   // Parse session date
   const sm = sessionDateStr.match(/^(\d{1,2})-([A-Za-z]{3})$/);
@@ -311,26 +325,44 @@ function applySessionCutoff(
   return events.map((e) => {
     if (e.isCompleted) return { ...e };
     const eventDate = new Date(startDate.getTime() + e.daysOffset * 24 * 60 * 60 * 1000);
-    if (eventDate.getTime() <= sessionDate.getTime()) {
+    if (eventDate.getTime() < sessionDate.getTime()) {
       return { ...e, isCompleted: true };
+    }
+    if (eventDate.getTime() === sessionDate.getTime()) {
+      const matchesTimeSpent = completionThreshold !== undefined && e.timeSpent !== undefined && Math.abs(e.timeSpent - completionThreshold) <= 1;
+      if (e.isPurchase || e.isSessionOnly || matchesTimeSpent) {
+        return { ...e, isCompleted: true };
+      }
     }
     return { ...e };
   });
 }
 
 describe('Session date cutoff', () => {
-  it('marks events with date <= Session date as completed', () => {
+  it('marks events with date before Session date as completed; boundary needs time_spent match', () => {
     const events = [
-      { daysOffset: 0, isCompleted: false },
-      { daysOffset: 2, isCompleted: false },
-      { daysOffset: 5, isCompleted: false },
+      { daysOffset: 0, isCompleted: false, timeSpent: 300 },
+      { daysOffset: 2, isCompleted: false, timeSpent: 300 },
+      { daysOffset: 5, isCompleted: false, timeSpent: 300 },
     ];
     // Start date: 1-Jan-2025 → offset 0=1-Jan, offset 2=3-Jan, offset 5=6-Jan
-    // Session: 3-Jan → events at offset 0 (1-Jan) and 2 (3-Jan) completed
-    const result = applySessionCutoff(events, '1-Jan-2025', '3-Jan');
+    // Session: 3-Jan → offset 0 (1-Jan < 3-Jan) completed; offset 2 (3-Jan, boundary)
+    // completed via time_spent match (300 vs threshold 300); offset 5 (6-Jan) not.
+    const result = applySessionCutoff(events, '1-Jan-2025', '3-Jan', 300);
     assert.strictEqual(result[0].isCompleted, true);
     assert.strictEqual(result[1].isCompleted, true);
     assert.strictEqual(result[2].isCompleted, false);
+  });
+
+  it('boundary level event without time_spent match is NOT completed', () => {
+    const events = [
+      { daysOffset: 0, isCompleted: false, timeSpent: 300 },
+      { daysOffset: 2, isCompleted: false, timeSpent: 500 }, // boundary 3-Jan, no match
+    ];
+    // Session 3-Jan, threshold 300 → offset 0 (before) completed; offset 2 (boundary) not.
+    const result = applySessionCutoff(events, '1-Jan-2025', '3-Jan', 300);
+    assert.strictEqual(result[0].isCompleted, true);
+    assert.strictEqual(result[1].isCompleted, false);
   });
 
   it('does not override existing (C) completion', () => {
@@ -346,13 +378,13 @@ describe('Session date cutoff', () => {
   });
 
   it('handles Session date at month boundary', () => {
-    // Start 30-Jan-2025, Session 1-Feb → offset 0 (30-Jan) and offset 2 (1-Feb) completed
+    // Start 30-Jan-2025, Session 1-Feb → offset 0 (30-Jan, before) and offset 2 (1-Feb, boundary + match) completed
     const events = [
-      { daysOffset: 0, isCompleted: false },
-      { daysOffset: 2, isCompleted: false },
-      { daysOffset: 5, isCompleted: false },
+      { daysOffset: 0, isCompleted: false, timeSpent: 300 },
+      { daysOffset: 2, isCompleted: false, timeSpent: 300 },
+      { daysOffset: 5, isCompleted: false, timeSpent: 300 },
     ];
-    const result = applySessionCutoff(events, '30-Jan-2025', '1-Feb');
+    const result = applySessionCutoff(events, '30-Jan-2025', '1-Feb', 300);
     assert.strictEqual(result[0].isCompleted, true);
     assert.strictEqual(result[1].isCompleted, true);
     assert.strictEqual(result[2].isCompleted, false);
@@ -372,6 +404,53 @@ describe('Session date cutoff', () => {
     const result = applySessionCutoff(events, '2025-01-01', '3-Jan');
     assert.strictEqual(result[0].isCompleted, true);
     assert.strictEqual(result[1].isCompleted, false);
+  });
+
+  it('level event on the Session date completes only when time_spent matches ±1', () => {
+    const events = [
+      { daysOffset: 28, isCompleted: false, timeSpent: 690 }, // 29-Jul (before)
+      { daysOffset: 29, isCompleted: false, timeSpent: 700 }, // 30-Jul (boundary, no match)
+      { daysOffset: 30, isCompleted: false, timeSpent: 690 }, // 31-Jul (after, even if match)
+    ];
+    // Session 30-Jul, Time 690680 → completionThreshold = round(690680/1000) = 690
+    const result = applySessionCutoff(events, '1-Jul-2025', '30-Jul', 690);
+    assert.strictEqual(result[0].isCompleted, true,  '29-Jul < 30-Jul → completed regardless');
+    assert.strictEqual(result[1].isCompleted, false, '30-Jul boundary, time_spent 700 ≠ 690±1 → NOT completed');
+    assert.strictEqual(result[2].isCompleted, false, '31-Jul > 30-Jul → not completed');
+  });
+
+  it('level event on the Session date with time_spent within ±1 is completed', () => {
+    const events = [
+      { daysOffset: 29, isCompleted: false, timeSpent: 689 },
+      { daysOffset: 29, isCompleted: false, timeSpent: 691 },
+    ];
+    const result = applySessionCutoff(events, '1-Jul-2025', '30-Jul', 690);
+    assert.strictEqual(result[0].isCompleted, true, '689 is within ±1 of 690');
+    assert.strictEqual(result[1].isCompleted, true, '691 is within ±1 of 690');
+  });
+
+  it('session-only request on the Session date is always completed', () => {
+    const events = [
+      { daysOffset: 29, isCompleted: false, isSessionOnly: true },
+    ];
+    const result = applySessionCutoff(events, '1-Jul-2025', '30-Jul');
+    assert.strictEqual(result[0].isCompleted, true, 'session-only on boundary always completed');
+  });
+
+  it('purchase on the Session date is completed (no time_spent to match)', () => {
+    const events = [
+      { daysOffset: 29, isCompleted: false, isPurchase: true },
+    ];
+    const result = applySessionCutoff(events, '1-Jul-2025', '30-Jul');
+    assert.strictEqual(result[0].isCompleted, true, 'purchase on boundary completed');
+  });
+
+  it('explicit (C) on the Session date always wins', () => {
+    const events = [
+      { daysOffset: 29, isCompleted: true, timeSpent: 700 },
+    ];
+    const result = applySessionCutoff(events, '1-Jul-2025', '30-Jul', 690);
+    assert.strictEqual(result[0].isCompleted, true, '(C) preserved regardless of time_spent');
   });
 });
 
@@ -434,7 +513,7 @@ describe('Session Only with Session cutoff + per-type cascade', () => {
     assert.strictEqual(finalResults[4].isCompleted, false); // purchase 3 (past cutoff, no (C))
   });
 
-  it('Session cutoff with no (C) markers — each type cascades independently from cutoff', () => {
+  it('Session cutoff with no (C) markers — boundary level needs time_spent match, purchases included', () => {
     const events = [
       { daysOffset: 0, isPurchase: false },
       { daysOffset: 2, isPurchase: false },
@@ -442,17 +521,19 @@ describe('Session Only with Session cutoff + per-type cascade', () => {
       { daysOffset: 0, isPurchase: true },
       { daysOffset: 2, isPurchase: true },
     ];
-    // Session date 3-Jan, start 1-Jan → cutoff at offset 2 (=3-Jan)
-    // Levels 0,2 completed via cutoff; level 5 not
-    // Purchases 0,2 completed via cutoff; no cascade since no (C)
+    // Session date 3-Jan, start 1-Jan → boundary at offset 2 (=3-Jan)
+    // Level 0 (1-Jan < 3-Jan) completed; level 2 (3-Jan boundary, no time_spent match) NOT completed;
+    // level 5 not. Purchases 0 (1-Jan < 3-Jan) and 2 (boundary purchase) completed.
     const startDate = new Date(2025, 0, 1);
     const sessionDate = new Date(2025, 0, 3);
     const results = events.map((e) => {
       const eventDate = new Date(startDate.getTime() + e.daysOffset * 86400000);
-      return { ...e, isCompleted: eventDate.getTime() <= sessionDate.getTime() };
+      if (eventDate.getTime() < sessionDate.getTime()) return { ...e, isCompleted: true };
+      if (eventDate.getTime() === sessionDate.getTime()) return { ...e, isCompleted: e.isPurchase };
+      return { ...e, isCompleted: false };
     });
     assert.strictEqual(results[0].isCompleted, true);
-    assert.strictEqual(results[1].isCompleted, true);
+    assert.strictEqual(results[1].isCompleted, false);
     assert.strictEqual(results[2].isCompleted, false);
     assert.strictEqual(results[3].isCompleted, true);
     assert.strictEqual(results[4].isCompleted, true);
@@ -555,7 +636,8 @@ function generateProgressForRow(
   gameName: string,
   sessionDateStr: string | undefined,
   startDate: Date,
-  colHeaders: { name: string; isPurchase: boolean; token: string; daysOffset?: number }[],
+  colHeaders: { name: string; isPurchase: boolean; token: string; daysOffset?: number; timeSpent?: number }[],
+  completionThreshold?: number,
 ): MockProgressEntry[] {
   const MONTHS_CAP = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const parseCell = (cellVal: string): { isCompleted: boolean; dateStr: string; hasDateCell: boolean } => {
@@ -589,12 +671,6 @@ function generateProgressForRow(
     const d = new Date(year, mi, parseInt(m[1]));
     return isNaN(d.getTime()) ? null : d;
   };
-  const dateStrLte = (a: string, b: string, refYear?: number): boolean => {
-    const da = parseDMMMD(a, refYear);
-    const db = parseDMMMD(b, refYear);
-    if (!da || !db) return false;
-    return da.getTime() <= db.getTime();
-  };
 
   const refYear = startDate.getFullYear();
 
@@ -607,14 +683,26 @@ function generateProgressForRow(
     rowEvents.push({ header, isCompleted, dateStr, hasDateCell });
   }
 
-  // Apply session cutoff
+  // Apply session cutoff: requests before the Session date complete; requests on the
+  // Session date itself complete only for purchases, session-only requests, or level
+  // events whose time_spent matches round(Time/1000) within ±1 (completionThreshold).
   if (sessionDateStr && startDate) {
+    const sessionParsed = parseDMMMD(sessionDateStr, refYear);
     for (const evt of rowEvents) {
       if (evt.isCompleted) continue;
       if (evt.header.daysOffset === undefined) continue;
       const evtDateStr = computeEvtDateStr(evt.header.daysOffset);
-      if (evtDateStr && dateStrLte(evtDateStr, sessionDateStr, refYear)) {
+      const evtParsed = evtDateStr ? parseDMMMD(evtDateStr, refYear) : null;
+      if (!evtParsed || !sessionParsed) continue;
+      if (evtParsed.getTime() < sessionParsed.getTime()) {
         evt.isCompleted = true;
+      } else if (evtParsed.getTime() === sessionParsed.getTime()) {
+        const isSessionOnly = evt.header.name === '-';
+        const headerSpent = evt.header.timeSpent;
+        const matchesTimeSpent = completionThreshold !== undefined && headerSpent !== undefined && Math.abs(headerSpent - completionThreshold) <= 1;
+        if (evt.header.isPurchase || isSessionOnly || matchesTimeSpent) {
+          evt.isCompleted = true;
+        }
       }
     }
   }
@@ -731,18 +819,73 @@ describe('Multi-account progress generation', () => {
       allEntries.push(...entries);
     }
 
-    // Session cutoff only: no (C) markers and no threshold → only events with
-    // computed date ≤ session date are completed (no cascade fallback).
-    // AccountA session 3-Jan: day 0 (1-Jan) ≤ 3-Jan = 1 completed
-    // AccountB session 5-Jan: days 0 (1-Jan) and 3 (4-Jan) ≤ 5-Jan = 2 completed
-    // AccountC session 1-Jan: day 0 (1-Jan) ≤ 1-Jan = 1 completed
+    // Session cutoff only: no (C) markers and no threshold → only events strictly
+    // before the session date are completed (no cascade fallback).
+    // AccountA session 3-Jan: day 0 (1-Jan) < 3-Jan = 1 completed
+    // AccountB session 5-Jan: days 0 (1-Jan) and 3 (4-Jan) < 5-Jan = 2 completed
+    // AccountC session 1-Jan: day 0 (1-Jan) is ON the boundary (level event, no
+    // threshold → time_spent cannot match) = 0 completed
     const aCompleted = allEntries.filter(e => e.accountName === 'AccountA' && e.isCompleted);
     const bCompleted = allEntries.filter(e => e.accountName === 'AccountB' && e.isCompleted);
     const cCompleted = allEntries.filter(e => e.accountName === 'AccountC' && e.isCompleted);
 
-    assert.strictEqual(aCompleted.length, 1, 'AccountA: day 0 completed (≤ 3-Jan)');
-    assert.strictEqual(bCompleted.length, 2, 'AccountB: days 0 and 3 completed (≤ 5-Jan)');
-    assert.strictEqual(cCompleted.length, 1, 'AccountC: only day 0 completed (≤ 1-Jan)');
+    assert.strictEqual(aCompleted.length, 1, 'AccountA: day 0 completed (< 3-Jan)');
+    assert.strictEqual(bCompleted.length, 2, 'AccountB: days 0 and 3 completed (< 5-Jan)');
+    assert.strictEqual(cCompleted.length, 0, 'AccountC: day 0 is on the Session date boundary without time_spent match → not completed');
+  });
+
+  it('Time=690680: level event scheduled ON the Session date (30-Jul) with matching time_spent completes', () => {
+    const headers = [
+      { name: 'Day 28', isPurchase: false, token: 'evt_day28', daysOffset: 28, timeSpent: 690 },
+      { name: 'Day 29', isPurchase: false, token: 'evt_day29', daysOffset: 29, timeSpent: 690 },
+      { name: 'Day 30', isPurchase: false, token: 'evt_day30', daysOffset: 30, timeSpent: 690 },
+    ];
+    const startDate = new Date(2025, 6, 1); // 1-Jul-2025
+    // Session 30-Jul, Time 690680 → completionThreshold = round(690680/1000) = 690
+    const entries = generateProgressForRow(
+      ['-', '-', '-'], 'Acc', 'Game', '30-Jul', startDate, headers, 690,
+    );
+    const d28 = entries.find(e => e.token === 'evt_day28');
+    const d29 = entries.find(e => e.token === 'evt_day29');
+    const d30 = entries.find(e => e.token === 'evt_day30');
+    assert.ok(d28?.isCompleted, 'day 28 (29-Jul < 30-Jul) completed regardless of time_spent');
+    assert.ok(d29?.isCompleted, 'day 29 (30-Jul boundary, time_spent 690 matches 690±1) completed');
+    assert.ok(!d30?.isCompleted, 'day 30 (31-Jul > 30-Jul) NOT completed even with matching time_spent');
+  });
+
+  it('Time=690680: level event ON the Session date with non-matching time_spent is not completed', () => {
+    const headers = [
+      { name: 'Day 29', isPurchase: false, token: 'evt_day29', daysOffset: 29, timeSpent: 700 },
+    ];
+    const startDate = new Date(2025, 6, 1);
+    const entries = generateProgressForRow(
+      ['-'], 'Acc', 'Game', '30-Jul', startDate, headers, 690,
+    );
+    assert.strictEqual(entries.length, 0, 'no matching boundary entry → no progress entry created');
+  });
+
+  it('session-only request ON the Session date is always completed', () => {
+    const headers = [
+      { name: '-', isPurchase: false, token: 'evt_day29', daysOffset: 29, timeSpent: 9999 },
+    ];
+    const startDate = new Date(2025, 6, 1);
+    const entries = generateProgressForRow(
+      ['-'], 'Acc', 'Game', '30-Jul', startDate, headers, 690,
+    );
+    assert.strictEqual(entries.length, 1, 'session-only boundary entry created');
+    assert.ok(entries[0].isCompleted, 'session-only on the Session date completed');
+  });
+
+  it('explicit (C) marker on the Session date always wins', () => {
+    const headers = [
+      { name: 'Day 29', isPurchase: false, token: 'evt_day29', daysOffset: 29, timeSpent: 700 },
+    ];
+    const startDate = new Date(2025, 6, 1);
+    const entries = generateProgressForRow(
+      ['30-Jul (C)'], 'Acc', 'Game', '30-Jul', startDate, headers, 690,
+    );
+    const d29 = entries.find(e => e.token === 'evt_day29');
+    assert.ok(d29?.isCompleted, '(C) on boundary always completed');
   });
 });
 
@@ -771,10 +914,13 @@ describe('Session processor per-account overrides', () => {
 
     const startDate = new Date(startDateStr);
     if (isNaN(startDate.getTime())) return [];
+    // Normalize to local midnight so the Session-date day itself is included
+    // (mirrors the local-midnight fix in the real session processor).
+    const startLocal = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
 
     let cutoffDate: Date;
     if (overrideDateStr) {
-      const parsed = parseDMMMD(overrideDateStr, startDate.getFullYear());
+      const parsed = parseDMMMD(overrideDateStr, startLocal.getFullYear());
       cutoffDate = parsed || new Date();
     } else {
       cutoffDate = new Date();
@@ -787,7 +933,7 @@ describe('Session processor per-account overrides', () => {
     };
 
     return levels.map(level => {
-      const eventDate = addDays(startDate, level.daysOffset);
+      const eventDate = addDays(startLocal, level.daysOffset);
       const completed = eventDate.getTime() <= cutoffDate.getTime();
       return { token: level.token, completed };
     });
@@ -859,6 +1005,18 @@ describe('Session processor per-account overrides', () => {
     // This depends on when the test runs, but 1000 days from 2025 should be in the past
     // since Date.now() is well past 2025+1000 days. So result[2].completed might be true too.
     // This test verifies the fallback behavior exists.
+  });
+
+  it('includes the Session date day itself (no timezone off-by-one)', () => {
+    const levels = [
+      { daysOffset: 28, token: 'evt_day28' }, // 29-Jul
+      { daysOffset: 29, token: 'evt_day29' }, // 30-Jul (Session date)
+      { daysOffset: 30, token: 'evt_day30' }, // 31-Jul
+    ];
+    const result = simulateProcessAccount('2025-07-01', levels, '30-Jul');
+    assert.strictEqual(result[0].completed, true,  'day 28 (29-Jul) ≤ 30-Jul');
+    assert.strictEqual(result[1].completed, true,  'day 29 (30-Jul) == Session date → completed');
+    assert.strictEqual(result[2].completed, false, 'day 30 (31-Jul) > 30-Jul');
   });
 });
 
@@ -1239,8 +1397,9 @@ interface TestProgress {
 }
 
 function simulateMultiAccountProgress(
-  headers: { token: string; daysOffset: number; isPurchase: boolean }[],
+  headers: { token: string; daysOffset: number; isPurchase: boolean; name?: string; timeSpent?: number }[],
   accounts: { name: string; startDate: string; sessionDate?: string; cells: string[] }[],
+  completionThreshold?: number,
 ): TestProgress[] {
   const MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   const parseDMMMD = (s: string, y: number): Date | null => {
@@ -1254,7 +1413,8 @@ function simulateMultiAccountProgress(
 
   const results: TestProgress[] = [];
   for (const acct of accounts) {
-    const startDate = new Date(acct.startDate);
+    const parsedDate = new Date(acct.startDate);
+    const startDate = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
     const refYear = startDate.getFullYear();
 
     // Parse cells
@@ -1266,17 +1426,26 @@ function simulateMultiAccountProgress(
       return { header: h, isCompleted: isC, dateStr, hasDate: true };
     });
 
-    // Apply session cutoff
+    // Apply session cutoff: requests before the Session date complete; requests on the
+    // Session date complete only for purchases, session-only, or time_spent-matched levels.
     if (acct.sessionDate) {
+      const sessionParsed = parseDMMMD(acct.sessionDate, refYear);
       for (const evt of parsed) {
         if (evt.isCompleted) continue;
         if (evt.header.daysOffset === undefined) continue;
         const evtDate = new Date(startDate.getTime() + evt.header.daysOffset * 86400000);
         const evtDateStr = `${evtDate.getDate()}-${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][evtDate.getMonth()]}`;
-        const sessionParsed = parseDMMMD(acct.sessionDate, refYear);
         const evtParsed = parseDMMMD(evtDateStr, refYear);
-        if (sessionParsed && evtParsed && evtParsed.getTime() <= sessionParsed.getTime()) {
+        if (!evtParsed || !sessionParsed) continue;
+        if (evtParsed.getTime() < sessionParsed.getTime()) {
           evt.isCompleted = true;
+        } else if (evtParsed.getTime() === sessionParsed.getTime()) {
+          const isSessionOnly = evt.header.name === '-';
+          const headerSpent = evt.header.timeSpent;
+          const matchesTimeSpent = completionThreshold !== undefined && headerSpent !== undefined && Math.abs(headerSpent - completionThreshold) <= 1;
+          if (evt.header.isPurchase || isSessionOnly || matchesTimeSpent) {
+            evt.isCompleted = true;
+          }
         }
       }
     }
@@ -1310,15 +1479,16 @@ function simulateMultiAccountProgress(
 
 describe('Multi-account per-row progress generation', () => {
   const headers = [
-    { token: 'evt_day0', daysOffset: 0, isPurchase: false },
-    { token: 'evt_day2', daysOffset: 2, isPurchase: false },
-    { token: 'evt_day5', daysOffset: 5, isPurchase: false },
+    { token: 'evt_day0', daysOffset: 0, isPurchase: false, name: 'Day 0', timeSpent: 300 },
+    { token: 'evt_day2', daysOffset: 2, isPurchase: false, name: 'Day 2', timeSpent: 300 },
+    { token: 'evt_day5', daysOffset: 5, isPurchase: false, name: 'Day 5', timeSpent: 300 },
     { token: 'purchase_day0', daysOffset: 0, isPurchase: true },
   ];
 
   it('each account gets its own session cutoff applied independently', () => {
     const accounts = [
-      // AccountA: Session 3-Jan → completes days 0,2 (but not 5) via cutoff
+      // AccountA: Session 3-Jan → completes days 0,2 (but not 5): day 0 is before the
+      // session date, day 2 is ON the session date and matches time_spent (300 vs 300).
       { name: 'AccountA', startDate: '2025-01-01', sessionDate: '3-Jan', cells: ['-', '-', '-', '-'] },
       // AccountB: Session 5-Jan → completes days 0,2,5 via cutoff
       { name: 'AccountB', startDate: '2025-01-01', sessionDate: '5-Jan', cells: ['-', '-', '-', '-'] },
@@ -1326,7 +1496,8 @@ describe('Multi-account per-row progress generation', () => {
       { name: 'AccountC', startDate: '2025-01-01', cells: ['-', '-', '-', '-'] },
     ];
 
-    const progress = simulateMultiAccountProgress(headers, accounts);
+    // Threshold 300 (matches evt_day2's time_spent so the boundary-day event completes).
+    const progress = simulateMultiAccountProgress(headers, accounts, 300);
 
     // AccountA: Session 3-Jan → days 0,2 ≤ 3-Jan
     const acctAEntries = progress.filter(e => e.accountName === 'AccountA');
@@ -1398,19 +1569,19 @@ describe('Multi-account per-row progress generation', () => {
 
   it('each account with different start dates gets different computed event dates', () => {
     const headers2 = [
-      { token: 'evt_day3', daysOffset: 3, isPurchase: false },
+      { token: 'evt_day3', daysOffset: 3, isPurchase: false, name: 'Day 3', timeSpent: 200 },
     ];
     const accounts = [
-      // AccountA: start 1-Jan → day3 = 4-Jan. Session 4-Jan → completed.
+      // AccountA: start 1-Jan → day3 = 4-Jan. Session 4-Jan → completed via time_spent match (200 vs 200).
       { name: 'AccountA', startDate: '2025-01-01', sessionDate: '4-Jan', cells: ['-'] },
       // AccountB: start 5-Jan → day3 = 8-Jan. Session 4-Jan → NOT completed.
       { name: 'AccountB', startDate: '2025-01-05', sessionDate: '4-Jan', cells: ['-'] },
     ];
 
-    const progress = simulateMultiAccountProgress(headers2, accounts);
+    const progress = simulateMultiAccountProgress(headers2, accounts, 200);
     const aEntry = progress.find(e => e.accountName === 'AccountA');
     const bEntry = progress.find(e => e.accountName === 'AccountB');
-    assert.ok(aEntry?.isCompleted, 'AccountA: day3 should be completed (event date 4-Jan ≤ session 4-Jan)');
+    assert.ok(aEntry?.isCompleted, 'AccountA: day3 should be completed (event date 4-Jan on session date + time_spent match)');
     assert.ok(!bEntry?.isCompleted, 'AccountB: day3 should NOT be completed (event date 8-Jan > session 4-Jan)');
   });
 
@@ -1445,19 +1616,20 @@ describe('Multi-group style progress generation (different headers per account)'
       { name: 'Early B', isPurchase: false, token: 'evt_day3', daysOffset: 3 },
     ];
     const headersGroup2 = [
-      { name: 'Late A', isPurchase: false, token: 'evt_day5', daysOffset: 5 },
-      { name: 'Late B', isPurchase: false, token: 'evt_day7', daysOffset: 7 },
+      { name: 'Late A', isPurchase: false, token: 'evt_day5', daysOffset: 5, timeSpent: 400 },
+      { name: 'Late B', isPurchase: false, token: 'evt_day7', daysOffset: 7, timeSpent: 400 },
     ];
     const startDate = new Date(2025, 0, 1);
 
-    // Account A from Group 1: session 2-Jan → completes offset 0 (1-Jan ≤ 2-Jan)
+    // Account A from Group 1: session 2-Jan → completes offset 0 (1-Jan < 2-Jan)
     // Entry for offset 3 (4-Jan > 2-Jan) is NOT included (not completed and no cell data)
     const entriesA = generateProgressForRow(
       ['-', '-'], 'AccA', 'TestGame', '2-Jan', startDate, headersGroup1,
     );
-    // Account B from Group 2: session 8-Jan → completes both offset 5 (6-Jan ≤ 8-Jan) and offset 7 (8-Jan ≤ 8-Jan)
+    // Account B from Group 2: session 8-Jan → offset 5 (6-Jan < 8-Jan) completed;
+    // offset 7 (8-Jan, ON the session date) completed via time_spent match (400 vs 400).
     const entriesB = generateProgressForRow(
-      ['-', '-'], 'AccB', 'TestGame', '8-Jan', startDate, headersGroup2,
+      ['-', '-'], 'AccB', 'TestGame', '8-Jan', startDate, headersGroup2, 400,
     );
 
     // Verify Account A
@@ -1470,8 +1642,8 @@ describe('Multi-group style progress generation (different headers per account)'
     assert.strictEqual(entriesB.length, 2, 'AccB: 2 entries');
     const b5 = entriesB.find(e => e.token === 'evt_day5');
     const b7 = entriesB.find(e => e.token === 'evt_day7');
-    assert.ok(b5?.isCompleted, 'AccB: evt_day5 completed (6-Jan ≤ 8-Jan)');
-    assert.ok(b7?.isCompleted, 'AccB: evt_day7 completed (8-Jan ≤ 8-Jan)');
+    assert.ok(b5?.isCompleted, 'AccB: evt_day5 completed (6-Jan < 8-Jan)');
+    assert.ok(b7?.isCompleted, 'AccB: evt_day7 completed (8-Jan on session date + time_spent match)');
 
     // Combined: all entries together from both groups
     const allEntries = [...entriesA, ...entriesB];

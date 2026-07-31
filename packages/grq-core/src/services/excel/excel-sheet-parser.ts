@@ -5,7 +5,7 @@ import { readExcelFile } from './excel-file-operations';
 import type { Level, PurchaseEvent, Account } from '@grq/api-bindings';
 import {
   parseCellCompletion,
-  dateStrLte,
+  parseDMMMDate,
   computeEventDateStr,
   parseAccountDateStr,
   detectStartCol,
@@ -203,7 +203,7 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
             const maxCols = Math.max(...grpHeaders.map((r: any[]) => r.length));
             const startCol = detectStartCol(grpHeaders, maxCols);
 
-            const colHeaders: { name: string; isPurchase: boolean; token: string; daysOffset?: number }[] = [];
+            const colHeaders: { name: string; isPurchase: boolean; token: string; daysOffset?: number; timeSpent?: number }[] = [];
             for (let col = startCol; col < maxCols; col++) {
               const tokenRaw = matrixData[grpStart] && matrixData[grpStart][col] !== undefined && matrixData[grpStart][col] !== null ? matrixData[grpStart][col] : '';
               const token = tokenRaw.toString().trim();
@@ -214,10 +214,12 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
               const daysOffset = !isNaN(Number(daysOffsetStr)) ? parseInt(daysOffsetStr, 10) : undefined;
               const timeSpentRaw = matrixData[grpStart + 3] && matrixData[grpStart + 3][col] !== undefined && matrixData[grpStart + 3][col] !== null ? matrixData[grpStart + 3][col] : '';
               const timeSpentStr = timeSpentRaw.toString().trim();
+              const timeSpentNum = timeSpentStr !== '-' && timeSpentStr !== '' ? Number(timeSpentStr) : NaN;
+              const timeSpent = !isNaN(timeSpentNum) && isFinite(timeSpentNum) ? timeSpentNum : undefined;
               if (token && token.toLowerCase() !== 'event token') {
-                colHeaders.push({ name, token, isPurchase: isPurchaseEvent(name, timeSpentStr), daysOffset });
+                colHeaders.push({ name, token, isPurchase: isPurchaseEvent(name, timeSpentStr), daysOffset, timeSpent });
               } else {
-                colHeaders.push({ name: '', token: '', isPurchase: false, daysOffset: undefined });
+                colHeaders.push({ name: '', token: '', isPurchase: false, daysOffset: undefined, timeSpent: undefined });
               }
             }
 
@@ -317,12 +319,31 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
               }
 
               if (sessionDateStr && accountStartDate) {
+                const sessionParsed = parseDMMMDate(sessionDateStr, refYear);
                 for (const evt of rowEvents) {
                   if (evt.isCompleted) continue;
                   if (evt.header.daysOffset === undefined) continue;
                   const evtDateStr = computeEvtDateStr(evt.header.daysOffset);
-                  if (evtDateStr && dateStrLte(evtDateStr, sessionDateStr, refYear)) {
+                  if (!evtDateStr) continue;
+                  const evtParsed = parseDMMMDate(evtDateStr, refYear);
+                  if (!evtParsed || !sessionParsed) continue;
+                  if (evtParsed.getTime() < sessionParsed.getTime()) {
+                    // Scheduled before the Session date → complete (existing behavior).
                     evt.isCompleted = true;
+                  } else if (evtParsed.getTime() === sessionParsed.getTime()) {
+                    // Scheduled ON the Session date itself → complete when it is a
+                    // purchase event (no time_spent to match), a session-only request,
+                    // or a level event whose time_spent matches round(Time/1000)
+                    // within ±1 (e.g. Time=690680 → 690 → 689/690/691).
+                    const isSessionOnly = evt.header.name === '-';
+                    const headerSpent = evt.header.timeSpent;
+                    const matchesTimeSpent =
+                      completionThreshold !== undefined &&
+                      headerSpent !== undefined &&
+                      Math.abs(headerSpent - completionThreshold) <= 1;
+                    if (evt.header.isPurchase || isSessionOnly || matchesTimeSpent) {
+                      evt.isCompleted = true;
+                    }
                   }
                 }
               }

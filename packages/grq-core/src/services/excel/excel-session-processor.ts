@@ -103,16 +103,21 @@ export async function applySessionCompletionForGame(
         const startDate = parseDate(account.start_date);
         if (!startDate) continue;
 
+        // Normalize to local midnight so calendar-day math is exact: the Session
+        // date day itself (e.g. offset 29 for a 1-Jul start + 30-Jul Session) is
+        // included, avoiding a timezone off-by-one that previously dropped it.
+        const startLocal = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+
         const overrideDateStr = sessionDateOverrides?.get(account.id);
         let cutoffDate: Date;
         if (overrideDateStr) {
-          const parsed = parseDMMMDate(overrideDateStr, startDate.getFullYear());
+          const parsed = parseDMMMDate(overrideDateStr, startLocal.getFullYear());
           cutoffDate = parsed || new Date();
         } else {
           cutoffDate = new Date();
         }
 
-        const diffMs = cutoffDate.getTime() - startDate.getTime();
+        const diffMs = cutoffDate.getTime() - startLocal.getTime();
         const maxCutoffOffset = Math.floor(diffMs / (1000 * 60 * 60 * 24));
         if (maxCutoffOffset < 0) continue;
 
@@ -138,7 +143,7 @@ export async function applySessionCompletionForGame(
         });
 
         for (const offset of targetOffsets) {
-          const eventDate = addDays(startDate, offset);
+          const eventDate = addDays(startLocal, offset);
           if (eventDate.getTime() > cutoffDate.getTime()) continue;
 
           const sessionToken = `${baseToken}_day${offset}`;

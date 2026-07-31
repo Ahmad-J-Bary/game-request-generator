@@ -716,6 +716,11 @@ async function applySessionCompletionPerAccount(
 
       if (!branchId || isNaN(accountStartDate.getTime())) return 0;
 
+      // Normalize to local midnight so calendar-day math is exact: the Session
+      // date day itself is included (avoids a timezone off-by-one that dropped
+      // the session-only level scheduled on the Session date).
+      accountStartDate = new Date(accountStartDate.getFullYear(), accountStartDate.getMonth(), accountStartDate.getDate());
+
       const cutoffDate = parseDMMMDate(sessionDateStr, accountStartDate.getFullYear());
       if (!cutoffDate) return 0;
 
