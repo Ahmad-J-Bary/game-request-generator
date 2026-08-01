@@ -164,7 +164,7 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
 
           // ===== Multi-group account detail progress parsing =====
           // Iterate through each group independently, using its own
-          // column configuration (colHeaders, sessionCol, timeCol, startCol).
+          // column configuration (colHeaders, sessionCol, startCol).
           // This mirrors the group iteration logic in parseAccountsDetailVerticalLayout
           // so that accounts in groups 2+ also get correct session/event parsing.
           let groupPos = 0;
@@ -242,20 +242,16 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
               }
             }
 
-            // === Detect Session and Time columns from the account header row ===
+            // === Detect Session column from the account header row ===
             let sessionCol = -1;
-            let timeCol = -1;
             if (accountHeaderRow >= 0 && matrixData[accountHeaderRow]) {
-              const cols = detectSpecialColumns(matrixData[accountHeaderRow]);
-              sessionCol = cols.sessionCol;
-              timeCol = cols.timeCol;
+              sessionCol = detectSpecialColumns(matrixData[accountHeaderRow]).sessionCol;
             }
 
             // === Compute padding target so every data row in this group has all needed columns ===
             const effectiveMinCols = Math.max(
               maxCols,
               sessionCol >= 0 ? sessionCol + 1 : 0,
-              timeCol >= 0 ? timeCol + 1 : 0,
             );
 
             const dataRowsStart = accountHeaderRow >= 0 ? accountHeaderRow + 1 : grpStart + 4;
@@ -276,16 +272,6 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
               }
 
               const accountName = firstCell;
-
-              let timeValue: number | undefined;
-              if (timeCol >= 0 && row.length > timeCol && row[timeCol] !== undefined && row[timeCol] !== null) {
-                const cell = row[timeCol].toString().trim();
-                if (cell !== '-' && cell !== '') {
-                  const n = Number(cell);
-                  if (!isNaN(n) && isFinite(n)) timeValue = n;
-                }
-              }
-              const completionThreshold = timeValue !== undefined ? Math.round(timeValue / 1000) : undefined;
 
               let sessionDateStr: string | undefined;
               if (sessionCol >= 0 && row.length > sessionCol && row[sessionCol] !== undefined && row[sessionCol] !== null) {
@@ -328,61 +314,32 @@ export async function parseExcelFile(filePath: string): Promise<ImportData> {
                 rowEvents.push({ header, isCompleted, dateStr, hasDateCell });
               }
 
+              // Session-only ('-') rows are completed by the Session date cutoff:
+              // a request scheduled on or before the Session date is completed.
+              // Level Events and Purchase Events are EXCLUSIVELY driven by the "(C)"
+              // marker — the Session cutoff does not touch them.
               if (sessionDateStr && accountStartDate) {
                 const sessionParsed = parseDMMMDate(sessionDateStr, refYear);
                 for (const evt of rowEvents) {
                   if (evt.isCompleted) continue;
+                  if (evt.header.name !== '-') continue;
                   if (evt.header.daysOffset === undefined) continue;
                   const evtDateStr = computeEvtDateStr(evt.header.daysOffset);
                   if (!evtDateStr) continue;
                   const evtParsed = parseDMMMDate(evtDateStr, refYear);
                   if (!evtParsed || !sessionParsed) continue;
-                  if (evtParsed.getTime() < sessionParsed.getTime()) {
-                    // Scheduled before the Session date → complete (existing behavior).
+                  if (evtParsed.getTime() <= sessionParsed.getTime()) {
                     evt.isCompleted = true;
-                  } else if (evtParsed.getTime() === sessionParsed.getTime()) {
-                    // Scheduled ON the Session date itself → complete when it is a
-                    // purchase event (no time_spent to match), a session-only request,
-                    // or a level event whose time_spent matches round(Time/1000)
-                    // within ±1 (e.g. Time=690680 → 690 → 689/690/691).
-                    const isSessionOnly = evt.header.name === '-';
-                    const headerSpent = evt.header.timeSpent;
-                    const matchesTimeSpent =
-                      completionThreshold !== undefined &&
-                      headerSpent !== undefined &&
-                      Math.abs(headerSpent - completionThreshold) <= 1;
-                    if (evt.header.isPurchase || isSessionOnly || matchesTimeSpent) {
-                      evt.isCompleted = true;
-                    }
                   }
                 }
               }
 
-              let maxLevelFromC = -1;
-              let maxPurchaseFromC = -1;
+              // Level Events and Purchase Events keep the "(C)" marker result as-is
+              // (no cascade, no threshold). Progress entries are emitted for any cell
+              // with a date so persistence can explicitly mark it incomplete when it
+              // has no "(C)".
               for (const evt of rowEvents) {
-                if (!evt.isCompleted || evt.header.daysOffset === undefined) continue;
-                if (evt.header.isPurchase) {
-                  if (evt.header.daysOffset > maxPurchaseFromC) maxPurchaseFromC = evt.header.daysOffset;
-                } else {
-                  if (evt.header.daysOffset > maxLevelFromC) maxLevelFromC = evt.header.daysOffset;
-                }
-              }
-
-              const maxLevelOffset = maxLevelFromC >= 0 ? maxLevelFromC : completionThreshold;
-              const maxPurchaseOffset = maxPurchaseFromC >= 0 ? maxPurchaseFromC : completionThreshold;
-
-              for (const evt of rowEvents) {
-                let { isCompleted, header, dateStr, hasDateCell } = evt;
-
-                if (!isCompleted && header.daysOffset !== undefined) {
-                  if (!header.isPurchase && maxLevelOffset !== undefined && header.daysOffset <= maxLevelOffset) {
-                    isCompleted = true;
-                  }
-                  if (header.isPurchase && maxPurchaseOffset !== undefined && header.daysOffset <= maxPurchaseOffset) {
-                    isCompleted = true;
-                  }
-                }
+                const { isCompleted, header, dateStr, hasDateCell } = evt;
 
                 if (isCompleted || hasDateCell) {
                     result.progress.push({

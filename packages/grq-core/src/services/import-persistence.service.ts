@@ -1,10 +1,10 @@
 // ===== Import Persistence Service =====
 
-import { TauriService } from './tauri.service';
-import { asyncStorageService } from './storage.service';
-import type { ImportData } from './excel/excel-parser';
-import { applySessionCompletionForGame } from './excel/excel-session-processor';
-import { parseDMMMDate } from './excel/excel-parse-utils';
+import { TauriService } from './tauri.service.ts';
+import { asyncStorageService } from './storage.service.ts';
+import type { ImportData } from './excel/excel-parser.ts';
+import { applySessionCompletionForGame } from './excel/excel-session-processor.ts';
+import { parseDMMMDate } from './excel/excel-parse-utils.ts';
 
 export interface PersistenceResult {
   importedCount: number;
@@ -29,10 +29,13 @@ class ImportCache {
   /** branchId -> Set of base tokens that have a real Level Event anywhere */
   branchEventBaseCache: Map<number, Set<string>> = new Map();
 
-  constructor(
-    private contextGameId?: number,
-    private contextBranchId?: number,
-  ) {}
+  private contextGameId?: number;
+  private contextBranchId?: number;
+
+  constructor(contextGameId?: number, contextBranchId?: number) {
+    this.contextGameId = contextGameId;
+    this.contextBranchId = contextBranchId;
+  }
 
   /** Per-token rule helper: does the branch have a real Level Event with the same
    *  base token on the given day? A standalone Session sharing that (base, day)
@@ -290,12 +293,12 @@ export class ImportPersistenceService {
         }
       }
 
-      // Additional per-account pass: for each imported account that has a session date,
-      // ensure session-only levels created DURING this import are also completed.
-      // This covers the case where session-only levels didn't exist yet before import.
-      if (sessionDateOverrides.size > 0) {
-        await applySessionCompletionPerAccount(cache, sessionDateOverrides, data, result);
-      }
+      // Per-account pass: completes session-only levels for every imported
+      // account. A session-only level is completed when its date is <= the
+      // Session date (cutoff) OR it lies between two completed "(C)" Level
+      // Events (sandwich rule). Runs regardless of whether a Session date
+      // exists, because the sandwich rule needs no Session column.
+      await applySessionCompletionPerAccount(cache, sessionDateOverrides, data, result);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       result.errors.push({ type: 'unexpected', message });
@@ -782,34 +785,64 @@ async function importProgressMatrix(
 /**
  * Per-account session-only completion pass.
  * Called AFTER all levels, accounts, and progress have been imported.
- * For every imported account that has a session date override, iterates over
- * ALL session-only levels in its branch and marks those whose computed date
- * is <= the session date as completed.
+ * For every imported account, iterates over ALL existing session-only levels
+ * in its branch and marks those as completed when EITHER:
+ *  - their computed datetime is <= the Session date (cutoff), OR
+ *  - they lie in the STRICT temporal gap between two completed "(C)" Level
+ *    Events: `end(E1) < X < start(E2)` where E1 is the nearest completed Level
+ *    Event whose window ends before X and E2 the nearest whose window starts
+ *    after X. Each event window is [accountStart + days_offset,
+ *    accountStart + days_offset + time_spent], using the account's start date
+ *    AND start time (base-of-day) for full date+time precision.
+ *    (Indirect rule: Session Only requests are not in the Excel file and are
+ *    created within the app, so their completion is inferred from the events.)
  *
- * Additionally scans data.accounts for any account with sessionDate that was
- * not in sessionDateOverrides (catch-all for edge cases where cache lookups
- * failed), ensuring every account with a session date gets processed.
+ * The Session date is optional: the sandwich rule applies regardless.
+ *
+ * Every evaluated session-only level is traced via logMaintenanceEvent so the
+ * classification (completed/skipped + reason + temporal bounds) can be audited.
+ *
+ * Additionally scans data.accounts for any account not in sessionDateOverrides
+ * (catch-all for edge cases where cache lookups failed), ensuring every
+ * imported account is processed.
  *
  * This correctly handles:
  * - Accounts in rows 2..N (not just the first row)
  * - Session-only levels that were created during this import run
  * - Accounts from multi-group sheets across all groups
  */
-async function applySessionCompletionPerAccount(
+export async function applySessionCompletionPerAccount(
   cache: ImportCache,
   sessionDateOverrides: Map<number, string>,
   data: ImportData,
   result: PersistenceResult,
 ): Promise<void> {
-  const branchSessionLevelsCache = new Map<number, any[]>();
+  const branchLevelsCache = new Map<number, any[]>();
+
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  // time_spent is stored in base units where 1 unit == 1000 seconds.
+  const UNIT_SECONDS_MS = 1000 * 1000;
+
+  /** Account base-of-day in ms: start_date + start_time (defaults to midnight). */
+  const accountBaseMs = (startDate: Date, startTime?: string): number => {
+    let hours = 0, minutes = 0, seconds = 0;
+    if (startTime) {
+      const parts = startTime.split(':').map(p => parseInt(p, 10));
+      if (!isNaN(parts[0])) hours = parts[0];
+      if (!isNaN(parts[1])) minutes = parts[1];
+      if (!isNaN(parts[2])) seconds = parts[2];
+    }
+    return new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), hours, minutes, seconds).getTime();
+  };
 
   // Helper: complete session-only levels for one account
-  const completeForAccount = async (aid: number, sessionDateStr: string): Promise<number> => {
+  const completeForAccount = async (aid: number, sessionDateStr?: string): Promise<number> => {
     let completedCount = 0;
     try {
       const dbAccount = await TauriService.getAccountById(aid).catch(() => null);
 
       let accountStartDate: Date;
+      let accountStartTime: string | undefined;
       let branchId: number | undefined;
 
       if (dbAccount) {
@@ -818,6 +851,7 @@ async function applySessionCompletionPerAccount(
           ? (dbAccount.start_date.includes('T') ? dbAccount.start_date.split('T')[0] : dbAccount.start_date)
           : '';
         accountStartDate = new Date(rawStartDate);
+        accountStartTime = dbAccount.start_time;
       } else {
         let startDate = '';
         for (const [cacheKey, caid] of Object.entries(cache.accountCache)) {
@@ -826,7 +860,7 @@ async function applySessionCompletionPerAccount(
           if (underscoreIdx < 0) continue;
           const lowerAccName = cacheKey.substring(underscoreIdx + 1);
           const accData = data.accounts.find((a: any) => a.name?.toLowerCase() === lowerAccName);
-          if (accData?.start_date) { startDate = accData.start_date; break; }
+          if (accData?.start_date) { startDate = accData.start_date; accountStartTime = (accData as any).start_time; break; }
         }
         if (!startDate) return 0;
         accountStartDate = new Date(startDate.includes('T') ? startDate.split('T')[0] : startDate);
@@ -834,23 +868,20 @@ async function applySessionCompletionPerAccount(
 
       if (!branchId || isNaN(accountStartDate.getTime())) return 0;
 
-      // Normalize to local midnight so calendar-day math is exact: the Session
-      // date day itself is included (avoids a timezone off-by-one that dropped
-      // the session-only level scheduled on the Session date).
-      accountStartDate = new Date(accountStartDate.getFullYear(), accountStartDate.getMonth(), accountStartDate.getDate());
+      const baseOfDay = accountBaseMs(accountStartDate, accountStartTime);
+      const cutoffDate = sessionDateStr ? parseDMMMDate(sessionDateStr, accountStartDate.getFullYear()) : null;
 
-      const cutoffDate = parseDMMMDate(sessionDateStr, accountStartDate.getFullYear());
-      if (!cutoffDate) return 0;
-
-      if (!branchSessionLevelsCache.has(branchId)) {
+      // Cache ALL branch levels (real events + '-' sessions) so both the
+      // session-only rows and the completed Level Event windows can be derived.
+      if (!branchLevelsCache.has(branchId)) {
         try {
-          const levels = await TauriService.getGameLevels(branchId);
-          branchSessionLevelsCache.set(branchId, levels.filter((l: any) => l.level_name === '-'));
+          branchLevelsCache.set(branchId, await TauriService.getGameLevels(branchId));
         } catch (_) {
-          branchSessionLevelsCache.set(branchId, []);
+          branchLevelsCache.set(branchId, []);
         }
       }
-      const sessionLevels = branchSessionLevelsCache.get(branchId) || [];
+      const branchLevels = branchLevelsCache.get(branchId) || [];
+      const sessionLevels = branchLevels.filter((l: any) => l.level_name === '-');
       if (sessionLevels.length === 0) return 0;
 
       let existingProgress: any[];
@@ -860,11 +891,65 @@ async function applySessionCompletionPerAccount(
       const completedSet = new Set<number>();
       existingProgress.forEach((ep: any) => { if (ep.is_completed) completedSet.add(ep.level_id); });
 
+      // Completed real Level Event temporal windows — the sandwich bounds.
+      // Purchases and other sessions are never bounds.
+      const completedWindows: { startMs: number; endMs: number; levelId: number; token: string; offset: number }[] = [];
+      branchLevels.forEach((l: any) => {
+        if (l.level_name === '-' || l.days_offset == null) return;
+        if (!completedSet.has(l.id)) return;
+        const startMs = baseOfDay + l.days_offset * DAY_MS;
+        const endMs = startMs + (l.time_spent || 0) * UNIT_SECONDS_MS;
+        completedWindows.push({ startMs, endMs, levelId: l.id, token: l.event_token || '', offset: l.days_offset });
+      });
+
       for (const level of sessionLevels) {
-        if (completedSet.has(level.id)) continue;
         if (level.days_offset == null) continue;
-        const eventDate = new Date(accountStartDate.getTime() + level.days_offset * 24 * 60 * 60 * 1000);
-        if (eventDate.getTime() <= cutoffDate.getTime()) {
+        const sessionX = baseOfDay + level.days_offset * DAY_MS;
+        const alreadyCompleted = completedSet.has(level.id);
+        const beforeCutoff = !!cutoffDate && sessionX <= cutoffDate.getTime();
+
+        // Strict gap sandwich: nearest completed window fully ending before X
+        // (end < X) and nearest window fully starting after X (start > X).
+        const boundBefore = completedWindows
+          .filter(w => w.endMs < sessionX)
+          .sort((a, b) => b.endMs - a.endMs)[0];
+        const boundAfter = completedWindows
+          .filter(w => w.startMs > sessionX)
+          .sort((a, b) => a.startMs - b.startMs)[0];
+        const sandwiched = !!boundBefore && !!boundAfter;
+
+        const shouldComplete = !alreadyCompleted && (beforeCutoff || sandwiched);
+
+        const reason = alreadyCompleted
+          ? 'already completed'
+          : !beforeCutoff && !sandwiched
+            ? 'not between two completed (C) Level Events (strict gap end(E1)<X<start(E2))'
+            : beforeCutoff && sandwiched
+              ? 'session cutoff AND sandwich gap'
+              : beforeCutoff
+                ? 'session cutoff'
+                : 'sandwich gap';
+
+        // Trace every evaluated session-only level (completion + classification).
+        TauriService.logMaintenanceEvent({
+          action: shouldComplete ? 'session_only_completed' : 'session_only_skipped',
+          branchId,
+          levelId: level.id,
+          eventToken: level.event_token,
+          daysOffset: level.days_offset,
+          reason,
+          detail: JSON.stringify({
+            sessionX,
+            beforeCutoff,
+            sandwiched,
+            boundBeforeEnd: boundBefore ? boundBefore.endMs : null,
+            boundBeforeToken: boundBefore ? boundBefore.token : null,
+            boundAfterStart: boundAfter ? boundAfter.startMs : null,
+            boundAfterToken: boundAfter ? boundAfter.token : null,
+          }),
+        }).catch(() => {});
+
+        if (shouldComplete) {
           try { await TauriService.createLevelProgress({ account_id: aid, level_id: level.id }); } catch (_) { /* ignore duplicate */ }
           await TauriService.updateLevelProgress({ account_id: aid, level_id: level.id, is_completed: true, bypass_cooldown: true });
           completedCount++;
@@ -888,12 +973,12 @@ async function applySessionCompletionPerAccount(
     }
   }
 
-  // --- Pass 2: Catch-all for accounts that have sessionDate but were not
-  //     in sessionDateOverrides (e.g., cache lookup edge cases). ---
+  // --- Pass 2: Catch-all for accounts that were not in sessionDateOverrides
+  //     (e.g., cache lookup edge cases). Session date is optional: the sandwich
+  //     rule applies to every imported account even without one. ---
   const processedAids = new Set(sessionDateOverrides.keys());
   for (const acc of data.accounts) {
-    const sessionDateStr = (acc as any).sessionDate;
-    if (!sessionDateStr) continue;
+    const sessionDateStr = (acc as any).sessionDate || undefined;
     const lowerGameName = ((acc as any).gameName || '').trim().toLowerCase();
     const lowerAccName = (acc.name || '').trim().toLowerCase();
     const gid = cache.gameCache[lowerGameName];
