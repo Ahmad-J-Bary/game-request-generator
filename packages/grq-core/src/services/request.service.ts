@@ -8,14 +8,6 @@ export class RequestService extends BaseApiService {
   static async getDailyRequests(accountId: number, targetDate: string): Promise<ApiResponse> {
     return this.handleReadOperation(() => TauriService.getDailyRequests(accountId, targetDate));
   }
-
-  static async getAccountProgress(accountId: number, targetDate: string): Promise<ApiResponse> {
-    return this.handleReadOperation(() => TauriService.getAccountProgress(accountId, targetDate));
-  }
-
-  static async getLevelDates(accountId: number): Promise<ApiResponse> {
-    return this.handleReadOperation(() => TauriService.getLevelDates(accountId));
-  }
 }
 
 // ===== Progress API Service =====

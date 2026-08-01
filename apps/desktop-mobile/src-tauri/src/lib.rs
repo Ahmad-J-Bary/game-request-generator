@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs
+﻿// src-tauri/src/lib.rs
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -1240,261 +1240,6 @@ fn get_daily_requests(
     let level_progress_map: std::collections::HashMap<i64, &AccountLevelProgress> =
         level_progress.iter().map(|p| (p.level_id, p)).collect();
 
-    let mut all_levels = levels.clone();
-    let numeric_levels: Vec<&Level> = levels.iter().collect();
-    if !numeric_levels.is_empty() {
-        let existing_days: std::collections::HashSet<i32> = numeric_levels
-            .iter()
-            .map(|l| l.days_offset as i32)
-            .collect();
-
-        let min_day = *existing_days.iter().min().unwrap();
-        let max_day = *existing_days.iter().max().unwrap();
-        let start_day = if min_day > 0 { 0 } else { min_day };
-
-        for day in start_day..=max_day {
-            if !existing_days.contains(&day) {
-                let next_real_level = levels
-                    .iter()
-                    .filter(|l| l.days_offset > day)
-                    .min_by_key(|l| l.days_offset);
-
-                if let Some(next_level) = next_real_level {
-                    let time: f64;
-                    let token = next_level
-                        .event_token
-                        .split("_day")
-                        .next()
-                        .unwrap_or(&next_level.event_token)
-                        .to_string();
-
-                    let first_real_day = *existing_days.iter().min().unwrap();
-                    let is_before_first_real = day < first_real_day;
-
-                    if is_before_first_real {
-                        let increment = next_level.time_spent as f64 / (first_real_day + 1) as f64;
-                        time = (day + 1) as f64 * increment;
-                    } else {
-                        let prev_real_level = levels
-                            .iter()
-                            .filter(|l| l.days_offset < day)
-                            .max_by_key(|l| l.days_offset);
-
-                        if let Some(prev_level) = prev_real_level {
-                            let ratio = (day - prev_level.days_offset) as f64
-                                / (next_level.days_offset - prev_level.days_offset) as f64;
-                            time = prev_level.time_spent as f64
-                                + ratio * (next_level.time_spent - prev_level.time_spent) as f64;
-                        } else {
-                            time = (next_level.time_spent / 2) as f64;
-                        }
-                    }
-
-                    let synthetic_level = Level {
-                        id: -(day as i64),
-                        game_id: account.game_id,
-                        branch_id: account.branch_id,
-                        level_name: "-".to_string(),
-                        event_token: format!("{}_day{}", token, day),
-                        days_offset: day,
-                        time_spent: time.round() as i32,
-                        is_bonus: false,
-                    };
-                    all_levels.push(synthetic_level);
-                }
-            }
-        }
-    }
-
-    // Group all levels (real and synthetic) by (base_token, day)
-    let mut levels_by_group: std::collections::HashMap<(String, i32), Vec<Level>> =
-        std::collections::HashMap::new();
-    for l in &all_levels {
-        let base_token = l
-            .event_token
-            .split("_day")
-            .next()
-            .unwrap_or(&l.event_token)
-            .to_string();
-        levels_by_group
-            .entry((base_token, l.days_offset))
-            .or_default()
-            .push(l.clone());
-    }
-
-    let mut requests = Vec::new();
-    let template = account.request_template.clone();
-
-    // Process only the groups that have levels for the current day
-    let mut processed_groups = std::collections::HashSet::new();
-
-    for level in &all_levels {
-        if level.days_offset as i64 != days_passed {
-            continue;
-        }
-
-        let clean_event_token = level
-            .event_token
-            .split("_day")
-            .next()
-            .unwrap_or(&level.event_token)
-            .to_string();
-        let group_key = (clean_event_token.clone(), level.days_offset);
-
-        if processed_groups.contains(&group_key) {
-            continue;
-        }
-        processed_groups.insert(group_key.clone());
-
-        let group_levels = levels_by_group.get(&group_key).unwrap();
-
-        // 1. Determine if the whole group is fully completed (then skip it below)
-        let mut group_fully_completed = true;
-        for l in group_levels {
-            if let Some(prog) = level_progress_map.get(&l.id) {
-                if !(prog.is_completed && prog.target_date == Some(target_date.clone())) {
-                    group_fully_completed = false;
-                }
-            } else {
-                group_fully_completed = false;
-            }
-        }
-
-        // If the whole group is completed, skip it
-        if group_fully_completed {
-            continue;
-        }
-
-        // 2. RNG for the group's unified pacing time. ONE jitter is drawn per
-        // (token, day) group and shared by the Session and its Event, so the two
-        // requests always carry the exact same time_spent value.
-        let mut rng = rand::thread_rng();
-
-        // 3. Helper for processing content length
-        let process_content_length = |content: String| -> String {
-            if !content.contains("Content-Length:") && content.contains("\n\n") {
-                let parts: Vec<&str> = content.splitn(2, "\n\n").collect();
-                if parts.len() == 2 {
-                    let headers = parts[0];
-                    let body = parts[1];
-                    let content_length_line = format!("Content-Length: {}", body.len());
-                    return format!("{}\n{}\n\n{}", headers, content_length_line, body);
-                }
-            }
-            content
-        };
-
-        // 4. Generate requests for this group
-
-        // Sort levels within the group: Session (-) then Event (actual names)
-        let mut sorted_group_levels = group_levels.clone();
-        sorted_group_levels.sort_by(|a, b| {
-            if a.level_name == "-" && b.level_name != "-" {
-                std::cmp::Ordering::Less
-            } else if a.level_name != "-" && b.level_name == "-" {
-                std::cmp::Ordering::Greater
-            } else {
-                std::cmp::Ordering::Equal
-            }
-        });
-
-        // Compound pair rule: a day with a real Level Event must carry BOTH a
-        // Level Session and a Level Event, exactly like a Purchase Event carries
-        // a Purchase Session and a Purchase Event. Track whether the group has a
-        // real event and/or a stored '-' session so a virtual Session can be
-        // synthesized below when the event has no session row yet.
-        let mut has_real_level = false;
-        let mut has_synthetic_level = false;
-
-        // Unified group pacing (ms): ONE fresh jitter per (token, day), anchored
-        // on the first real (event) level so the Session and its Event never
-        // show a difference (e.g. base 25s + jitter 441 => 25441 for both).
-        let group_time_spent =
-            request_time_spent_ms(group_anchor_time(&sorted_group_levels), &mut rng);
-
-        for l in sorted_group_levels {
-            // Group-unified time (ms): shared by the Session and its Event.
-            let request_time_spent = group_time_spent;
-
-            let mut base_request_content = template.clone();
-            base_request_content =
-                base_request_content.replace("{event_token}", &clean_event_token);
-            base_request_content =
-                base_request_content.replace("{time_spent}", &request_time_spent.to_string());
-            base_request_content = base_request_content.replace("{account_name}", &account.name);
-            base_request_content =
-                base_request_content.replace("{game_id}", &account.game_id.to_string());
-            base_request_content = base_request_content.replace("{level_name}", &l.level_name);
-            base_request_content =
-                base_request_content.replace("{days_offset}", &l.days_offset.to_string());
-
-            if l.level_name == "-" {
-                has_synthetic_level = true;
-
-                // Generate ONLY Session
-                let session_content = process_content_length(base_request_content);
-                requests.push(serde_json::json!({
-                    "request_type": "session",
-                    "content": session_content,
-                    "event_token": clean_event_token.clone(),
-                    "level_id": l.id,
-                    "time_spent": request_time_spent,
-                    "timestamp": target_date.clone()
-                }));
-            } else {
-                has_real_level = true;
-
-                // Generate ONLY Event
-                let event_content = process_content_length(
-                    base_request_content.replace("POST /session", "POST /event"),
-                );
-                requests.push(serde_json::json!({
-                    "request_type": "event",
-                    "content": event_content,
-                    "event_token": clean_event_token.clone(),
-                    "level_id": l.id,
-                    "time_spent": request_time_spent,
-                    "timestamp": target_date.clone()
-                }));
-            }
-        }
-
-        // Compound pair: when this (token, day) has a real Level Event but no
-        // stored '-' session row yet, synthesize a virtual Level Session that
-        // shares the group's unified pacing time, so the day emits a compound
-        // "Level Session + Level Event" card exactly like a Purchase Event emits
-        // "Purchase Session + Purchase Event" (and never a bare Event alone).
-        let has_db_session_for_token = all_levels.iter().any(|l| {
-            l.level_name == "-"
-                && l.event_token.split("_day").next().unwrap_or("") == clean_event_token
-                && l.days_offset == level.days_offset
-        });
-
-        if has_real_level && !has_synthetic_level && !has_db_session_for_token {
-            let mut virtual_content = template.clone();
-            virtual_content =
-                virtual_content.replace("{event_token}", &clean_event_token);
-            virtual_content =
-                virtual_content.replace("{time_spent}", &group_time_spent.to_string());
-            virtual_content = virtual_content.replace("{account_name}", &account.name);
-            virtual_content =
-                virtual_content.replace("{game_id}", &account.game_id.to_string());
-            virtual_content = virtual_content.replace("{level_name}", "-");
-            virtual_content =
-                virtual_content.replace("{days_offset}", &level.days_offset.to_string());
-
-            let session_content = process_content_length(virtual_content);
-            requests.push(serde_json::json!({
-                "request_type": "session",
-                "content": session_content,
-                "event_token": clean_event_token.clone(),
-                "level_id": null,
-                "time_spent": group_time_spent,
-                "timestamp": target_date.clone()
-            }));
-        }
-    }
-
     let purchase_event_service = PurchaseEventService::new();
     let purchase_events = purchase_event_service
         .get_purchase_events_by_branch(conn, account.branch_id.unwrap_or(0))
@@ -1510,376 +1255,28 @@ fn get_daily_requests(
             .map(|p| (p.purchase_event_id, p))
             .collect();
 
-    for event in purchase_events {
-        let prog = purchase_progress_map.get(&event.id);
-        let effective_offset = prog.map(|p| p.days_offset).or(event.days_offset);
-
-        if let Some(event_day_offset) = effective_offset {
-            let is_completed = prog.map(|p| p.is_completed).unwrap_or(false);
-
-            if event_day_offset as i64 == days_passed && !is_completed {
-                let time_spent = if let Some(p) =
-                    prog.filter(|p| p.is_completed && p.target_date == Some(target_date.clone()))
-                {
-                    // Standardize: if progress is stored in seconds, convert to milliseconds
-                    if p.time_spent < 10000 {
-                        // Heuristic: likely seconds if very small
-                        p.time_spent as i64 * 1000
-                    } else {
-                        p.time_spent as i64
-                    }
-                } else {
-                    // Generate time using timeline-aware averaging logic that includes
-                    // session-only days (synthetic '-') between real event anchors.
-                    // This matches frontend tables where missing days are represented
-                    // by session-only timeline entries.
-                    let mut real_sorted_levels: Vec<&Level> =
-                        levels.iter().filter(|l| l.level_name != "-").collect();
-                    real_sorted_levels.sort_by_key(|l| l.days_offset);
-
-                    let base_time = {
-                        if real_sorted_levels.is_empty() {
-                            243
-                        } else {
-                            // Build a virtual timeline that includes missing days between min..max
-                            // and assigns them interpolated session-only values.
-                            let mut timeline_points: Vec<(i32, i32)> = real_sorted_levels
-                                .iter()
-                                .map(|l| (l.days_offset, l.time_spent))
-                                .collect();
-
-                            let min_day = std::cmp::min(
-                                0,
-                                timeline_points.first().map(|(d, _)| *d).unwrap_or(0),
-                            );
-                            let max_day = timeline_points.last().map(|(d, _)| *d).unwrap_or(0);
-
-                            let existing_days: std::collections::HashSet<i32> =
-                                timeline_points.iter().map(|(d, _)| *d).collect();
-
-                            for day in min_day..=max_day {
-                                if existing_days.contains(&day) {
-                                    continue;
-                                }
-
-                                let prev = real_sorted_levels
-                                    .iter()
-                                    .filter(|l| l.days_offset < day)
-                                    .max_by_key(|l| l.days_offset);
-
-                                let next = real_sorted_levels
-                                    .iter()
-                                    .filter(|l| l.days_offset > day)
-                                    .min_by_key(|l| l.days_offset);
-
-                                let interpolated = match (prev, next) {
-                                    (Some(p), Some(n)) => {
-                                        let span = (n.days_offset - p.days_offset) as f64;
-                                        if span <= 0.0 {
-                                            p.time_spent
-                                        } else {
-                                            let ratio = (day - p.days_offset) as f64 / span;
-                                            (p.time_spent as f64
-                                                + ratio * (n.time_spent - p.time_spent) as f64)
-                                                .round()
-                                                as i32
-                                        }
-                                    }
-                                    (None, Some(n)) => {
-                                        // Before first real level: progressive ramp from day 0
-                                        let first_real_day = n.days_offset;
-                                        if first_real_day <= 0 {
-                                            n.time_spent
-                                        } else {
-                                            ((day + 1) as f64
-                                                * (n.time_spent as f64
-                                                    / (first_real_day + 1) as f64))
-                                                .round()
-                                                as i32
-                                        }
-                                    }
-                                    (Some(p), None) => p.time_spent,
-                                    (None, None) => 243,
-                                };
-
-                                timeline_points.push((day, interpolated));
-                            }
-
-                            timeline_points.sort_by_key(|(d, _)| *d);
-
-                            // For purchase day: average same-day timeline entries + next timeline entry.
-                            let same_day_levels: Vec<i32> = timeline_points
-                                .iter()
-                                .filter(|(d, _)| *d == event_day_offset)
-                                .map(|(_, t)| *t)
-                                .collect();
-
-                            let next_level = timeline_points
-                                .iter()
-                                .find(|(d, _)| *d > event_day_offset)
-                                .map(|(_, t)| *t);
-
-                            let mut levels_to_average = same_day_levels;
-                            if let Some(n) = next_level {
-                                levels_to_average.push(n);
-                            }
-
-                            if !levels_to_average.is_empty() {
-                                let total: i32 = levels_to_average.iter().sum();
-                                (total as f64 / levels_to_average.len() as f64).round() as i32
-                            } else {
-                                // Fallback to previous real anchor if no same/next timeline point exists.
-                                let prev_level = real_sorted_levels
-                                    .iter()
-                                    .filter(|l| l.days_offset <= event_day_offset)
-                                    .last();
-                                prev_level.map(|p| p.time_spent).unwrap_or(243)
-                            }
-                        }
-                    };
-
-                    use rand::Rng;
-                    let mut rng = rand::thread_rng();
-                    let jitter = if base_time < 25 {
-                        rng.gen_range(-100..=500)
-                    } else {
-                        rng.gen_range(-750..=1500)
-                    };
-                    (base_time as i64 * 1000) + jitter as i64
-                };
-
-                let clean_event_token = &event.event_token;
-                let mut purchase_base_content = template.clone();
-                purchase_base_content =
-                    purchase_base_content.replace("{event_token}", clean_event_token);
-                purchase_base_content =
-                    purchase_base_content.replace("{time_spent}", &time_spent.to_string());
-                purchase_base_content =
-                    purchase_base_content.replace("{account_name}", &account.name);
-                purchase_base_content =
-                    purchase_base_content.replace("{game_id}", &account.game_id.to_string());
-                purchase_base_content =
-                    purchase_base_content.replace("{level_name}", &event.event_token);
-                purchase_base_content =
-                    purchase_base_content.replace("{days_offset}", &event_day_offset.to_string());
-
-                let process_content_length = |content: String| -> String {
-                    if !content.contains("Content-Length:") && content.contains("\n\n") {
-                        let parts: Vec<&str> = content.splitn(2, "\n\n").collect();
-                        if parts.len() == 2 {
-                            let headers = parts[0];
-                            let body = parts[1];
-                            let content_length_line = format!("Content-Length: {}", body.len());
-                            return format!("{}\n{}\n\n{}", headers, content_length_line, body);
-                        }
-                    }
-                    content
-                };
-
-                let purchase_session_content =
-                    process_content_length(purchase_base_content.clone());
-
-                requests.push(serde_json::json!({
-                    "request_type": "session",
-                    "content": purchase_session_content,
-                    "event_token": clean_event_token,
-                    "level_id": null,
-                    "time_spent": time_spent,
-                    "timestamp": target_date.clone()
-                }));
-
-                let purchase_event_content = process_content_length(
-                    purchase_base_content.replace("POST /session", "POST /event"),
-                );
-
-                requests.push(serde_json::json!({
-                    "request_type": "event",
-                    "content": purchase_event_content,
-                    "event_token": clean_event_token,
-                    "level_id": null,
-                    "time_spent": time_spent,
-                    "timestamp": target_date.clone()
-                }));
-            }
-        }
-    }
-
-    // De-duplication: Delete "Session Only" requests if there's a "Session + Event" task at the same time
-    // A task is "Session + Event" if it has an event at that time/timestamp.
-    // If such a task exists at a given time, any session request without a corresponding event is redundant.
-    let mut final_requests = Vec::new();
-
-    // Group requests by (time_spent, timestamp) to analyze snapshots in time
-    let mut time_groups: std::collections::HashMap<(i64, String), Vec<serde_json::Value>> =
-        std::collections::HashMap::new();
-    for req in requests {
-        let time = req["time_spent"].as_i64().unwrap_or(0);
-        let ts = req["timestamp"].as_str().unwrap_or("").to_string();
-        time_groups.entry((time, ts)).or_default().push(req);
-    }
-
-    for ((_time, _ts), mut group_reqs) in time_groups {
-        let has_any_event = group_reqs.iter().any(|r| r["request_type"] == "event");
-
-        if has_any_event {
-            // Identify tokens that have events at this moment in current list
-            let tokens_with_events: std::collections::HashSet<String> = group_reqs
-                .iter()
-                .filter(|r| r["request_type"] == "event")
-                .map(|r| r["event_token"].as_str().unwrap_or("").to_string())
-                .collect();
-
-            // Keep only one session for this moment.
-            // Prioritize the session for a token that has an event.
-            let mut session_to_keep_index = None;
-
-            // First pass: try to find a session matching an event token
-            for (idx, r) in group_reqs.iter().enumerate() {
-                if r["request_type"] == "session" {
-                    let token = r["event_token"].as_str().unwrap_or("");
-                    if tokens_with_events.contains(token) {
-                        session_to_keep_index = Some(idx);
-                        break;
-                    }
-                }
-            }
-
-            // Second pass: if no matching session found, just take the first session
-            if session_to_keep_index.is_none() {
-                for (idx, r) in group_reqs.iter().enumerate() {
-                    if r["request_type"] == "session" {
-                        session_to_keep_index = Some(idx);
-                        break;
-                    }
-                }
-            }
-
-            let mut final_group = Vec::new();
-            for (idx, r) in group_reqs.into_iter().enumerate() {
-                if r["request_type"] == "session" {
-                    if Some(idx) == session_to_keep_index {
-                        final_group.push(r);
-                    }
-                } else {
-                    final_group.push(r);
-                }
-            }
-            group_reqs = final_group;
-        } else {
-            // No event in current list, check if a REAL level or purchase exists in DB at this time
-            let real_activity_exists_in_db: bool = conn
-                .query_row(
-                    "SELECT 1 FROM (
-                        SELECT alp.account_id, alp.time_spent, alp.target_date
-                        FROM account_level_progress alp
-                        JOIN levels l ON alp.level_id = l.id
-                        WHERE l.level_name != '-'
-                        UNION ALL
-                        SELECT apep.account_id, apep.time_spent, apep.target_date
-                        FROM account_purchase_event_progress apep
-                    ) AS combined_activity
-                    WHERE account_id = ?1 AND time_spent = ?2 AND target_date = ?3 LIMIT 1",
-                    params![account_id, _time, target_date],
-                    |_| Ok(true),
-                )
-                .unwrap_or(false);
-
-            if real_activity_exists_in_db {
-                // If real activity exists in DB at this time, any standalone session is redundant
-                group_reqs.retain(|r| r["request_type"] != "session");
-            }
-        }
-
-        final_requests.extend(group_reqs);
-    }
+    let requests = grq_engine::request::plan::plan_daily_requests(
+        &grq_engine::request::plan::PlanInput {
+            account: &account,
+            levels: &levels,
+            level_progress: &level_progress_map,
+            purchase_events: &purchase_events,
+            purchase_progress: &purchase_progress_map,
+            days_passed,
+            target_date: &target_date,
+        },
+    );
 
     Ok(serde_json::json!({
         "account_id": account_id,
         "account_name": account.name,
         "target_date": target_date,
         "days_passed": days_passed,
-        "requests": final_requests
+        "requests": requests,
     }))
 }
 
 // ==================== أوامر تاريخ المهام اليومية ====================
-
-/// Interpolates the session-only time (in seconds) for a given day using the
-/// surrounding REAL levels (`level_name != "-"`) as anchors. The day itself is
-/// treated as missing, so the value is independent of any event that shares the
-/// day. Mirrors the synthetic-level interpolation but only for real anchors.
-///
-/// No longer used by request generation (the virtual session now shares the
-/// group's unified time), kept for the interpolation tests.
-#[cfg(test)]
-fn session_interpolated_time(day: i32, levels: &[Level]) -> i32 {
-    let mut real_levels: Vec<&Level> = levels.iter().filter(|l| l.level_name != "-").collect();
-    real_levels.sort_by_key(|l| l.days_offset);
-
-    if real_levels.is_empty() {
-        return 0;
-    }
-
-    let next_level = real_levels
-        .iter()
-        .filter(|l| l.days_offset > day)
-        .min_by_key(|l| l.days_offset)
-        .copied();
-    let prev_level = real_levels
-        .iter()
-        .filter(|l| l.days_offset < day)
-        .max_by_key(|l| l.days_offset)
-        .copied();
-
-    match (prev_level, next_level) {
-        (Some(prev), Some(next)) => {
-            let ratio =
-                (day - prev.days_offset) as f64 / (next.days_offset - prev.days_offset) as f64;
-            (prev.time_spent as f64 + ratio * (next.time_spent - prev.time_spent) as f64).round()
-                as i32
-        }
-        (None, Some(next)) => {
-            let first_real_day = next.days_offset;
-            if first_real_day <= 0 {
-                next.time_spent
-            } else {
-                let increment = next.time_spent as f64 / (first_real_day + 1) as f64;
-                ((day + 1) as f64 * increment).round() as i32
-            }
-        }
-        (Some(prev), None) => prev.time_spent,
-        (None, None) => 0,
-    }
-}
-
-/// Returns the allowed jitter range (in ms) for a base time in seconds.
-fn jitter_range(base_seconds: i32) -> std::ops::RangeInclusive<i64> {
-    if base_seconds < 25 {
-        -100..=500
-    } else {
-        -750..=1500
-    }
-}
-
-/// Compute a time_spent (in ms) from a base time in seconds plus a fresh random
-/// jitter within the allowed range. Called ONCE per (token, day) group so the
-/// Session and its Event share the exact same value.
-fn request_time_spent_ms(base_seconds: i32, rng: &mut rand::rngs::ThreadRng) -> i64 {
-    use rand::Rng;
-    let jitter = rng.gen_range(jitter_range(base_seconds));
-    (base_seconds as i64 * 1000) + jitter
-}
-
-/// Anchor base (seconds) for a request group: the first real (event) level's
-/// time, falling back to the session level when the group has no event.
-fn group_anchor_time(levels: &[Level]) -> i32 {
-    levels
-        .iter()
-        .find(|l| l.level_name != "-")
-        .map(|l| l.time_spent)
-        .or_else(|| levels.first().map(|l| l.time_spent))
-        .unwrap_or(243)
-}
 
 #[tauri::command]
 fn add_completed_task(
@@ -1962,6 +1359,42 @@ fn log_maintenance_event(
             detail.as_deref(),
         )
         .map_err(|e| e.to_string())
+}
+
+/// فحص وإصلاح البيانات المخالفة لقاعدة كل-توكن:
+/// 1) حذف مستويات السشن المنفرد ('-') المشاركة (فرع، يوم، base) مع مستوى حدث
+///    حقيقي (مع تقدمها) — عبر cleanup_session_levels.
+/// 2) حذف سطور "Session Only" القديمة من سجل completed_daily_tasks لنفس
+///    (التوكن، اليوم) عبر HistoryService::repair_invalid_sessions.
+/// كل حذف يُسجَّل في maintenance_logs. Idempotent وآمن للتشغيل عند الإقلاع
+/// أو عند الطلب.
+#[tauri::command]
+fn repair_invalid_sessions(state: tauri::State<AppState>) -> Result<serde_json::Value, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+
+    let (deleted_levels, retokenized) =
+        grq_engine::db::connection::cleanup_session_levels(conn)
+            .map_err(|e| format!("Failed to repair session levels: {}", e))?;
+
+    let history = HistoryService::new()
+        .repair_invalid_sessions(conn)
+        .map_err(|e| format!("Failed to repair session history: {}", e))?;
+
+    let deleted_history_rows = history.deleted_same_day_session_only + history.deleted_orphaned_session;
+
+    println!(
+        "[Repair] session levels deleted={} retokenized={} history deleted={}",
+        deleted_levels, retokenized, deleted_history_rows,
+    );
+
+    Ok(serde_json::json!({
+        "deletedLevels": deleted_levels,
+        "retokenizedSessions": retokenized,
+        "deletedHistoryRows": deleted_history_rows,
+        "deletedSameDaySessionOnly": history.deleted_same_day_session_only,
+        "deletedOrphanedSessions": history.deleted_orphaned_session,
+    }))
 }
 
 #[tauri::command]
@@ -2159,6 +1592,7 @@ pub fn run() {
             delete_completed_task,
             get_maintenance_logs,
             log_maintenance_event,
+            repair_invalid_sessions,
             get_backup_config,
             set_backup_config,
             backup_database_local_now,
@@ -2176,7 +1610,3 @@ pub fn run() {
 #[cfg(test)]
 #[path = "backup_tests.rs"]
 mod backup_tests;
-
-#[cfg(test)]
-#[path = "session_time_tests.rs"]
-mod session_time_tests;

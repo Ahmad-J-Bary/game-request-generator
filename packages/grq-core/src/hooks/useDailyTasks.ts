@@ -127,15 +127,9 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
         Object.entries(parsedCompletions).forEach(([accountId, completion]) => {
           const completionRecord = completion as AccountCompletionRecord;
           if ((currentTime - completionRecord.completionTime) < (7 * 24 * 60 * 60 * 1000)) { // 7 days
-            // Records persisted before v1.5.3 stored timeSpent in ms; normalize to seconds
-            // (a value that large can only be ms).
-            const normalizedRecord = {
-              ...completionRecord,
-              timeSpent: completionRecord.timeSpent > 10000
-                ? Math.round(completionRecord.timeSpent / 1000)
-                : completionRecord.timeSpent,
-            };
-            filteredCompletions[parseInt(accountId)] = normalizedRecord;
+            // timeSpent is stored in seconds everywhere; persist as-is. No
+            // ms/seconds normalization heuristic is needed anymore.
+            filteredCompletions[parseInt(accountId)] = completionRecord;
           }
         });
 

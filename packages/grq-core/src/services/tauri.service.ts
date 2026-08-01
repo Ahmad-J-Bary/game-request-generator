@@ -18,7 +18,6 @@ import type {
   CreateLevelRequest,
   UpdateLevelRequest,
   GenerateRequestData,
-  AccountProgress,
   PurchaseEvent,
   CreatePurchaseEventRequest,
   UpdatePurchaseEventRequest,
@@ -204,25 +203,6 @@ export class TauriService {
       accountId,
       targetDate,
     });
-  }
-
-  static async getAccountProgress(
-    accountId: number,
-    targetDate: string,
-  ): Promise<AccountProgress> {
-    return await invoke<AccountProgress>("get_account_progress", {
-      accountId,
-      targetDate,
-    });
-  }
-
-  static async getLevelDates(
-    accountId: number,
-  ): Promise<Array<[string, string, string, number]>> {
-    return await invoke<Array<[string, string, string, number]>>(
-      "get_level_dates",
-      { accountId },
-    );
   }
 
   // ===== Level progress =====
@@ -432,9 +412,26 @@ export class TauriService {
       detail: request.detail,
     });
   }
+
+  /** RepairSessionLevels: summary of a per-token rule repair run. */
+  static async repairInvalidSessions(): Promise<{
+    deletedLevels: number;
+    retokenizedSessions: number;
+    deletedHistoryRows: number;
+    deletedSameDaySessionOnly: number;
+    deletedOrphanedSessions: number;
+  }> {
+    return await invoke<{
+      deletedLevels: number;
+      retokenizedSessions: number;
+      deletedHistoryRows: number;
+      deletedSameDaySessionOnly: number;
+      deletedOrphanedSessions: number;
+    }>("repair_invalid_sessions");
+  }
 }
 
-import { TEMPLATE_PATTERNS } from "../constants";
+import { TEMPLATE_PATTERNS } from "../constants/index.ts";
 
 // ===== Request Processing Utilities =====
 export class RequestProcessor {

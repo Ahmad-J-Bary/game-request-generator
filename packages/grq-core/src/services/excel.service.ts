@@ -12,7 +12,7 @@ import { parseExcelFile, type ImportData } from './excel/excel-parser';
 import { importFromExcel } from './excel/excel-import';
 import { getCellStyle } from './excel/excel-styling';
 import { formatTimeAMPM, sortAccountsByDate } from './excel/excel-date-utils';
-import { buildColumns } from './excel/excel-column-builder';
+import { buildColumns, filterStandaloneSessionLevels } from './excel/excel-column-builder';
 import { generateGameMatrixData, buildGameDetailSheetData, buildAccountDetailSheetData } from './excel/excel-export-sheet-builder';
 
 export type { ImportData };
@@ -423,18 +423,10 @@ export class ExcelService {
             }
           }
 
-          let filteredLevels = levels.filter((l) => {
-            if (l.level_name !== '-') return true;
-            if (mode === 'event-only') return false;
-            const baseToken = (l.event_token || '').split('_day')[0];
-            return !levels.some(
-              (other) =>
-                other.id !== l.id &&
-                other.level_name !== '-' &&
-                (other.event_token || '').split('_day')[0] === baseToken &&
-                other.days_offset === l.days_offset,
-            );
-          });
+          const filteredLevels =
+            mode === 'event-only'
+              ? levels.filter((l) => l.level_name !== '-')
+              : filterStandaloneSessionLevels(levels);
 
           const levelCols = filteredLevels.map((l) => ({
             kind: 'level' as const,

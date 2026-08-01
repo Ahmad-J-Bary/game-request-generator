@@ -124,12 +124,13 @@ export const calculateTimerState = (
   let totalWaitSec = 0;
   let reason: TimerState["reason"] = "cooldown";
   if (completionRecord) {
-    // Subsequent tasks: Wait from the moment the previous unit was finished
-    // Target = Previous Completion Time + (Current Task TimeSpent - Previous Task TimeSpent)
-    // completionRecord.timeSpent is stored in SECONDS; requests are in ms from Rust.
-    // Convert the previous record to ms so the diff preserves the legacy v1.4.9 pacing.
-    const prevTimeSpentMs = (completionRecord.timeSpent ?? 0) * 1000;
-    const waitDuration = Math.max(0, currentTimeSpent - prevTimeSpentMs);
+    // Subsequent tasks: Wait from the moment the previous unit was finished.
+    // Target = Previous Completion Time + (Current Task TimeSpent - Previous
+    // Task TimeSpent). time_spent (and completionRecord.timeSpent) are both in
+    // SECONDS, so the diff stays in seconds; only the final delta is converted
+    // to ms for the epoch target.
+    const prevTimeSpent = completionRecord.timeSpent ?? 0;
+    const waitDuration = Math.max(0, currentTimeSpent - prevTimeSpent);
     totalWaitSec = waitDuration;
     targetTime = completionRecord.completionTime + waitDuration * 1000;
   } else if (startState && startState.startTime) {

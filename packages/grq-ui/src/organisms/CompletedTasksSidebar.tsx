@@ -213,7 +213,7 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                                                         <div className="flex items-center gap-2 shrink-0 ltr:ml-2 rtl:mr-2">
                                                             {!isExpanded && (
                                                                 <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
-                                                                    {Math.round(latestTask.timeSpent / 1000)}s
+                                                                    {Math.round(latestTask.timeSpent)}s
                                                                 </span>
                                                             )}
                                                             <Badge variant="secondary" className="text-[10px] px-1.5">
@@ -258,7 +258,7 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
                                                                             )}
                                                                         </div>
                                                                         <span className="text-[10px] font-medium text-muted-foreground">
-                                                                            {Math.round(task.timeSpent / 1000)}s
+                                                                            {Math.round(task.timeSpent)}s
                                                                         </span>
                                                                     </div>
                                                                     <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70">

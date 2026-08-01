@@ -24,7 +24,14 @@ export interface TaskCompletionOptions {
   >;
 }
 
-export function generateRandomTimeSpentMs(baseSeconds?: number): number {
+/**
+ * Compute a random time_spent (in SECONDS) from a level's base time_spent
+ * column (base unit where one unit == 1000 seconds) plus a fresh jitter,
+ * matching the Rust planner's `request_time_spent`. Used by manual completion
+ * flows (detail pages) that write progress/history records outside the
+ * daily-request pipeline; the daily pipeline gets its single value from Rust.
+ */
+export function computeTaskDuration(baseSeconds?: number): number {
   const base = baseSeconds && baseSeconds > 0 ? baseSeconds : 1000;
   const jitter =
     base < 25
@@ -43,11 +50,6 @@ export function formatTaskLevelName(
   if (!levelName) return '-';
   const trimmed = levelName.trim();
   return trimmed || '-';
-}
-
-/** Precisely match the Rust backend's time_spent formula: base * 1000 + jitter */
-export function computeTaskDuration(baseSeconds: number): number {
-  return generateRandomTimeSpentMs(baseSeconds);
 }
 
 /**
@@ -109,10 +111,7 @@ export async function saveCompletionToHistory(params: {
   requestType: string;
   isPurchase: boolean;
 }): Promise<void> {
-  let durationMs = params.timeSpent || 0;
-  if (durationMs <= 0) {
-    durationMs = generateRandomTimeSpentMs(1000);
-  }
+  const durationMs = params.timeSpent || 0;
   await recordTaskCompletion({
     accountId: params.accountId,
     accountName: params.accountName,
@@ -515,7 +514,7 @@ export class TaskCompletionHandler {
             this.options.games.find((g) => g.id === account.game_id)?.name ||
             "Unknown",
           eventToken: request.event_token!,
-          durationMs: request.time_spent || computeTaskDuration(1000),
+            durationMs: request.time_spent || 0,
           levelName: request.level_name,
           requestType: finalRequestType,
           isPurchase: true,
@@ -555,10 +554,9 @@ export class TaskCompletionHandler {
           }
         }
 
-        // Now update the progress to completed status
-        // Include a computed time_spent (ms) so the level progress record
-        // stores a meaningful duration, matching AccountDetailPage behavior.
-        const updateTimeSpentMs = request.time_spent || computeTaskDuration(1000);
+        // Now update the progress to completed status.
+        // time_spent is in SECONDS and stored as-is in the progress record.
+        const updateTimeSpentMs = request.time_spent || 0;
         const updateRequest = {
           account_id: accountId,
           level_id: targetLevelId,
@@ -588,7 +586,7 @@ export class TaskCompletionHandler {
                 (g) => g.id === foundTask!.account.game_id,
               )?.name || "Unknown",
             eventToken: request.event_token || "",
-            durationMs: request.time_spent || computeTaskDuration(1000),
+          durationMs: request.time_spent || 0,
             levelId: resolvedLevelId,
             levelName: isSessionOnly ? '-' : request.level_name,
             requestType: finalRequestType,
@@ -631,10 +629,10 @@ export class TaskCompletionHandler {
             if (allGroupCompleted && groupIndices.includes(requestIndex)) {
               const completionRecord: AccountCompletionRecord = {
                 accountId,
-                // Store in seconds: the timer multiplies by 1000 to compare
-                // against ms-based request time_spent, and the UI renders this
-                // value directly as "{{timeSpent}}s".
-                timeSpent: Math.round(group.time_spent / 1000),
+                // time_spent is already in seconds; store as-is. The timer diffs
+                // it against the next task's seconds-based time_spent, and the UI
+                // renders this value directly as "{{timeSpent}}s".
+                timeSpent: Math.round(group.time_spent),
                 completionTime: now,
                 levelId: resolvedLevelId ?? 0,
                 eventToken: group.event_token,
@@ -695,7 +693,7 @@ export class TaskCompletionHandler {
           ...prev,
           [accountId]: {
             accountId,
-            timeSpent: Math.round((request.time_spent || 0) / 1000),
+            timeSpent: Math.round(request.time_spent || 0),
             completionTime: now,
             levelId: resolvedLevelId ?? 0,
             eventToken: request.event_token || "",

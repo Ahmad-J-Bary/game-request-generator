@@ -34,7 +34,7 @@ class StorageService {
 }
 
 // ==== Asynchronous DB Storage Wrapper ====
-import { TauriService } from './tauri.service';
+import { TauriService } from './tauri.service.ts';
 
 class AsyncStorageService {
   private prefix = 'grq_';

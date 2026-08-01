@@ -18,13 +18,19 @@ export interface ColumnData {
 }
 
 /**
- * Per-token rule: a standalone Session level ('-') must never be exported on a
- * day that also carries a real Level Event with the SAME base token. Event-day
- * sessions sharing their token with the day's event are dropped so no "Session
- * Only" column can coexist with a "Level Event" column of the same token. A
- * session with a different token on an event day is kept.
+ * Three request types model:
+ * - "Session Only": a standalone Session ('-') whose base token has NO real
+ *   Level Event anywhere in the branch. It is exported/imported as its own row.
+ * - "Level Event (event + session)": a real Level Event. Its session is folded
+ *   into the event — the event column represents the whole pair, so no separate
+ *   Session Only row may exist for that base token.
+ * - "Purchase Event (event + session)": handled by the purchase columns.
+ *
+ * A standalone Session ('-') is therefore only kept when its base token does
+ * not belong to any real Level Event. This subsumes the same-(base, day) rule:
+ * if a Session shares base + day with an event, its base already has an event.
  */
-export function filterSessionLevelsSharingDayWithEvent(levels: Level[]): Level[] {
+export function filterStandaloneSessionLevels(levels: Level[]): Level[] {
   return levels.filter((l) => {
     if (l.level_name !== '-') return true;
     const baseToken = l.event_token.split('_day')[0];
@@ -32,7 +38,6 @@ export function filterSessionLevelsSharingDayWithEvent(levels: Level[]): Level[]
       (other) =>
         other.id !== l.id &&
         other.level_name !== '-' &&
-        other.days_offset === l.days_offset &&
         other.event_token.split('_day')[0] === baseToken,
     );
   });
@@ -42,8 +47,9 @@ export function filterSessionLevelsSharingDayWithEvent(levels: Level[]): Level[]
  * Build columns array from levels and purchase events
  */
 export function buildColumns(levels: Level[], purchaseEvents: PurchaseEvent[]): ColumnData[] {
-  // Per-token rule: filter out session levels sharing base + day with an event level
-  const levelCols: ColumnData[] = filterSessionLevelsSharingDayWithEvent(levels)
+  // Rule: only standalone Session levels (base token without a real Level Event)
+  // become "Session Only" columns; event sessions fold into the event column.
+  const levelCols: ColumnData[] = filterStandaloneSessionLevels(levels)
     .map((l) => ({
       kind: 'level' as const,
       id: l.id,

@@ -561,17 +561,22 @@ fn base_token_of(token: &str) -> String {
 /// Rule 2 (per token): a standalone Session must NOT coexist with a Level Event of
 /// the SAME base token on the SAME day. Such sessions (and their progress) are
 /// removed so the UI only ever shows the Event for that day.
-fn cleanup_session_levels(conn: &Connection) -> SqlResult<()> {
+///
+/// Returns `(deleted, retokenized)` counts for reporting.
+pub fn cleanup_session_levels(conn: &Connection) -> SqlResult<(usize, usize)> {
     cleanup_session_levels_filtered(conn, None)
 }
 
 /// Cleanup used when duplicating a branch (create_branch copy): applies the same
 /// per-token rules to just the newly-created branch.
 pub fn cleanup_branch_session_levels(conn: &Connection, branch_id: i64) -> SqlResult<()> {
-    cleanup_session_levels_filtered(conn, Some(branch_id))
+    cleanup_session_levels_filtered(conn, Some(branch_id)).map(|_| ())
 }
 
-fn cleanup_session_levels_filtered(conn: &Connection, branch_id: Option<i64>) -> SqlResult<()> {
+fn cleanup_session_levels_filtered(
+    conn: &Connection,
+    branch_id: Option<i64>,
+) -> SqlResult<(usize, usize)> {
     let branch_filter = match branch_id {
         Some(b) => format!(" AND s.branch_id = {}", b),
         None => String::new(),
@@ -664,6 +669,7 @@ fn cleanup_session_levels_filtered(conn: &Connection, branch_id: Option<i64>) ->
         rows.collect::<SqlResult<Vec<_>>>()?
     };
 
+    let mut retokenized_count: usize = 0;
     for (id, branch_id, token, day) in sessions {
         let next_base: Option<String> = conn
             .query_row(
@@ -707,6 +713,7 @@ fn cleanup_session_levels_filtered(conn: &Connection, branch_id: Option<i64>) ->
                 params![new_token, id, branch_id, day],
             )?;
             if changed > 0 {
+                retokenized_count += 1;
                 if let Err(e) = log_service.log(
                     conn,
                     "session_retokenized",
@@ -724,7 +731,7 @@ fn cleanup_session_levels_filtered(conn: &Connection, branch_id: Option<i64>) ->
         }
     }
 
-    Ok(())
+    Ok((doomed.len(), retokenized_count))
 }
 
 #[cfg(test)]

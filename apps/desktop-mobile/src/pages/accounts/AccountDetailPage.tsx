@@ -31,7 +31,7 @@ import { useLevels } from "@grq/core/hooks/useLevels";
 import { usePurchaseEvents } from "@grq/core/hooks/usePurchaseEvents";
 import { useProgress } from "@grq/core/hooks/useProgress";
 import { TauriService } from "@grq/core/services/tauri.service";
-import { recordTaskCompletion, generateRandomTimeSpentMs } from "@grq/core/utils/taskCompletion";
+import { recordTaskCompletion, computeTaskDuration } from "@grq/core/utils/taskCompletion";
 import { useSettings } from "@grq/ui/contexts/SettingsContext";
 import { useTheme } from "@grq/ui/contexts/ThemeContext";
 import { AccountDataTable } from "@grq/ui/organisms/tables/AccountDataTable";
@@ -491,7 +491,7 @@ export default function AccountDetailPage() {
         try {
           // Always generate time_spent so Dur.(ms) is never missing in History
           const baseSecondsForLevel = levelDef?.time_spent || 1000;
-          const levelTimeSpentMs = generateRandomTimeSpentMs(baseSecondsForLevel);
+          const levelTimeSpentMs = computeTaskDuration(baseSecondsForLevel);
 
           if (existingProgress) {
             await TauriService.updateLevelProgress({
@@ -621,7 +621,7 @@ export default function AccountDetailPage() {
 
         // Always ensure a valid time_spent value (generate randomly if still 0)
         if (calculatedTimeSpent <= 0) {
-          calculatedTimeSpent = generateRandomTimeSpentMs(1000);
+          calculatedTimeSpent = computeTaskDuration(1000);
         }
 
         const existingPurchaseProg = purchaseProgress.find(

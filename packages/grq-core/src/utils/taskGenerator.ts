@@ -4,7 +4,7 @@ import {
   parseAccountStartDate,
 } from "./daily-tasks.utils";
 import { calculateTimerState } from "./timer.utils";
-import { buildRequestGroups, classifyLevelRequestType } from "./request-groups.utils";
+import { buildRequestGroups } from "./request-groups.utils";
 import type {
   Account,
   DailyRequestsResponse,
@@ -95,6 +95,11 @@ export class TaskGenerator {
           const gameLevelById = new Map(
             gameLevels.map((level) => [level.id, level]),
           );
+          const realLevelByToken = new Map(
+            gameLevels
+              .filter((level) => level.level_name !== "-")
+              .map((level) => [level.event_token, level]),
+          );
           const purchaseByToken = new Map(
             gamePurchaseEvents.map((purchase) => [
               purchase.event_token,
@@ -117,14 +122,6 @@ export class TaskGenerator {
               .filter((progress) => progress.is_completed)
               .map((progress) => progress.purchase_event_id),
           );
-          const toMidnightUTC = (dateStr: string) => {
-            const date = new Date(dateStr);
-            if (Number.isNaN(date.getTime())) return null;
-            return new Date(
-              Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
-            ).getTime();
-          };
-
           const sessionLevelIdByKey = new Map(
             gameLevels
               .filter((level) => level.level_name === "-")
@@ -174,25 +171,12 @@ export class TaskGenerator {
             }
 
             if (requestType === "Session Only") {
-              let daysOffset = 0;
-              const eventTokenMatch = (request.event_token || "").match(
-                /_day(-?\d+)$/,
-              );
-              if (eventTokenMatch) {
-                daysOffset = parseInt(eventTokenMatch[1], 10);
-              } else {
-                const startUTC = toMidnightUTC(account.start_date);
-                const targetUTC = toMidnightUTC(response.target_date);
-
-                if (startUTC !== null && targetUTC !== null) {
-                  const msPerDay = 24 * 60 * 60 * 1000;
-                  daysOffset = Math.round((targetUTC - startUTC) / msPerDay);
-                }
-              }
-              const baseToken = (request.event_token || "").split("_day")[0];
-              const sessionKey = `${baseToken}::${daysOffset}`;
-              const sessionLevelId = sessionLevelIdByKey.get(sessionKey);
-              return sessionLevelId ? completedLevelIds.has(sessionLevelId) : false;
+              // A standalone session always carries a real level_id (a persisted
+              // '-' row) or a negative synthetic id, so the direct lookup is
+              // sufficient — negative ids are never in the completed set.
+              return request.level_id != null
+                ? completedLevelIds.has(request.level_id)
+                : false;
             }
 
             return false;
@@ -216,60 +200,52 @@ export class TaskGenerator {
             }
           }
 
-          // Compound-pair detection: a Level Session is considered paired (and
-          // therefore classified as "Level Session") when a Level Event request
-          // shares the same event token (same base + same day).
-          const hasCorrespondingEvent = (req: any) =>
-            tempRequests.some(
-              (r) =>
-                (r.event_token || "").trim() === (req.event_token || "").trim() &&
-                gameLevelByToken.has((r.event_token || "").trim()) &&
-                (r.request_type as string).toLowerCase() === "event",
-            );
-
+          // The Rust planner already emits the FINAL request types. Here we
+          // only enrich each request with data-driven fields for display and
+          // completion checks — no classification heuristics.
           for (const req of tempRequests) {
             const matchingLevel = gameLevelByToken.get(req.event_token);
             const matchingPurchase = purchaseByToken.get(req.event_token);
+            const finalType = (req.request_type as string) || "";
 
-            if (matchingLevel) {
-              const rawType = (req.request_type as string).toLowerCase();
-
-              req.level_name = matchingLevel.level_name;
-              req.level_id = matchingLevel.id;
-              req.days_offset = matchingLevel.days_offset;
-
-              if (rawType === "session" || rawType === "session only") {
-                // A Session paired with a Level Event on the same token forms a
-                // compound "Level Session + Level Event" card (like a Purchase
-                // Event). Standalone sessions (no corresponding event) stay as
-                // "Session Only".
-                req.request_type = classifyLevelRequestType(
-                  rawType,
-                  hasCorrespondingEvent(req),
-                );
-                // Re-resolve the correct session level ID (if one exists)
-                // to avoid using a real level's ID from the map collision.
-                const sessionDaysOffset = req.days_offset ?? 0;
-                const sessionBaseToken = (req.event_token || "").split("_day")[0];
-                const sessionKey = `${sessionBaseToken}::${sessionDaysOffset}`;
-                const sessionLvlId = sessionLevelIdByKey.get(sessionKey);
-                if (sessionLvlId) {
-                  req.level_id = sessionLvlId;
-                }
-              } else if (rawType === "event") {
-                req.request_type = "Level Event";
-              }
+            if (
+              finalType === "Purchase Session" ||
+              finalType === "Purchase Event"
+            ) {
+              const purchase = matchingPurchase as any;
+              req.level_name = purchase?.level_name || "$$$";
+              req.days_offset = purchase?.days_offset;
               validRequests.push(req);
-            } else if (matchingPurchase) {
-              const rawType = req.request_type as string;
-
-              req.level_name = (matchingPurchase as any).level_name || "$$$";
-              req.level_id = matchingPurchase.id;
-              req.days_offset = matchingPurchase.days_offset;
-              req.request_type =
-                rawType === "session" ? "Purchase Session" : "Purchase Event";
-              validRequests.push(req);
+              continue;
             }
+
+            // Level requests (Session Only / Level Session / Level Event).
+            // Rust already attaches the correct level_id; we only fill in
+            // level_name/days_offset for display and history records.
+            const resolved =
+              req.level_id != null
+                ? gameLevelById.get(req.level_id)
+                : undefined;
+
+            if (finalType === "Level Event") {
+              const src = resolved ?? matchingLevel;
+              req.level_name = src?.level_name;
+              req.days_offset = src?.days_offset;
+            } else if (finalType === "Level Session") {
+              const src = resolved ?? matchingLevel;
+              req.level_name =
+                src?.level_name ??
+                realLevelByToken.get(req.event_token)?.level_name;
+              req.days_offset =
+                src?.days_offset ?? matchingLevel?.days_offset;
+            } else {
+              // Session Only — always shows the session placeholder.
+              const src = resolved ?? matchingLevel;
+              req.level_name = src?.level_name || "-";
+              req.days_offset = src?.days_offset;
+            }
+
+            validRequests.push(req);
           }
 
           if (validRequests.length > 0) {
@@ -328,37 +304,10 @@ export class TaskGenerator {
               );
             });
 
-            // Prevent placing standalone "Session Only" groups after any purchase group
-            // for the same account/day timeline. This preserves legacy flow where purchase
-            // behaves like level (session+event pair) and no trailing session-only is emitted.
-            const normalizedPendingGroups = pendingGroups.filter(
-              (group, idx, arr) => {
-                const hasEvent = group.requests.some((r) =>
-                  (r.request_type as string).includes("Event"),
-                );
-                if (hasEvent) return true;
-
-                const hasPurchaseInGroup = group.requests.some((r) =>
-                  (r.request_type as string).includes("Purchase"),
-                );
-                if (hasPurchaseInGroup) return true;
-
-                const hasAnyPurchaseBefore = arr
-                  .slice(0, idx)
-                  .some((prev) =>
-                    prev.requests.some((r) =>
-                      (r.request_type as string).includes("Purchase"),
-                    ),
-                  );
-
-                // Drop session-only groups that come after purchase groups.
-                if (hasAnyPurchaseBefore) return false;
-
-                return true;
-              },
-            );
-
-            normalizedPendingGroups.forEach((group, index) => {
+            // The Rust planner already excludes standalone "Session Only"
+            // groups that would trail a purchase card on the same timeline, so
+            // no legacy post-filter is needed here.
+            pendingGroups.forEach((group, index) => {
               const completedTasks = new Set<string>();
               group.requests.forEach((request, requestIndex) => {
                 if (isRequestCompleted(request)) {

@@ -101,14 +101,6 @@ export class ApiService {
     return RequestService.getDailyRequests(accountId, targetDate);
   }
 
-  static async getAccountProgress(accountId: number, targetDate: string): Promise<ApiResponse> {
-    return RequestService.getAccountProgress(accountId, targetDate);
-  }
-
-  static async getLevelDates(accountId: number): Promise<ApiResponse> {
-    return RequestService.getLevelDates(accountId);
-  }
-
   // ===== Progress Operations =====
   static async createLevelProgress(progressData: any): Promise<ApiResponse> {
     return ProgressService.createLevelProgress(progressData);

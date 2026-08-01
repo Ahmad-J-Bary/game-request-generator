@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Toaster } from "@grq/ui/atoms/sonner";
 import { TooltipProvider } from "@grq/ui/atoms/tooltip";
 import { BrowserRouter, Routes, Route, useParams, Navigate } from "react-router-dom";
@@ -7,6 +8,7 @@ import { LanguageProvider } from "@grq/core/contexts/LanguageContext";
 import { SettingsProvider } from "@grq/ui/contexts/SettingsContext";
 import { MainLayout } from "@grq/ui/templates/MainLayout";
 import { useGames } from "@grq/core/hooks/useGames";
+import { TauriService } from "@grq/core/services/tauri.service";
 import Dashboard from "./pages/Dashboard";
 // Accounts
 import AccountDetailPage from "./pages/accounts/AccountDetailPage";
@@ -40,6 +42,31 @@ function GameDetailPageWrapper() {
 }
 
 function AppContent() {
+  // One-time per-token rule repair at startup: deletes any invalid standalone
+  // Session levels and stale "Session Only" completed-history rows that share a
+  // day + Event Token with a real Level Event. Idempotent; every deletion is
+  // logged to maintenance_logs on the Rust side.
+  useEffect(() => {
+    let cancelled = false;
+    TauriService.repairInvalidSessions()
+      .then((summary) => {
+        if (cancelled) return;
+        const total =
+          (summary.deletedLevels || 0) + (summary.deletedHistoryRows || 0);
+        if (total > 0) {
+          console.log(
+            `[Repair] invalid Session data cleaned: levels=${summary.deletedLevels ?? 0} retokenized=${summary.retokenizedSessions ?? 0} historyRows=${summary.deletedHistoryRows ?? 0}`,
+          );
+        }
+      })
+      .catch((error) => {
+        console.error("[Repair] session repair failed:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <>
       <QueryClientProvider client={queryClient}>

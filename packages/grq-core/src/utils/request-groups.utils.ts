@@ -7,28 +7,14 @@ export interface RequestGroup {
 }
 
 /**
- * Classify a raw level request into its final type. A Session that is paired
- * with a Level Event on the same token becomes a compound "Level Session"
- * (mirroring a Purchase Event's "Purchase Session + Purchase Event"); a
- * standalone Session without a corresponding event stays "Session Only".
- */
-export const classifyLevelRequestType = (
-  rawType: string,
-  hasCorrespondingEvent: boolean,
-): "Level Session" | "Level Event" | "Session Only" => {
-  const type = (rawType || "").toLowerCase();
-  if (type === "event") return "Level Event";
-  if (type === "session" || type === "session only") {
-    return hasCorrespondingEvent ? "Level Session" : "Session Only";
-  }
-  return "Session Only";
-};
-
-/**
  * Groups requests into cards by event token. A session and its event are kept
  * in a single group even when their per-request time_spent values differ.
  * Requests within a group are sorted Session-first. Groups are sorted by their
  * pacing time in ascending order.
+ *
+ * Classification is NOT done here: the Rust planner already emits the final
+ * request types ("Session Only", "Level Session", "Level Event", ...). This
+ * function only groups and renders what it receives.
  */
 export const buildRequestGroups = (
   validRequests: DailyRequest[],
@@ -61,8 +47,7 @@ export const buildRequestGroups = (
   }
 
   // Deterministic pacing: when a group contains an Event, the event's own time
-  // drives the card timer (matches the source, where the event level is the
-  // first level on event days). Session-only groups keep the session value.
+  // drives the card timer. Session-only groups keep the session value.
   for (const group of requestGroups) {
     const eventRequest = group.requests.find((r) =>
       (r.request_type || "").toString().toLowerCase().includes("event"),

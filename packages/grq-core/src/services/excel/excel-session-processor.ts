@@ -1,7 +1,7 @@
-import { TauriService } from '../tauri.service';
-import { asyncStorageService } from '../storage.service';
-import { formatDateShort, parseDate, addDays } from './excel-date-utils';
-import { parseDMMMDate } from './excel-parse-utils';
+import { TauriService } from '../tauri.service.ts';
+import { asyncStorageService } from '../storage.service.ts';
+import { formatDateShort, parseDate, addDays } from './excel-date-utils.ts';
+import { parseDMMMDate } from './excel-parse-utils.ts';
 
 export interface SessionProcessorResult {
   totalAccountsScanned: number;
@@ -121,6 +121,17 @@ export async function applySessionCompletionForGame(
           .map((l: any) => l.days_offset as number),
       );
 
+      // Rule 3 (per token): a base token that has a real Level Event anywhere is
+      // an "event + session" pair — its standalone Session row must never be
+      // CREATED here. Days before/after such an event are generated
+      // synthetically by the planner; this processor may only complete an
+      // already-existing '-' row for such a token (legacy data).
+      const eventBaseTokens = new Set<string>(
+        levels
+          .filter((l: any) => l.level_name !== '-' && l.event_token)
+          .map((l: any) => String(l.event_token).split('_day')[0]),
+      );
+
       for (const account of branchAccounts) {
         result.totalAccountsScanned++;
 
@@ -176,12 +187,16 @@ export async function applySessionCompletionForGame(
           // Rule 1: token follows the next real level (previous as fallback).
           const baseToken = getBaseTokenForOffset(offset, levels);
           const sessionToken = `${baseToken}_day${offset}`;
+          const belongsToEvent = eventBaseTokens.has(baseToken);
 
           let sessionLevel = levels.find(
             (l: any) => l.level_name === '-' && l.event_token === sessionToken && l.days_offset === offset,
           );
 
-          if (!sessionLevel) {
+          // Rule 3: never CREATE a standalone Session row for a base token that
+          // belongs to a Level Event — the session folds into the event column.
+          // If such a row already exists (legacy data) it may still be completed.
+          if (!sessionLevel && !belongsToEvent) {
             const interpolatedSpent = getInterpolatedTimeSpent(offset, levels);
             const finalTimeSpent = interpolatedSpent > 0 ? interpolatedSpent : Math.max(1, offset + 1);
 
