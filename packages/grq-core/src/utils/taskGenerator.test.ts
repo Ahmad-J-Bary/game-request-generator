@@ -147,4 +147,64 @@ describe('TaskGenerator — Session Only requests in Daily Tasks', () => {
     assert.strictEqual(req.level_name, 'Level 1');
     assert.strictEqual(req.days_offset, 0);
   });
+
+  it('excludes a completed Session Only request (persisted row + progress) from Daily Tasks', async () => {
+    const levels = [
+      level({ id: 1, level_name: 'Level 1', event_token: 'abc_day0', days_offset: 0, time_spent: 100 }),
+      level({ id: 3, level_name: '-', event_token: 'abc_day2', days_offset: 2, time_spent: 90 }),
+    ];
+    installMocks({
+      levels,
+      requests: [
+        { request_type: 'Session Only', content: 'POST /session\r\n\r\n90', event_token: 'abc', level_id: 3, time_spent: 90, timestamp: '2024-01-03' },
+      ],
+      progress: [{ level_id: 3, is_completed: true }],
+    });
+
+    const tasks = await runGenerator();
+
+    assert.strictEqual(tasks.length, 0, 'a completed Session Only request must not reappear in Daily Tasks');
+  });
+
+  it('excludes a synthetic Session Only request whose persisted (base token, day) row is completed', async () => {
+    const levels = [
+      level({ id: 1, level_name: 'Level 1', event_token: 'abc_day0', days_offset: 0, time_spent: 100 }),
+      level({ id: 3, level_name: '-', event_token: 'abc_day2', days_offset: 2, time_spent: 90 }),
+    ];
+    installMocks({
+      levels,
+      requests: [
+        // The Rust planner emits a synthetic negative id for the same day 2 session.
+        { request_type: 'Session Only', content: 'POST /session\r\n\r\n90', event_token: 'abc', level_id: -2, time_spent: 90, timestamp: '2024-01-03' },
+      ],
+      progress: [{ level_id: 3, is_completed: true }],
+    });
+
+    const tasks = await runGenerator();
+
+    assert.strictEqual(tasks.length, 0, 'a completed session must not reappear even when the emitted level id is synthetic');
+  });
+
+  it('keeps a Session Only request that lies after the last completed Level Event', async () => {
+    const levels = [
+      level({ id: 1, level_name: 'Level 1', event_token: 'abc_day0', days_offset: 0, time_spent: 100 }),
+      level({ id: 2, level_name: 'Level 5', event_token: 'abc_day5', days_offset: 5, time_spent: 200 }),
+      level({ id: 3, level_name: '-', event_token: 'abc_day3', days_offset: 3, time_spent: 90 }),
+    ];
+    installMocks({
+      levels,
+      requests: [
+        { request_type: 'Session Only', content: 'POST /session\r\n\r\n90', event_token: 'abc', level_id: -3, time_spent: 90, timestamp: '2024-01-03' },
+      ],
+      // Day 0 Level Event completed → completion frontier is day 0; the day 3
+      // session lies after it and must stay pending.
+      progress: [{ level_id: 1, is_completed: true }],
+    });
+
+    const tasks = await runGenerator();
+    const req = accountTask(tasks).requests[0];
+
+    assert.strictEqual(req.request_type, 'Session Only');
+    assert.strictEqual(req.days_offset, 3);
+  });
 });

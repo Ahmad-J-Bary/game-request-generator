@@ -1,6 +1,6 @@
 import { TauriService } from '../tauri.service.ts';
 import { asyncStorageService } from '../storage.service.ts';
-import { formatDateShort, parseDate, addDays } from './excel-date-utils.ts';
+import { formatDateShort, parseDate, addDays, todayIsoDate } from './excel-date-utils.ts';
 import { parseDMMMDate } from './excel-parse-utils.ts';
 
 export interface SessionProcessorResult {
@@ -238,6 +238,7 @@ export async function applySessionCompletionForGame(
               account_id: account.id,
               level_id: sessionLevel.id,
               is_completed: true,
+              target_date: todayIsoDate(),
             });
             completedLevelSet.add(sessionLevel.id);
             result.completedByCutoff++;

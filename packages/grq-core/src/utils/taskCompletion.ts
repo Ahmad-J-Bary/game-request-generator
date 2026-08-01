@@ -556,12 +556,16 @@ export class TaskCompletionHandler {
 
         // Now update the progress to completed status.
         // time_spent is in SECONDS and stored as-is in the progress record.
+        // target_date stamps today so the planner's group-skip rule
+        // (is_completed && target_date == today) drops the task immediately on
+        // the next regeneration.
         const updateTimeSpentMs = request.time_spent || 0;
         const updateRequest = {
           account_id: accountId,
           level_id: targetLevelId,
           time_spent: updateTimeSpentMs,
           is_completed: true,
+          target_date: new Date().toISOString().split("T")[0],
           bypass_cooldown: true,
         };
 

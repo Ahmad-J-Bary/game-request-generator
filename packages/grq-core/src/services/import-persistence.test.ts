@@ -117,6 +117,10 @@ function updateFor(levelId: number): any | undefined {
   );
 }
 
+function todayIso(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
 beforeEach(() => {
   createLevelProgressCalls = [];
   updateLevelProgressCalls = [];
@@ -223,6 +227,7 @@ describe('applySessionCompletionPerAccount — completed Level Event completes S
     await applySessionCompletionPerAccount(cache, new Map([['100', '3-Jan']]), data, result);
 
     assert.ok(updateFor(1), 'Session Only day 2 completed by Session cutoff (3-Jan <= 3-Jan)');
+    assert.strictEqual(updateFor(1).target_date, todayIso(), 'cutoff-completed session stamped with target_date = today');
   });
 
   it('completes by the last completed event even when the Session cutoff would NOT', async () => {
@@ -240,7 +245,7 @@ describe('applySessionCompletionPerAccount — completed Level Event completes S
     assert.ok(updateFor(2), 'Session Only day 5 completed via the last completed event despite being after the Session cutoff');
   });
 
-  it('skips Session Only levels that are already completed', async () => {
+  it('re-stamps already completed Session Only levels with target_date = today (planner skip invariant)', async () => {
     installMocks({
       levels: [realLevel(1, 0), sessionLevel(2, 5), realLevel(3, 10)],
       progress: [
@@ -253,7 +258,11 @@ describe('applySessionCompletionPerAccount — completed Level Event completes S
 
     await applySessionCompletionPerAccount(cache, new Map(), data, result);
 
-    assert.strictEqual(updateLevelProgressCalls.length, 0, 'no updates issued (already completed)');
+    const stamp = updateFor(2);
+    assert.ok(stamp, 'already-completed session re-stamped');
+    assert.strictEqual(stamp.is_completed, true, 'kept completed');
+    assert.strictEqual(stamp.target_date, todayIso(), 'target_date stamped to today so the planner skips the group');
+    assert.strictEqual(result.errors.length, 0, 'no errors');
   });
 
   it('writes trace logs: completed before the last completed event, skipped after it / with no completed event', async () => {
@@ -371,6 +380,109 @@ describe('applySessionCompletionPerAccount — completed Level Event completes S
     for (const c of addLevelCalls.filter((c: any) => c.level_name === '-')) {
       assert.ok(updateFor(c.id), `created day ${c.days_offset} completed`);
     }
+    assert.strictEqual(result.errors.length, 0, 'no errors');
+  });
+
+  it('creates missing Session Only rows even WITHOUT a completed Level Event (so the planner emits real ids)', async () => {
+    installMocks({
+      gameId: 1,
+      levels: [realLevel(1, 0), realLevel(3, 10)],
+      progress: [],
+    });
+    const { cache, data, result } = buildContext(false);
+
+    await applySessionCompletionPerAccount(cache, new Map(), data, result);
+
+    const createdDays = addLevelCalls
+      .filter((c: any) => c.level_name === '-')
+      .map((c: any) => c.days_offset);
+    assert.deepStrictEqual(
+      createdDays,
+      [1, 2, 3, 4, 5, 6, 7, 8, 9],
+      'gap days persisted as Session Only rows despite no completed Level Event',
+    );
+    assert.strictEqual(updateLevelProgressCalls.length, 0, 'no completion without cutoff or completed event');
+    assert.strictEqual(result.errors.length, 0, 'no errors');
+  });
+
+  it('completes created rows by the Session cutoff even with no completed Level Event', async () => {
+    installMocks({
+      gameId: 1,
+      levels: [realLevel(1, 0), realLevel(3, 10)],
+      progress: [],
+    });
+    const { cache, data, result } = buildContext(false);
+
+    // Number key (cache.accountCache['1_acc'] === 100) so the catch-all pass
+    // skips this account and only the Session cutoff (2-Jan = day 1) applies.
+    await applySessionCompletionPerAccount(cache, new Map([[100, '2-Jan']]), data, result);
+
+    const created = addLevelCalls.filter((c: any) => c.level_name === '-');
+    assert.deepStrictEqual(
+      created.map((c: any) => c.days_offset),
+      [1, 2, 3, 4, 5, 6, 7, 8, 9],
+      'gap days created without a completed event',
+    );
+    const completed = created
+      .filter((c: any) => updateFor(c.id))
+      .map((c: any) => c.days_offset);
+    assert.deepStrictEqual(completed, [1], 'only days up to the Session cutoff (2-Jan = day 1) completed');
+    assert.strictEqual(result.errors.length, 0, 'no errors');
+  });
+
+  it('completes a parser-known-completed (C) Session Only row even AFTER the last completed Level Event', async () => {
+    installMocks({
+      gameId: 1,
+      levels: [realLevel(1, 0), realLevel(3, 5), realLevel(5, 10)],
+      progress: [
+        { level_id: 1, is_completed: true },
+        { level_id: 3, is_completed: true },
+      ],
+    });
+    const { cache, data, result } = buildContext(false);
+    // The parser marks the session cell "abc_day6" as (C) in the sheet. Its base
+    // token belongs to a Level Event, so importProgressMatrix drops the entry;
+    // applySessionCompletionPerAccount must re-apply that knowledge.
+    data.progress.push({
+      levelName: '-',
+      token: 'lvl_day6',
+      isCompleted: true,
+      accountName: 'Acc',
+      gameName: 'TestGame',
+    });
+
+    await applySessionCompletionPerAccount(cache, new Map(), data, result);
+
+    const created = addLevelCalls.filter((c: any) => c.level_name === '-');
+    const day6 = created.find((c: any) => c.days_offset === 6);
+    assert.ok(day6, 'gap row for day 6 created');
+    assert.ok(updateFor(day6.id), 'day 6 completed via parser (C) knowledge despite being after the last completed event (day 5)');
+    assert.strictEqual(updateFor(day6.id).target_date, todayIso(), 'parser-(C)-completed session stamped with target_date = today');
+    assert.strictEqual(result.errors.length, 0, 'no errors');
+  });
+
+  it('completes a parser-known-completed (C) Session Only row with NO completed Level Event', async () => {
+    installMocks({
+      gameId: 1,
+      levels: [realLevel(1, 0), realLevel(3, 10)],
+      progress: [],
+    });
+    const { cache, data, result } = buildContext(false);
+    data.progress.push({
+      levelName: '-',
+      token: 'lvl_day3',
+      isCompleted: true,
+      accountName: 'Acc',
+      gameName: 'TestGame',
+    });
+
+    await applySessionCompletionPerAccount(cache, new Map(), data, result);
+
+    const created = addLevelCalls.filter((c: any) => c.level_name === '-');
+    const day3 = created.find((c: any) => c.days_offset === 3);
+    assert.ok(day3, 'gap row for day 3 created');
+    assert.ok(updateFor(day3.id), 'day 3 completed via parser (C) knowledge with no completed Level Events');
+    assert.strictEqual(updateFor(day3.id).target_date, todayIso(), 'parser-(C)-completed session stamped with target_date = today');
     assert.strictEqual(result.errors.length, 0, 'no errors');
   });
 });

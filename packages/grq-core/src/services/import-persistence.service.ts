@@ -5,6 +5,7 @@ import { asyncStorageService } from './storage.service.ts';
 import type { ImportData } from './excel/excel-parser.ts';
 import { applySessionCompletionForGame } from './excel/excel-session-processor.ts';
 import { parseDMMMDate } from './excel/excel-parse-utils.ts';
+import { todayIsoDate } from './excel/excel-date-utils.ts';
 
 export interface PersistenceResult {
   importedCount: number;
@@ -558,10 +559,10 @@ async function importAccounts(
             }
             if (item.kind === 'level') {
               try { await TauriService.createLevelProgress({ account_id: accId, level_id: item.id }); } catch (e) { /* ignore */ }
-              await TauriService.updateLevelProgress({ account_id: accId, level_id: item.id, is_completed: true, bypass_cooldown: true });
+              await TauriService.updateLevelProgress({ account_id: accId, level_id: item.id, is_completed: true, target_date: todayIsoDate(), bypass_cooldown: true });
             } else {
               try { await TauriService.createPurchaseEventProgress({ account_id: accId, purchase_event_id: item.id, days_offset: 0, time_spent: 0 }); } catch (e) { /* ignore */ }
-              await TauriService.updatePurchaseEventProgress({ account_id: accId, purchase_event_id: item.id, is_completed: true, bypass_cooldown: true });
+              await TauriService.updatePurchaseEventProgress({ account_id: accId, purchase_event_id: item.id, is_completed: true, days_offset: 0, target_date: todayIsoDate(), bypass_cooldown: true });
             }
           }
 
@@ -730,7 +731,7 @@ async function importProgressMatrix(
         }
         if (lid) {
           try { await TauriService.createLevelProgress({ account_id: aid, level_id: lid }); } catch (e) { /* ignore */ }
-          await TauriService.updateLevelProgress({ account_id: aid, level_id: lid, is_completed: p.isCompleted, bypass_cooldown: true });
+          await TauriService.updateLevelProgress({ account_id: aid, level_id: lid, is_completed: p.isCompleted, target_date: todayIsoDate(), bypass_cooldown: true });
         }
       } else if (p.purchaseToken !== undefined) {
         const peid = cache.purchaseCache[`${gid}_${lowerToken}_Purchase Event`];
@@ -827,6 +828,48 @@ export async function applySessionCompletionPerAccount(
   // time_spent is stored in base units where 1 unit == 1000 seconds.
   const UNIT_SECONDS_MS = 1000 * 1000;
 
+  // Parser-known-completed Session Only days: the Excel parser marks session
+  // cells with "(C)" as completed, but importProgressMatrix drops those entries
+  // when the base token belongs to a Level Event (session folds). Re-apply that
+  // knowledge here so such sessions are completed in account_level_progress and
+  // never reappear in Daily Tasks. Keyed by `base::days_offset` per account.
+  const parserCompletedDaysByAccount = new Map<number, Set<string>>();
+  const parserAccResolveCache: Record<number, any[]> = {};
+  const resolveParserAid = async (gid: number | undefined, lowerAccName: string): Promise<number | undefined> => {
+    if (gid != null) {
+      let aid = cache.accountCache[`${gid}_${lowerAccName}`];
+      if (!aid) {
+        if (!parserAccResolveCache[gid]) {
+          try { parserAccResolveCache[gid] = await TauriService.getAccounts(gid); } catch (_) { parserAccResolveCache[gid] = []; }
+        }
+        const match = parserAccResolveCache[gid].find((a: any) => a.name?.toLowerCase() === lowerAccName);
+        if (match) {
+          aid = match.id;
+          cache.accountCache[`${gid}_${lowerAccName}`] = aid;
+        }
+      }
+      if (aid) return aid;
+    }
+    for (const [ckey, caid] of Object.entries(cache.accountCache)) {
+      if (ckey.endsWith(`_${lowerAccName}`)) return caid;
+    }
+    return undefined;
+  };
+  for (const p of data.progress) {
+    if (p.levelName !== '-' || !p.isCompleted) continue;
+    const token = (p.token || '').trim();
+    const dayMatch = token.match(/_day(-?\d+)$/);
+    if (!dayMatch) continue;
+    const lowerGameName = ((p as any).gameName || '').trim().toLowerCase();
+    const lowerAccName = (p.accountName || '').toLowerCase();
+    const gid = cache.gameCache[lowerGameName];
+    const aid = await resolveParserAid(gid, lowerAccName);
+    if (!aid) continue;
+    let days = parserCompletedDaysByAccount.get(aid);
+    if (!days) { days = new Set<string>(); parserCompletedDaysByAccount.set(aid, days); }
+    days.add(`${token.split('_day')[0]}::${parseInt(dayMatch[1], 10)}`);
+  }
+
   /** Account base-of-day in ms: start_date + start_time (defaults to midnight). */
   const accountBaseMs = (startDate: Date, startTime?: string): number => {
     let hours = 0, minutes = 0, seconds = 0;
@@ -840,7 +883,11 @@ export async function applySessionCompletionPerAccount(
   };
 
   // Helper: complete session-only levels for one account
-  const completeForAccount = async (aid: number, sessionDateStr?: string): Promise<number> => {
+  const completeForAccount = async (
+    aid: number,
+    sessionDateStr?: string,
+    parserCompletedDays?: Set<string>,
+  ): Promise<number> => {
     let completedCount = 0;
     try {
       const dbAccount = await TauriService.getAccountById(aid).catch(() => null);
@@ -910,7 +957,6 @@ export async function applySessionCompletionPerAccount(
       // Per-account rule: a Session Only request is completed when it lies
       // temporally BEFORE the LAST completed Level Event of this account.
       // Real levels (excluding '-') are the anchors.
-      const hasAnyCompletedEvent = completedWindows.length > 0;
       const lastCompletedEvent = completedWindows.reduce<typeof completedWindows[number] | undefined>(
         (max, w) => (max === undefined || w.startMs > max.startMs ? w : max),
         undefined,
@@ -950,8 +996,11 @@ export async function applySessionCompletionPerAccount(
       // so without a persisted row the frontend can never resolve/mark them
       // completed. Persist a '-' row for every day in [0, maxRealOffset] that has
       // no level row so every Session Only request exists and can be completed.
-      // Idempotent: addLevel dedupes, and branchLevels is cached.
-      if (gameId && hasAnyCompletedEvent) {
+      // This runs for every account (even without a completed Level Event): the
+      // completion loop below still decides per-row via the session cutoff /
+      // last-completed-event frontier. Idempotent: addLevel dedupes, and
+      // branchLevels is cached.
+      if (gameId) {
         for (let d = 0; d <= maxRealOffset; d++) {
           if (branchLevels.some((l: any) => l.days_offset === d)) continue;
           const base = baseForDay(d);
@@ -989,24 +1038,35 @@ export async function applySessionCompletionPerAccount(
         const alreadyCompleted = completedSet.has(level.id);
         const beforeCutoff = !!cutoffDate && sessionX <= cutoffDate.getTime();
         const beforeLastCompletedEvent = lastCompletedStartMs != null && sessionX < lastCompletedStartMs;
+        const parserCompleted = !!parserCompletedDays && parserCompletedDays.has(
+          `${(level.event_token || '').split('_day')[0]}::${level.days_offset}`,
+        );
 
-        const shouldComplete = !alreadyCompleted && (beforeCutoff || beforeLastCompletedEvent);
+        const completedByRule = beforeCutoff || beforeLastCompletedEvent || parserCompleted;
+        // Stamp target_date=today on EVERY session this import considers
+        // completed — including ones already completed by an earlier pass
+        // (importProgressMatrix / game-level processor). The planner's
+        // group-skip rule requires `is_completed && target_date == today`, so
+        // without the stamp completed sessions would keep being emitted.
+        const isCompleted = alreadyCompleted || completedByRule;
 
         const reason = alreadyCompleted
           ? 'already completed'
-          : !beforeCutoff && !beforeLastCompletedEvent
-            ? lastCompletedStartMs != null
-              ? 'after the last completed (C) Level Event'
-              : 'no completed Level Event and after the Session cutoff'
-            : beforeCutoff && beforeLastCompletedEvent
-              ? 'session cutoff AND before the last completed (C) Level Event'
-              : beforeCutoff
-                ? 'session cutoff'
-                : 'before the last completed (C) Level Event';
+          : parserCompleted
+            ? 'parser (C) / explicitly completed in the sheet'
+            : !beforeCutoff && !beforeLastCompletedEvent
+              ? lastCompletedStartMs != null
+                ? 'after the last completed (C) Level Event'
+                : 'no completed Level Event and after the Session cutoff'
+              : beforeCutoff && beforeLastCompletedEvent
+                ? 'session cutoff AND before the last completed (C) Level Event'
+                : beforeCutoff
+                  ? 'session cutoff'
+                  : 'before the last completed (C) Level Event';
 
         // Trace every evaluated session-only level (completion + classification).
         TauriService.logMaintenanceEvent({
-          action: shouldComplete ? 'session_only_completed' : 'session_only_skipped',
+          action: isCompleted ? 'session_only_completed' : 'session_only_skipped',
           branchId,
           levelId: level.id,
           eventToken: level.event_token,
@@ -1016,16 +1076,18 @@ export async function applySessionCompletionPerAccount(
             sessionX,
             beforeCutoff,
             beforeLastCompletedEvent,
+            parserCompleted,
+            alreadyCompleted,
             lastCompletedStartMs,
             lastCompletedOffset,
             completedEventCount: completedWindows.length,
           }),
         }).catch(() => {});
 
-        if (shouldComplete) {
+        if (isCompleted) {
           try { await TauriService.createLevelProgress({ account_id: aid, level_id: level.id }); } catch (_) { /* ignore duplicate */ }
-          await TauriService.updateLevelProgress({ account_id: aid, level_id: level.id, is_completed: true, bypass_cooldown: true });
-          completedCount++;
+          await TauriService.updateLevelProgress({ account_id: aid, level_id: level.id, is_completed: true, target_date: todayIsoDate(), bypass_cooldown: true });
+          if (!alreadyCompleted) completedCount++;
         }
       }
     } catch (error) {
@@ -1040,7 +1102,7 @@ export async function applySessionCompletionPerAccount(
 
   // --- Pass 1: Process all accounts from sessionDateOverrides ---
   for (const [aid, sessionDateStr] of sessionDateOverrides.entries()) {
-    const completedCount = await completeForAccount(aid, sessionDateStr);
+    const completedCount = await completeForAccount(aid, sessionDateStr, parserCompletedDaysByAccount.get(aid));
     if (completedCount > 0) {
       console.log(`[ImportPersistence] Per-account session completion: account=${aid} sessionDate=${sessionDateStr} completed=${completedCount} session-only levels`);
     }
@@ -1056,10 +1118,10 @@ export async function applySessionCompletionPerAccount(
     const lowerAccName = (acc.name || '').trim().toLowerCase();
     const gid = cache.gameCache[lowerGameName];
     if (!gid) continue;
-    const aid = cache.accountCache[`${gid}_${lowerAccName}`];
+    const aid = await resolveParserAid(gid, lowerAccName);
     if (!aid || processedAids.has(aid)) continue;
     processedAids.add(aid);
-    const completedCount = await completeForAccount(aid, sessionDateStr);
+    const completedCount = await completeForAccount(aid, sessionDateStr, parserCompletedDaysByAccount.get(aid));
     if (completedCount > 0) {
       console.log(`[ImportPersistence] Catch-all per-account session completion: account=${aid} sessionDate=${sessionDateStr} completed=${completedCount} session-only levels`);
     }
@@ -1133,7 +1195,7 @@ async function restoreCompletedToday(
 
         if (targetLevelId) {
           try { await TauriService.createLevelProgress({ account_id: aid, level_id: targetLevelId }); } catch (e) { /* ignore */ }
-          await TauriService.updateLevelProgress({ account_id: aid, level_id: targetLevelId, is_completed: true, bypass_cooldown: true });
+          await TauriService.updateLevelProgress({ account_id: aid, level_id: targetLevelId, is_completed: true, target_date: today, bypass_cooldown: true });
         }
       }
     } catch (error) {

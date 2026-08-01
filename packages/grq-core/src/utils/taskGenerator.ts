@@ -187,10 +187,13 @@ export class TaskGenerator {
 
             if (requestType === "Session Only") {
               // A standalone session carries a real level_id (a persisted '-'
-              // row) or a negative synthetic id. Negative ids never match
-              // persisted progress, so completion also resolves against the
-              // account's LAST completed Level Event: the session is completed
-              // only when it lies BEFORE that event (never after it).
+              // row) or a negative synthetic id. Completion resolves in tiers:
+              //   1. the emitted level_id is a completed persisted row;
+              //   2. the persisted '-' row for (base token, day offset) is
+              //      completed (covers synthetic negative ids whose row exists
+              //      and duplicate-row cases where the emitted id differs);
+              //   3. fallback: the session lies before the account's LAST
+              //      completed Level Event (genuinely missing rows).
               if (request.level_id != null && completedLevelIds.has(request.level_id)) {
                 return true;
               }
@@ -199,9 +202,21 @@ export class TaskGenerator {
                   ? gameLevelById.get(request.level_id)?.days_offset
                     ?? (request.level_id < 0 ? -request.level_id : undefined)
                   : undefined;
+              const dayOffset =
+                typeof (request as any).days_offset === "number"
+                  ? (request as any).days_offset
+                  : sessionOffset;
+              if (dayOffset != null) {
+                const persistedId = sessionLevelIdByKey.get(
+                  `${request.event_token || ""}::${dayOffset}`,
+                );
+                if (persistedId != null && completedLevelIds.has(persistedId)) {
+                  return true;
+                }
+              }
               return lastCompletedEventOffset != null
-                && typeof sessionOffset === "number"
-                && sessionOffset < lastCompletedEventOffset;
+                && typeof dayOffset === "number"
+                && dayOffset < lastCompletedEventOffset;
             }
 
             return false;

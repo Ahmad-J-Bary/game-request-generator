@@ -115,6 +115,21 @@ fn plan_level_groups(input: &PlanInput, day: i32, rng: &mut rand::rngs::ThreadRn
     let mut cards = Vec::new();
 
     for (_key, group_levels) in groups {
+        let has_real_event = group_levels.iter().any(|l| l.level_name != "-");
+
+        // A standalone "Session Only" group (no real event in it) is skipped as
+        // soon as EVERY session row is completed — REGARDLESS of target_date.
+        // This is the hard guarantee that a completed Session Only request never
+        // reappears in Daily Tasks after import, even when its `target_date` is
+        // stale or absent.
+        let session_only_all_completed = !has_real_event
+            && group_levels.iter().all(|l| {
+                input.level_progress.get(&l.id).is_some_and(|p| p.is_completed)
+            });
+        if session_only_all_completed {
+            continue;
+        }
+
         // A group is skipped only when EVERY level of the group was completed
         // on the target date (matches the legacy "group fully completed" skip).
         let group_fully_completed = group_levels.iter().all(|l| {
@@ -500,6 +515,97 @@ mod tests {
             target_date: "2024-01-05",
         });
         assert_eq!(reqs.len(), 0);
+    }
+
+    #[test]
+    fn completed_session_only_group_is_skipped_without_target_date() {
+        // A standalone "Session Only" group (persisted '-' row) is skipped as
+        // soon as its row is completed — even WITHOUT `target_date == today`.
+        // This is the hard guarantee that a completed Session Only request never
+        // reappears in Daily Tasks after import, regardless of target_date.
+        let lv = level(1, 4, "-", 18, "b_day4");
+        let plan_with = |target_date: Option<String>, is_completed: bool| {
+            let mut progress: HashMap<i64, &AccountLevelProgress> = HashMap::new();
+            let completed = AccountLevelProgress {
+                account_id: 1,
+                level_id: 1,
+                is_completed,
+                time_spent: 18000,
+                target_date,
+                completed_at: None,
+            };
+            progress.insert(1, &completed);
+            plan_daily_requests(&PlanInput {
+                account: &account(),
+                levels: &[lv.clone()],
+                level_progress: &progress,
+                purchase_events: &[],
+                purchase_progress: &HashMap::new(),
+                days_passed: 4,
+                target_date: "2024-01-05",
+            })
+        };
+
+        // Completed without target_date -> never emitted.
+        assert_eq!(
+            plan_with(None, true).len(),
+            0,
+            "completed Session Only without target_date is skipped"
+        );
+        // Completed with a stale target_date -> never emitted.
+        assert_eq!(
+            plan_with(Some("2024-01-04".to_string()), true).len(),
+            0,
+            "completed Session Only with a stale target_date is skipped"
+        );
+        // Completed with today's target_date -> skipped (unchanged).
+        assert_eq!(
+            plan_with(Some("2024-01-05".to_string()), true).len(),
+            0,
+            "completed Session Only with target_date == today is skipped"
+        );
+        // Not completed -> still emitted.
+        assert_eq!(
+            plan_with(None, false).len(),
+            1,
+            "incomplete Session Only is still emitted"
+        );
+    }
+
+    #[test]
+    fn compound_group_with_completed_session_still_emits_pending_event() {
+        // A compound group (real Level Event + '-' session on the same day):
+        // when only the SESSION row is completed, the pending Event is still
+        // emitted (the frontend hides the completed session via (base, day)
+        // progress). Locks behavior so the Session Only skip does not regress
+        // event/session pairs.
+        let ev = level(1, 4, "Level A", 1000, "a_day4");
+        let session = level(2, 4, "-", 18, "a_day4");
+        let mut progress: HashMap<i64, &AccountLevelProgress> = HashMap::new();
+        let completed_session = AccountLevelProgress {
+            account_id: 1,
+            level_id: 2,
+            is_completed: true,
+            time_spent: 18000,
+            target_date: None,
+            completed_at: None,
+        };
+        progress.insert(2, &completed_session);
+
+        let reqs = plan_daily_requests(&PlanInput {
+            account: &account(),
+            levels: &[ev, session],
+            level_progress: &progress,
+            purchase_events: &[],
+            purchase_progress: &HashMap::new(),
+            days_passed: 4,
+            target_date: "2024-01-05",
+        });
+
+        assert!(
+            reqs.iter().any(|r| r.request_type == "Level Event"),
+            "pending Level Event is still emitted alongside a completed session row"
+        );
     }
 
     #[test]

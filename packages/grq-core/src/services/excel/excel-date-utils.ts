@@ -28,6 +28,15 @@ export function formatDateWithYear(dateInput?: string | Date): string {
 }
 
 /**
+ * Current date as ISO YYYY-MM-DD (UTC), matching the frontend's daily-requests
+ * target date. Used to stamp imported/runtime completions so the planner's
+ * group-skip rule (is_completed && target_date == today) takes effect.
+ */
+export function todayIsoDate(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+/**
  * Parse date string to Date object
  */
 export function parseDate(input?: string): Date | null {

@@ -108,6 +108,7 @@ class FakeDb {
       this.levelProgress.push(rec);
     }
     rec.is_completed = req.is_completed;
+    if (req.target_date != null) rec.target_date = req.target_date;
   }
 
   createPurchaseEventProgress(req: any): void {
@@ -217,6 +218,11 @@ describe('ImportPersistenceService.persistAll — end-to-end import of Level Eve
     assert.strictEqual(shopProgress?.is_completed, true, 'Purchase Event shop_day3 completed (C)');
 
     assert.strictEqual(lp(acc1.id, levelId('lvl_day10'))?.is_completed, true, 'Session Only day10 completed for Acc1 (before last completed event day15)');
+    assert.strictEqual(
+      lp(acc1.id, levelId('lvl_day10'))?.target_date,
+      new Date().toISOString().split('T')[0],
+      'Session Only day10 stamped with target_date = today so the planner skips it',
+    );
     assert.strictEqual(lp(acc2.id, levelId('lvl_day10'))?.is_completed, undefined, 'Acc2 Session Only day10 NOT completed (day10 is after last completed event day5)');
     assert.strictEqual(lp(acc1.id, levelId('lvl_day30'))?.is_completed, undefined, 'Session Only day30 NOT completed (after last completed event day15)');
     assert.strictEqual(lp(acc2.id, levelId('lvl_day30'))?.is_completed, undefined, 'Acc2 Session Only day30 NOT completed (after day5)');
