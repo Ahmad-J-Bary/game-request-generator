@@ -1,10 +1,14 @@
 // ===== Excel Column Builder Utilities =====
 
 import type { Level, PurchaseEvent } from '@grq/api-bindings';
+import {
+  getRealTimelineLevels,
+  getSyntheticSessionTimeSpent,
+} from '../../utils/timeline-time.utils.ts';
 
 export interface ColumnData {
   kind: 'level' | 'purchase';
-  id: number;
+  id: number | string;
   token: string;
   fullToken: string; // The complete event token for accurate matching
   name: string;
@@ -86,6 +90,105 @@ export function buildColumns(levels: Level[], purchaseEvents: PurchaseEvent[]): 
   });
 
   return [...levelCols, ...peCols];
+}
+
+/**
+ * Build the export columns for a given mode.
+ *
+ * - "event-only": only real Level Events and Purchase Events (no session rows).
+ * - "all": matches the ALL-mode table exactly — real Level Events, any
+ *   standalone DB sessions, PLUS synthesized "Session Only" columns for gap
+ *   days (days between real events that have no event anchor), then purchases.
+ *
+ * The gap-day synthesis replicates the UI timeline (AccountsDetail /
+ * AccountDetail / GameDetail): min day is min(0, first real event), max day is
+ * the last real event; each missing day gets a Session Only column whose token
+ * is the first real event at or after that day and whose time comes from
+ * getSyntheticSessionTimeSpent (progressive interpolation over real anchors).
+ */
+export function buildModeColumns(
+  levels: Level[],
+  purchaseEvents: PurchaseEvent[],
+  mode: 'event-only' | 'all',
+): ColumnData[] {
+  const base = buildColumns(levels, purchaseEvents);
+  const levelCols = base.filter((c) => c.kind === 'level');
+  const purchaseCols = base.filter((c) => c.kind === 'purchase');
+
+  const realEvents = levelCols
+    .filter((c) => c.name !== '-')
+    .sort((a, b) => Number(a.daysOffset ?? 0) - Number(b.daysOffset ?? 0));
+
+  if (mode === 'event-only') {
+    return [...realEvents, ...purchaseCols];
+  }
+
+  if (realEvents.length === 0) {
+    return [...levelCols, ...purchaseCols];
+  }
+
+  const realLevelPoints = getRealTimelineLevels(
+    realEvents.map((c) => ({
+      daysOffset: Number(c.daysOffset ?? 0),
+      timeSpent: Number(c.timeSpent ?? 0),
+      levelName: c.name,
+      token: c.token,
+      synthetic: false,
+    })),
+  );
+
+  const dbSessionsByDay = new Map<number, ColumnData>();
+  levelCols
+    .filter((c) => c.name === '-' && typeof c.daysOffset === 'number')
+    .forEach((c) => {
+      if (!dbSessionsByDay.has(Number(c.daysOffset))) {
+        dbSessionsByDay.set(Number(c.daysOffset), c);
+      }
+    });
+
+  const minDay = Math.min(0, Number(realEvents[0].daysOffset));
+  const maxDay = Number(realEvents[realEvents.length - 1].daysOffset);
+
+  const result: ColumnData[] = [];
+
+  for (let day = minDay; day <= maxDay; day++) {
+    const dayEvents = realEvents.filter((c) => Number(c.daysOffset) === day);
+    if (dayEvents.length > 0) {
+      result.push(...dayEvents);
+      continue;
+    }
+
+    const existing = dbSessionsByDay.get(day);
+    if (existing) {
+      result.push(existing);
+      continue;
+    }
+
+    const fallback = realEvents.find((c) => Number(c.daysOffset) >= day);
+    if (!fallback) continue;
+
+    const synthesizedTime = getSyntheticSessionTimeSpent(
+      fallback.token,
+      day,
+      realLevelPoints,
+      0,
+    );
+
+    result.push({
+      kind: 'level',
+      id: `synth-${fallback.token}-${day}`,
+      token: fallback.token,
+      fullToken: fallback.token,
+      name: '-',
+      daysOffset: day,
+      timeSpent: synthesizedTime,
+      isBonus: false,
+      uniqueKey: `${fallback.token}:-`,
+      synthetic: true,
+    });
+  }
+
+  return [...result, ...purchaseCols];
 }
 
 /**

@@ -12,7 +12,7 @@ import { parseExcelFile, type ImportData } from './excel/excel-parser';
 import { importFromExcel } from './excel/excel-import';
 import { getCellStyle } from './excel/excel-styling';
 import { formatTimeAMPM, sortAccountsByDate } from './excel/excel-date-utils';
-import { buildColumns, filterStandaloneSessionLevels } from './excel/excel-column-builder';
+import { buildModeColumns } from './excel/excel-column-builder';
 import { generateGameMatrixData, buildGameDetailSheetData, buildAccountDetailSheetData } from './excel/excel-export-sheet-builder';
 
 export type { ImportData };
@@ -172,12 +172,7 @@ export class ExcelService {
       if (columnsData && columnsData.length > 0) {
         columns = columnsData;
       } else {
-        const branchColumns = buildColumns(levels, purchaseEvents);
-        let filteredColumns = branchColumns;
-        if (mode === 'event-only') {
-           filteredColumns = branchColumns.filter(c => !(c.kind === 'level' && c.name === '-'));
-        }
-        columns = [...filteredColumns.filter(c => c.kind === 'level'), ...filteredColumns.filter(c => c.kind === 'purchase')];
+        columns = buildModeColumns(levels, purchaseEvents, mode);
       }
 
       const levelsProgressRecord: Record<string, any> = {};
@@ -272,13 +267,7 @@ export class ExcelService {
         ]);
 
         const sortedAccounts = sortAccountsByDate(accounts);
-        const branchColumns = buildColumns(levels, purchaseEvents);
-
-        let filteredColumns = branchColumns;
-        if (mode === 'event-only') {
-           filteredColumns = branchColumns.filter(c => !(c.kind === 'level' && c.name === '-'));
-        }
-        const finalColumns = [...filteredColumns.filter(c => c.kind === 'level'), ...filteredColumns.filter(c => c.kind === 'purchase')];
+        const finalColumns = buildModeColumns(levels, purchaseEvents, mode);
 
         let effectiveLevelsProgress = levelsProgress;
         let effectivePurchaseProgress = purchaseProgress;
@@ -423,45 +412,7 @@ export class ExcelService {
             }
           }
 
-          const filteredLevels =
-            mode === 'event-only'
-              ? levels.filter((l) => l.level_name !== '-')
-              : filterStandaloneSessionLevels(levels);
-
-          const levelCols = filteredLevels.map((l) => ({
-            kind: 'level' as const,
-            id: l.id,
-            token: l.event_token.split('_day')[0],
-            fullToken: l.event_token,
-            name: l.level_name,
-            daysOffset: l.days_offset,
-            timeSpent: l.time_spent,
-            isBonus: l.is_bonus,
-            synthetic: l.level_name === '-',
-          }));
-
-          const peCols = purchaseEvents.map((p: PurchaseEvent) => {
-            const isRestricted = (p as any).is_restricted ?? false;
-            const base = (p as any).days_offset !== undefined && (p as any).days_offset !== null ? String((p as any).days_offset) : '-';
-            let formattedDaysOffset = base;
-
-            if (isRestricted && p.max_days_offset != null) {
-                formattedDaysOffset = `${base} (Less Than ${p.max_days_offset})`;
-            }
-
-            return {
-              kind: 'purchase' as const,
-              id: p.id,
-              token: p.event_token,
-              fullToken: p.event_token,
-              name: p.level_name || '$$$',
-              isRestricted,
-              daysOffset: formattedDaysOffset,
-              synthetic: false,
-            };
-          });
-
-          const columns = [...levelCols, ...peCols];
+          const columns = buildModeColumns(levels, purchaseEvents, mode);
 
           const currentOffset = masterWsData.length;
           const separatorRowsCount = currentOffset > 0 ? 1 : 0;
