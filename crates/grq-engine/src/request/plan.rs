@@ -8,7 +8,9 @@
 //!   Event". A standalone "Session Only" therefore never coexists with a Level
 //!   Event for the same (base token, day).
 //! - A missing level day (no real level) becomes a standalone "Session Only"
-//!   via an interpolated synthetic '-' row.
+//!   via an interpolated synthetic '-' row. A "Session Only" request ALWAYS
+//!   carries the BASE token (never a `_day*` suffix), so the filled request and
+//!   the frontend card show the clean event token.
 //! - Every (token, day) group shares ONE `time_spent` value between its Session
 //!   and its Event.
 //! - Legacy ordering guard: a standalone "Session Only" card never trails a
@@ -161,9 +163,13 @@ fn plan_level_groups(input: &PlanInput, day: i32, rng: &mut rand::rngs::ThreadRn
                     }
                     .to_string(),
                     content: render_content(input, &base_token, &l.level_name, group_time_spent, day, false),
+                    // A standalone "Session Only" always emits the BASE token
+                    // (no `_day*` suffix), regardless of whether the '-' row is
+                    // persisted (`abc_day2`) or synthesized in memory (`abc`).
+                    // Level Session pairs keep the real event's full token.
                     event_token: real_event_token
                         .clone()
-                        .unwrap_or_else(|| l.event_token.clone()),
+                        .unwrap_or_else(|| base_token.clone()),
                     level_id: Some(l.id),
                     time_spent: group_time_spent,
                     timestamp: input.target_date.to_string(),
@@ -416,6 +422,20 @@ mod tests {
         assert_eq!(reqs[0].request_type, "Session Only");
         assert_eq!(reqs[0].event_token, "tok");
         assert_eq!(reqs[0].level_id, Some(-4));
+    }
+
+    #[test]
+    fn persisted_session_row_emits_session_only_with_base_token() {
+        // A persisted '-' row carries a full `_day*` token, but the emitted
+        // "Session Only" request must ALWAYS use the BASE token so the filled
+        // request and the card show a clean event token (never `_day*`).
+        let session = level(1, 4, "-", 18, "b_day4");
+        let reqs = plan_levels(vec![session], 4);
+
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].request_type, "Session Only");
+        assert_eq!(reqs[0].event_token, "b");
+        assert_eq!(reqs[0].level_id, Some(1));
     }
 
     #[test]

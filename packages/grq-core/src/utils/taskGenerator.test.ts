@@ -1,0 +1,150 @@
+import { describe, it, beforeEach } from 'node:test';
+import assert from 'node:assert';
+import { TauriService } from '../services/tauri.service.ts';
+import { TaskGenerator } from './taskGenerator.ts';
+
+interface MockLevel {
+  id: number;
+  game_id: number;
+  branch_id: number;
+  level_name: string;
+  event_token: string;
+  days_offset: number;
+  time_spent: number;
+  is_bonus: boolean;
+}
+
+const level = (overrides: Partial<MockLevel>): MockLevel => ({
+  id: 1,
+  game_id: 1,
+  branch_id: 1,
+  level_name: 'Level 1',
+  event_token: 'abc_day0',
+  days_offset: 0,
+  time_spent: 100,
+  is_bonus: false,
+  ...overrides,
+});
+
+function installMocks(opts: {
+  levels: MockLevel[];
+  requests: any[];
+  progress?: { level_id: number; is_completed: boolean }[];
+}) {
+  (TauriService as any).getAllAccounts = async () => [
+    {
+      id: 10,
+      game_id: 1,
+      branch_id: 1,
+      name: 'Acc1',
+      proxy_state: 'FLORIDA',
+      start_date: '2024-01-01',
+      start_time: '00:00:00',
+      request_template: 'POST /session\r\n\r\n{time_spent}',
+    },
+  ];
+  (TauriService as any).getGameLevels = async () => opts.levels;
+  (TauriService as any).getGamePurchaseEvents = async () => [];
+  (TauriService as any).getDailyRequests = async () => ({
+    account_id: 10,
+    account_name: 'Acc1',
+    target_date: '2024-01-03',
+    days_passed: 2,
+    requests: opts.requests,
+  });
+  (TauriService as any).getAccountLevelProgress = async () => opts.progress || [];
+  (TauriService as any).getAccountPurchaseEventProgress = async () => [];
+}
+
+async function runGenerator() {
+  const generator = new TaskGenerator({
+    games: [],
+    accountCompletionRecords: {},
+    accountStartStates: {},
+    setAccountStartStates: () => {},
+    setAccountTaskAssignments: () => {},
+    currentTime: Date.now(),
+    completedTasks: [],
+  });
+  const { batches, deferredTasks } = await generator.generateTodaysTasks();
+  return [...batches.flatMap((b) => b.tasks), ...deferredTasks];
+}
+
+function accountTask(tasks: any[]): any {
+  const task = tasks.find((t: any) => t.account?.id === 10);
+  assert.ok(task, 'expected a daily task to be generated for the account');
+  return task;
+}
+
+describe('TaskGenerator — Session Only requests in Daily Tasks', () => {
+  beforeEach(() => {
+    (TauriService as any).getAllAccounts = undefined;
+    (TauriService as any).getGameLevels = undefined;
+    (TauriService as any).getGamePurchaseEvents = undefined;
+    (TauriService as any).getDailyRequests = undefined;
+    (TauriService as any).getAccountLevelProgress = undefined;
+    (TauriService as any).getAccountPurchaseEventProgress = undefined;
+  });
+
+  it('keeps a persisted Session Only request that carries the BASE token (no _day* suffix)', async () => {
+    const levels = [
+      level({ id: 1, level_name: 'Level 1', event_token: 'abc_day0', days_offset: 0, time_spent: 100 }),
+      level({ id: 3, level_name: '-', event_token: 'abc_day2', days_offset: 2, time_spent: 90 }),
+    ];
+    // The Rust planner emits "Session Only" with event_token = base token "abc",
+    // never "abc_day2" — this is exactly what must survive the frontend filter.
+    installMocks({
+      levels,
+      requests: [
+        { request_type: 'Session Only', content: 'POST /session\r\n\r\n90', event_token: 'abc', level_id: 3, time_spent: 90, timestamp: '2024-01-03' },
+      ],
+    });
+
+    const tasks = await runGenerator();
+    const req = accountTask(tasks).requests[0];
+
+    assert.strictEqual(req.request_type, 'Session Only');
+    assert.strictEqual(req.event_token, 'abc', 'base token is preserved (no _day* suffix)');
+    assert.strictEqual(req.level_name, '-', 'Session Only shows the session placeholder');
+    assert.strictEqual(req.days_offset, 2, 'real day offset resolved from the persisted row');
+  });
+
+  it('keeps a synthetic Session Only request (negative level id, base token)', async () => {
+    const levels = [
+      level({ id: 1, level_name: 'Level 1', event_token: 'abc_day0', days_offset: 0, time_spent: 100 }),
+      level({ id: 2, level_name: 'Level 5', event_token: 'abc_day5', days_offset: 5, time_spent: 200 }),
+    ];
+    installMocks({
+      levels,
+      requests: [
+        { request_type: 'Session Only', content: 'POST /session\r\n\r\n90', event_token: 'abc', level_id: -2, time_spent: 90, timestamp: '2024-01-03' },
+      ],
+    });
+
+    const tasks = await runGenerator();
+    const req = accountTask(tasks).requests[0];
+
+    assert.strictEqual(req.request_type, 'Session Only');
+    assert.strictEqual(req.event_token, 'abc');
+    assert.strictEqual(req.level_name, '-');
+    assert.strictEqual(req.days_offset, 2, 'synthetic day derived from the negative level id');
+  });
+
+  it('still resolves Level Event requests by their full token (no regression)', async () => {
+    const levels = [level({ id: 1, level_name: 'Level 1', event_token: 'abc_day0', days_offset: 0, time_spent: 100 })];
+    installMocks({
+      levels,
+      requests: [
+        { request_type: 'Level Event', content: 'POST /event\r\n\r\n100', event_token: 'abc_day0', level_id: 1, time_spent: 100, timestamp: '2024-01-03' },
+      ],
+    });
+
+    const tasks = await runGenerator();
+    const req = accountTask(tasks).requests[0];
+
+    assert.strictEqual(req.request_type, 'Level Event');
+    assert.strictEqual(req.event_token, 'abc_day0', 'Level Event keeps its full token');
+    assert.strictEqual(req.level_name, 'Level 1');
+    assert.strictEqual(req.days_offset, 0);
+  });
+});

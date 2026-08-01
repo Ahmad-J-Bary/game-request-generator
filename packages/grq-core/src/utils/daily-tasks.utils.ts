@@ -1,5 +1,5 @@
 // src/utils/daily-tasks.utils.ts
-import { Account } from '@grq/api-bindings';
+import type { Account } from '@grq/api-bindings';
 
 /**
  * Parse the account's configured start date/time into a Date, handling

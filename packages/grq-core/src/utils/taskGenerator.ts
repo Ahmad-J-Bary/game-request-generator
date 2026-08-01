@@ -1,10 +1,10 @@
-import { TauriService } from "@grq/core/services/tauri.service";
+import { TauriService } from "../services/tauri.service.ts";
 import {
   calculateFirstRequestAllowedTime,
   parseAccountStartDate,
-} from "./daily-tasks.utils";
-import { calculateTimerState } from "./timer.utils";
-import { buildRequestGroups } from "./request-groups.utils";
+} from "./daily-tasks.utils.ts";
+import { calculateTimerState } from "./timer.utils.ts";
+import { buildRequestGroups } from "./request-groups.utils.ts";
 import type {
   Account,
   DailyRequestsResponse,
@@ -214,7 +214,12 @@ export class TaskGenerator {
             const eventToken = (req.event_token || "").trim();
             if (!eventToken) continue;
 
-            const matchingLevel = gameLevelByToken.get(eventToken);
+            // Exact-token match first (Level Event / Level Session / purchases
+            // carry the full `_day*` token). "Session Only" requests always
+            // carry the BASE token (no `_day*` suffix), so they are matched by
+            // stripping the suffix from stored level tokens.
+            const matchingLevel = gameLevelByToken.get(eventToken)
+              ?? gameLevels.find((l) => (l.event_token || "").split("_day")[0] === eventToken);
             const matchingPurchase = purchaseByToken.get(eventToken);
 
             // Keep only requests that map to real rows in current branch tables.
@@ -264,10 +269,14 @@ export class TaskGenerator {
               req.days_offset =
                 src?.days_offset ?? matchingLevel?.days_offset;
             } else {
-              // Session Only — always shows the session placeholder.
+              // Session Only — always shows the session placeholder. The real
+              // day offset comes from the persisted '-' row, or from the
+              // synthetic negative level id (never the base-matched event's day).
               const src = resolved ?? matchingLevel;
-              req.level_name = src?.level_name || "-";
-              req.days_offset = src?.days_offset;
+              req.level_name = "-";
+              req.days_offset =
+                resolved?.days_offset
+                ?? (req.level_id != null && req.level_id < 0 ? -req.level_id : src?.days_offset);
             }
 
             validRequests.push(req);
