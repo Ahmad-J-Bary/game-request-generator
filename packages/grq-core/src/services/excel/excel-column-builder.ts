@@ -48,26 +48,51 @@ export function filterStandaloneSessionLevels(levels: Level[]): Level[] {
 }
 
 /**
- * Build columns array from levels and purchase events
+ * Build the export columns for a given mode.
+ *
+ * - "event-only": only real Level Events and Purchase Events (no session rows).
+ * - "all": matches the ALL-mode table exactly — real Level Events, EVERY
+ *   persisted DB Session ('-') row (regardless of whether its base token also
+ *   has a Level Event on some other day), PLUS synthesized "Session Only"
+ *   columns for gap days that have NO persisted row, then purchases.
+ *
+ * Persisted '-' rows are kept with their REAL level id (NOT dropped/replaced by
+ * a synthesized fake id) so progress records (`{account}_{level_id}`) resolve
+ * and the export renders "(C)" on completed Session Only requests exactly like
+ * the ALL-mode table does. Days that carry a real Level Event fold the session
+ * into the event column (no separate Session Only column), mirroring the table.
+ *
+ * The gap-day synthesis replicates the UI timeline (AccountsDetail /
+ * AccountDetail / GameDetail): min day is min(0, first real event), max day is
+ * the last real event; each missing day gets a Session Only column whose token
+ * is the first real event at or after that day and whose time comes from
+ * getSyntheticSessionTimeSpent (progressive interpolation over real anchors).
  */
-export function buildColumns(levels: Level[], purchaseEvents: PurchaseEvent[]): ColumnData[] {
-  // Rule: only standalone Session levels (base token without a real Level Event)
-  // become "Session Only" columns; event sessions fold into the event column.
-  const levelCols: ColumnData[] = filterStandaloneSessionLevels(levels)
-    .map((l) => ({
-      kind: 'level' as const,
-      id: l.id,
-      token: l.event_token.split('_day')[0],
-      fullToken: l.event_token,
-      name: l.level_name,
-      daysOffset: l.days_offset,
-      timeSpent: l.time_spent,
-      isBonus: l.is_bonus,
-      uniqueKey: `${l.event_token}:${l.level_name === '-' ? 'Session Only' : 'Level Event'}`,
-      synthetic: false,
-    }));
+export function buildModeColumns(
+  levels: Level[],
+  purchaseEvents: PurchaseEvent[],
+  mode: 'event-only' | 'all',
+): ColumnData[] {
+  // Level columns use ALL persisted levels (real events + every '-' session),
+  // so completed sessions keep their real ids and their progress can resolve.
+  // Only event-only mode narrows them down to real events below.
+  const levelCols: ColumnData[] = levels.map((l) => ({
+    kind: 'level' as const,
+    id: l.id,
+    token: l.event_token.split('_day')[0],
+    fullToken: l.event_token,
+    name: l.level_name,
+    daysOffset: l.days_offset,
+    timeSpent: l.time_spent,
+    isBonus: l.is_bonus,
+    uniqueKey: `${l.event_token}:${l.level_name === '-' ? 'Session Only' : 'Level Event'}`,
+    // Session Only columns are always flagged synthetic so the export styles
+    // them with the distinguishing color (lighter/darker blend) + italic font,
+    // exactly like the ALL-mode table does. Real Level Events stay solid.
+    synthetic: l.level_name === '-',
+  }));
 
-  const peCols: ColumnData[] = purchaseEvents.map((p: PurchaseEvent) => {
+  const purchaseCols: ColumnData[] = purchaseEvents.map((p: PurchaseEvent) => {
     const isRestricted = (p as any).is_restricted ?? false;
     const base = (p as any).days_offset !== null && (p as any).days_offset !== undefined ? String((p as any).days_offset) : '-';
     let daysOffsetValue = base;
@@ -88,32 +113,6 @@ export function buildColumns(levels: Level[], purchaseEvents: PurchaseEvent[]): 
       synthetic: false,
     };
   });
-
-  return [...levelCols, ...peCols];
-}
-
-/**
- * Build the export columns for a given mode.
- *
- * - "event-only": only real Level Events and Purchase Events (no session rows).
- * - "all": matches the ALL-mode table exactly — real Level Events, any
- *   standalone DB sessions, PLUS synthesized "Session Only" columns for gap
- *   days (days between real events that have no event anchor), then purchases.
- *
- * The gap-day synthesis replicates the UI timeline (AccountsDetail /
- * AccountDetail / GameDetail): min day is min(0, first real event), max day is
- * the last real event; each missing day gets a Session Only column whose token
- * is the first real event at or after that day and whose time comes from
- * getSyntheticSessionTimeSpent (progressive interpolation over real anchors).
- */
-export function buildModeColumns(
-  levels: Level[],
-  purchaseEvents: PurchaseEvent[],
-  mode: 'event-only' | 'all',
-): ColumnData[] {
-  const base = buildColumns(levels, purchaseEvents);
-  const levelCols = base.filter((c) => c.kind === 'level');
-  const purchaseCols = base.filter((c) => c.kind === 'purchase');
 
   const realEvents = levelCols
     .filter((c) => c.name !== '-')

@@ -2,9 +2,9 @@
 
 import type { Level, PurchaseEvent, Account, CompletedDailyTask } from '@grq/api-bindings';
 import type { ExcelColorSettings as ColorSettings } from '../../types/excel';
-import { getNoFillStyle } from './excel-styling';
-import { formatDateShort, formatDateWithYear, parseDate, addDays, formatTimeAMPM } from './excel-date-utils';
-import { createDateMatrix, getColumnStyle, filterStandaloneSessionLevels } from './excel-column-builder';
+import { getNoFillStyle } from './excel-styling.ts';
+import { formatDateShort, formatDateWithYear, parseDate, addDays, formatTimeAMPM } from './excel-date-utils.ts';
+import { createDateMatrix, getColumnStyle, filterStandaloneSessionLevels } from './excel-column-builder.ts';
 
 type GetCellStyleFn = (backgroundColor: string, theme: 'light' | 'dark', isHeader?: boolean, isSynthetic?: boolean) => any;
 
@@ -430,7 +430,7 @@ export function buildAccountDetailSheetData(
       ...filterStandaloneSessionLevels(levels).map(l => {
         const dd = addDays(startDateObj, l.days_offset);
         const prog = levelsProgress?.find(p => p.level_id === l.id);
-        return { kind: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, dateStr: formatDateShort(dd), isCompleted: prog ? prog.is_completed : false, isBonus: l.is_bonus };
+        return { kind: 'level', token: l.event_token, name: l.level_name, daysOffset: l.days_offset, timeSpent: l.time_spent, dateStr: formatDateShort(dd), isCompleted: prog ? prog.is_completed : false, isBonus: l.is_bonus, synthetic: l.level_name === '-' };
       }),
       ...purchaseEvents.map(p => {
         const prog = purchaseProgress?.find(pr => pr.purchase_event_id === p.id);

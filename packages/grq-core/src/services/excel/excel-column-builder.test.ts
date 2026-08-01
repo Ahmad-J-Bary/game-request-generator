@@ -222,10 +222,41 @@ describe('buildModeColumns — mode-aware export columns', () => {
       [
         { id: 1, name: 'Level 1', day: 0, synthetic: false },
         { id: 'synth-def-1', name: '-', day: 1, synthetic: true },
-        { id: 3, name: '-', day: 2, synthetic: false },
+        { id: 3, name: '-', day: 2, synthetic: true },
         { id: 2, name: 'Level 2', day: 3, synthetic: false },
       ],
     );
+  });
+
+  it('all keeps a DB gap-day Session whose base token ALSO has a Level Event (real id preserved so progress resolves)', () => {
+    // The import persists '-' rows for gap days using the NEXT event's base
+    // token, so the row's base token always belongs to a real Level Event.
+    // These rows must be kept with their REAL id (not re-synthesized) so the
+    // export can resolve account_level_progress and render "(C)" on completed
+    // Session Only requests, exactly like the ALL-mode table.
+    const levels = [
+      level({ id: 1, event_token: 'abc_day0', level_name: 'Level 1', days_offset: 0, time_spent: 100 }),
+      level({ id: 2, event_token: 'abc_day5', level_name: 'Level 5', days_offset: 5, time_spent: 200 }),
+      level({ id: 3, event_token: 'abc_day2', level_name: '-', days_offset: 2, time_spent: 90 }),
+    ];
+
+    const columns = buildModeColumns(levels, [], 'all');
+
+    assert.deepEqual(
+      columns.map((c) => ({ id: c.id, name: c.name, day: c.daysOffset, synthetic: c.synthetic })),
+      [
+        { id: 1, name: 'Level 1', day: 0, synthetic: false },
+        { id: 'synth-abc-1', name: '-', day: 1, synthetic: true },
+        { id: 3, name: '-', day: 2, synthetic: true },
+        { id: 'synth-abc-3', name: '-', day: 3, synthetic: true },
+        { id: 'synth-abc-4', name: '-', day: 4, synthetic: true },
+        { id: 2, name: 'Level 5', day: 5, synthetic: false },
+      ],
+    );
+
+    const dbSession = columns.find((c) => c.id === 3);
+    assert.strictEqual(dbSession?.daysOffset, 2, 'persisted gap-day session keeps its real id');
+    assert.strictEqual(dbSession?.synthetic, true, 'persisted gap-day session is still visually flagged as synthetic');
   });
 
   it('appends purchases after the timeline in both modes', () => {
