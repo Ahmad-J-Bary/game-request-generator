@@ -131,6 +131,21 @@ export class TaskGenerator {
               ]),
           );
 
+          // Per-account rule: the LAST completed Level Event defines the
+          // completion frontier — Session Only requests that lie temporally
+          // BEFORE it are completed, the ones after it are not. (Negative-id
+          // synthetic rows can never match persisted progress, so we fall back
+          // to this account-level frontier signal.)
+          const lastCompletedEventOffset = [
+            ...completedLevelIds,
+          ].reduce<number | null>((last, id) => {
+            const level = gameLevelById.get(id);
+            if (!level || level.level_name === "-") return last;
+            const off = level.days_offset;
+            if (typeof off !== "number") return last;
+            return last == null || off > last ? off : last;
+          }, null);
+
           const isRequestCompleted = (
             request: DailyRequestsResponse["requests"][number],
           ): boolean => {
@@ -171,12 +186,22 @@ export class TaskGenerator {
             }
 
             if (requestType === "Session Only") {
-              // A standalone session always carries a real level_id (a persisted
-              // '-' row) or a negative synthetic id, so the direct lookup is
-              // sufficient — negative ids are never in the completed set.
-              return request.level_id != null
-                ? completedLevelIds.has(request.level_id)
-                : false;
+              // A standalone session carries a real level_id (a persisted '-'
+              // row) or a negative synthetic id. Negative ids never match
+              // persisted progress, so completion also resolves against the
+              // account's LAST completed Level Event: the session is completed
+              // only when it lies BEFORE that event (never after it).
+              if (request.level_id != null && completedLevelIds.has(request.level_id)) {
+                return true;
+              }
+              const sessionOffset =
+                request.level_id != null
+                  ? gameLevelById.get(request.level_id)?.days_offset
+                    ?? (request.level_id < 0 ? -request.level_id : undefined)
+                  : undefined;
+              return lastCompletedEventOffset != null
+                && typeof sessionOffset === "number"
+                && sessionOffset < lastCompletedEventOffset;
             }
 
             return false;

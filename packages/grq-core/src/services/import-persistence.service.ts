@@ -295,9 +295,9 @@ export class ImportPersistenceService {
 
       // Per-account pass: completes session-only levels for every imported
       // account. A session-only level is completed when its date is <= the
-      // Session date (cutoff) OR it lies between two completed "(C)" Level
-      // Events (sandwich rule). Runs regardless of whether a Session date
-      // exists, because the sandwich rule needs no Session column.
+      // Session date (cutoff) OR it lies temporally BEFORE the LAST completed
+      // "(C)" Level Event of that account. Runs regardless of whether a Session
+      // date exists.
       await applySessionCompletionPerAccount(cache, sessionDateOverrides, data, result);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -785,22 +785,26 @@ async function importProgressMatrix(
 /**
  * Per-account session-only completion pass.
  * Called AFTER all levels, accounts, and progress have been imported.
- * For every imported account, iterates over ALL existing session-only levels
- * in its branch and marks those as completed when EITHER:
+ * For every imported account, iterates over ALL session-only ('-') levels in
+ * its branch and marks them as completed when EITHER:
  *  - their computed datetime is <= the Session date (cutoff), OR
- *  - they lie in the STRICT temporal gap between two completed "(C)" Level
- *    Events: `end(E1) < X < start(E2)` where E1 is the nearest completed Level
- *    Event whose window ends before X and E2 the nearest whose window starts
- *    after X. Each event window is [accountStart + days_offset,
- *    accountStart + days_offset + time_spent], using the account's start date
- *    AND start time (base-of-day) for full date+time precision.
- *    (Indirect rule: Session Only requests are not in the Excel file and are
- *    created within the app, so their completion is inferred from the events.)
+ *  - they lie TEMPORALLY BEFORE the LAST completed "(C)" Level Event of that
+ *    account: `X < start(E_last)` where E_last is the completed Level Event
+ *    with the greatest start datetime. A completed Level Event therefore
+ *    completes the Session Only requests that precede it, never the ones that
+ *    follow it.
  *
- * The Session date is optional: the sandwich rule applies regardless.
+ * The Session date is optional: the last-completed-event rule applies
+ * regardless.
+ *
+ * When the account has a completed Level Event, missing '-' rows for every day
+ * in [0, maxRealOffset] (days with no level row) are persisted first so the
+ * planner emits a real (positive-id) Session Only request that the frontend can
+ * resolve and mark completed — synthetic in-memory days carry negative ids and
+ * can never be completed.
  *
  * Every evaluated session-only level is traced via logMaintenanceEvent so the
- * classification (completed/skipped + reason + temporal bounds) can be audited.
+ * classification (completed/skipped + reason) can be audited.
  *
  * Additionally scans data.accounts for any account not in sessionDateOverrides
  * (catch-all for edge cases where cache lookups failed), ensuring every
@@ -844,8 +848,10 @@ export async function applySessionCompletionPerAccount(
       let accountStartDate: Date;
       let accountStartTime: string | undefined;
       let branchId: number | undefined;
+      let gameId: number | undefined;
 
       if (dbAccount) {
+        gameId = dbAccount.game_id;
         branchId = dbAccount.branch_id;
         const rawStartDate = dbAccount.start_date
           ? (dbAccount.start_date.includes('T') ? dbAccount.start_date.split('T')[0] : dbAccount.start_date)
@@ -881,8 +887,7 @@ export async function applySessionCompletionPerAccount(
         }
       }
       const branchLevels = branchLevelsCache.get(branchId) || [];
-      const sessionLevels = branchLevels.filter((l: any) => l.level_name === '-');
-      if (sessionLevels.length === 0) return 0;
+      let sessionLevels = branchLevels.filter((l: any) => l.level_name === '-');
 
       let existingProgress: any[];
       try {
@@ -891,44 +896,113 @@ export async function applySessionCompletionPerAccount(
       const completedSet = new Set<number>();
       existingProgress.forEach((ep: any) => { if (ep.is_completed) completedSet.add(ep.level_id); });
 
-      // Completed real Level Event temporal windows — the sandwich bounds.
-      // Purchases and other sessions are never bounds.
-      const completedWindows: { startMs: number; endMs: number; levelId: number; token: string; offset: number }[] = [];
+      // Completed real Level Event windows. Purchases and other sessions are
+      // never bounds; their count drives the blanket rule below.
+      const completedWindows: { startMs: number; endMs: number; levelId: number; token: string; offset: number; timeSpent: number }[] = [];
       branchLevels.forEach((l: any) => {
         if (l.level_name === '-' || l.days_offset == null) return;
         if (!completedSet.has(l.id)) return;
         const startMs = baseOfDay + l.days_offset * DAY_MS;
         const endMs = startMs + (l.time_spent || 0) * UNIT_SECONDS_MS;
-        completedWindows.push({ startMs, endMs, levelId: l.id, token: l.event_token || '', offset: l.days_offset });
+        completedWindows.push({ startMs, endMs, levelId: l.id, token: l.event_token || '', offset: l.days_offset, timeSpent: l.time_spent || 0 });
       });
+
+      // Per-account rule: a Session Only request is completed when it lies
+      // temporally BEFORE the LAST completed Level Event of this account.
+      // Real levels (excluding '-') are the anchors.
+      const hasAnyCompletedEvent = completedWindows.length > 0;
+      const lastCompletedEvent = completedWindows.reduce<typeof completedWindows[number] | undefined>(
+        (max, w) => (max === undefined || w.startMs > max.startMs ? w : max),
+        undefined,
+      );
+      const lastCompletedStartMs = lastCompletedEvent ? lastCompletedEvent.startMs : null;
+      const lastCompletedOffset = lastCompletedEvent ? lastCompletedEvent.offset : null;
+      const realLevels = branchLevels
+        .filter((l: any) => l.level_name !== '-' && l.days_offset != null)
+        .sort((a: any, b: any) => a.days_offset - b.days_offset);
+      const maxRealOffset = realLevels.length > 0 ? realLevels[realLevels.length - 1].days_offset : -1;
+
+      const interpolateTime = (d: number): number => {
+        if (realLevels.length === 0) return 1;
+        const next = realLevels.find((l: any) => l.days_offset > d);
+        const prev = realLevels.filter((l: any) => l.days_offset < d).pop();
+        if (prev && next) {
+          const span = next.days_offset - prev.days_offset;
+          const ratio = span > 0 ? (d - prev.days_offset) / span : 0;
+          return Math.max(1, Math.round(prev.time_spent + ratio * (next.time_spent - prev.time_spent)));
+        }
+        if (next && !prev) {
+          const firstRealDay = next.days_offset;
+          const increment = next.time_spent / (Math.max(firstRealDay, 0) + 1);
+          return Math.max(1, Math.round((d + 1) * increment));
+        }
+        const last = prev || next;
+        return Math.max(1, last.time_spent);
+      };
+
+      const baseForDay = (d: number): string => {
+        const next = realLevels.find((l: any) => l.days_offset > d);
+        const source = next || realLevels[realLevels.length - 1];
+        return (source?.event_token || '').split('_day')[0] || 'lvl';
+      };
+
+      // The planner only synthesizes session-only days in memory (negative ids),
+      // so without a persisted row the frontend can never resolve/mark them
+      // completed. Persist a '-' row for every day in [0, maxRealOffset] that has
+      // no level row so every Session Only request exists and can be completed.
+      // Idempotent: addLevel dedupes, and branchLevels is cached.
+      if (gameId && hasAnyCompletedEvent) {
+        for (let d = 0; d <= maxRealOffset; d++) {
+          if (branchLevels.some((l: any) => l.days_offset === d)) continue;
+          const base = baseForDay(d);
+          const timeSpent = interpolateTime(d);
+          let newId: number;
+          try {
+            newId = await TauriService.addLevel({
+              game_id: gameId,
+              branch_id: branchId,
+              level_name: '-',
+              event_token: `${base}_day${d}`,
+              days_offset: d,
+              time_spent: timeSpent,
+              is_bonus: false,
+            } as any);
+          } catch (_) { continue; }
+          branchLevels.push({
+            id: newId,
+            game_id: gameId,
+            branch_id: branchId,
+            level_name: '-',
+            event_token: `${base}_day${d}`,
+            days_offset: d,
+            time_spent: timeSpent,
+            is_bonus: false,
+          });
+        }
+        sessionLevels = branchLevels.filter((l: any) => l.level_name === '-');
+      }
+      if (sessionLevels.length === 0) return 0;
 
       for (const level of sessionLevels) {
         if (level.days_offset == null) continue;
         const sessionX = baseOfDay + level.days_offset * DAY_MS;
         const alreadyCompleted = completedSet.has(level.id);
         const beforeCutoff = !!cutoffDate && sessionX <= cutoffDate.getTime();
+        const beforeLastCompletedEvent = lastCompletedStartMs != null && sessionX < lastCompletedStartMs;
 
-        // Strict gap sandwich: nearest completed window fully ending before X
-        // (end < X) and nearest window fully starting after X (start > X).
-        const boundBefore = completedWindows
-          .filter(w => w.endMs < sessionX)
-          .sort((a, b) => b.endMs - a.endMs)[0];
-        const boundAfter = completedWindows
-          .filter(w => w.startMs > sessionX)
-          .sort((a, b) => a.startMs - b.startMs)[0];
-        const sandwiched = !!boundBefore && !!boundAfter;
-
-        const shouldComplete = !alreadyCompleted && (beforeCutoff || sandwiched);
+        const shouldComplete = !alreadyCompleted && (beforeCutoff || beforeLastCompletedEvent);
 
         const reason = alreadyCompleted
           ? 'already completed'
-          : !beforeCutoff && !sandwiched
-            ? 'not between two completed (C) Level Events (strict gap end(E1)<X<start(E2))'
-            : beforeCutoff && sandwiched
-              ? 'session cutoff AND sandwich gap'
+          : !beforeCutoff && !beforeLastCompletedEvent
+            ? lastCompletedStartMs != null
+              ? 'after the last completed (C) Level Event'
+              : 'no completed Level Event and after the Session cutoff'
+            : beforeCutoff && beforeLastCompletedEvent
+              ? 'session cutoff AND before the last completed (C) Level Event'
               : beforeCutoff
                 ? 'session cutoff'
-                : 'sandwich gap';
+                : 'before the last completed (C) Level Event';
 
         // Trace every evaluated session-only level (completion + classification).
         TauriService.logMaintenanceEvent({
@@ -941,11 +1015,10 @@ export async function applySessionCompletionPerAccount(
           detail: JSON.stringify({
             sessionX,
             beforeCutoff,
-            sandwiched,
-            boundBeforeEnd: boundBefore ? boundBefore.endMs : null,
-            boundBeforeToken: boundBefore ? boundBefore.token : null,
-            boundAfterStart: boundAfter ? boundAfter.startMs : null,
-            boundAfterToken: boundAfter ? boundAfter.token : null,
+            beforeLastCompletedEvent,
+            lastCompletedStartMs,
+            lastCompletedOffset,
+            completedEventCount: completedWindows.length,
           }),
         }).catch(() => {});
 

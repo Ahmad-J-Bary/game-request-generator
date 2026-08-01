@@ -190,7 +190,7 @@ beforeEach(() => {
 });
 
 describe('ImportPersistenceService.persistAll — end-to-end import of Level Events, Purchase Events and Session Only classification', () => {
-  it('imports Level Events + Purchase Events, creates accounts, completes Session Only by sandwich, with zero errors', async () => {
+  it('imports Level Events + Purchase Events, creates accounts, completes Session Only BEFORE the last completed Level Event, with zero errors', async () => {
     const data = buildImportData();
 
     const result = await ImportPersistenceService.persistAll(data, 1, 10);
@@ -216,14 +216,14 @@ describe('ImportPersistenceService.persistAll — end-to-end import of Level Eve
     const shopProgress = db.purchaseProgress.find(p => p.account_id === acc1.id && p.purchase_event_id === shopId);
     assert.strictEqual(shopProgress?.is_completed, true, 'Purchase Event shop_day3 completed (C)');
 
-    assert.strictEqual(lp(acc1.id, levelId('lvl_day10'))?.is_completed, true, 'Session Only day10 completed via sandwich (between day5 and day15)');
-    assert.strictEqual(lp(acc2.id, levelId('lvl_day10'))?.is_completed, undefined, 'Acc2 Session Only day10 NOT completed (only day5 completed)');
-    assert.strictEqual(lp(acc1.id, levelId('lvl_day30'))?.is_completed, undefined, 'Session Only day30 NOT completed (after last completed event)');
-    assert.strictEqual(lp(acc2.id, levelId('lvl_day30'))?.is_completed, undefined, 'Acc2 Session Only day30 NOT completed');
+    assert.strictEqual(lp(acc1.id, levelId('lvl_day10'))?.is_completed, true, 'Session Only day10 completed for Acc1 (before last completed event day15)');
+    assert.strictEqual(lp(acc2.id, levelId('lvl_day10'))?.is_completed, undefined, 'Acc2 Session Only day10 NOT completed (day10 is after last completed event day5)');
+    assert.strictEqual(lp(acc1.id, levelId('lvl_day30'))?.is_completed, undefined, 'Session Only day30 NOT completed (after last completed event day15)');
+    assert.strictEqual(lp(acc2.id, levelId('lvl_day30'))?.is_completed, undefined, 'Acc2 Session Only day30 NOT completed (after day5)');
 
-    const sandwichLog = db.logs.find(l => l.action === 'session_only_completed' && l.levelId === levelId('lvl_day10'));
-    assert.ok(sandwichLog, 'session_only_completed trace log written for sandwiched session');
-    assert.strictEqual(JSON.parse(sandwichLog.detail).sandwiched, true, 'detail marks sandwiched=true');
+    const completionLog = db.logs.find(l => l.action === 'session_only_completed' && l.levelId === levelId('lvl_day10'));
+    assert.ok(completionLog, 'session_only_completed trace log written for day10');
+    assert.strictEqual(JSON.parse(completionLog.detail).lastCompletedOffset, 15, 'detail records the last completed event offset');
 
     assert.strictEqual(result.importedCount, 6, '3 levels + 1 purchase + 2 accounts imported');
   });
@@ -265,5 +265,56 @@ describe('ImportPersistenceService.persistAll — end-to-end import of Level Eve
     assert.ok(lvl5 && lvl5.level_name !== '-', 'Level Event lvl_day5 still imported');
 
     assert.strictEqual(result.importedCount, 3, '2 levels + 1 account imported (session-only skipped)');
+  });
+
+  it('creates missing Session Only rows across the range (fresh branch, no pre-seeded \'-\' rows) and completes them', async () => {
+    const startDate = startDateStr();
+    const data: ImportData = {
+      levels: [
+        { gameName: 'GapGame', branchName: 'GapBranch', event_token: 'lvl_day5', level_name: 'Level 5', days_offset: 5, time_spent: 1, is_bonus: false } as any,
+        { gameName: 'GapGame', branchName: 'GapBranch', event_token: 'lvl_day15', level_name: 'Level 15', days_offset: 15, time_spent: 1, is_bonus: false } as any,
+      ],
+      purchaseEvents: [],
+      accounts: [
+        { name: 'AccGap', gameName: 'GapGame', branchName: 'GapBranch', start_date: startDate, start_time: '00:00:00' } as any,
+      ],
+      progress: [
+        { gameName: 'GapGame', accountName: 'AccGap', levelName: 'Level 5', token: 'lvl_day5', isCompleted: true },
+        { gameName: 'GapGame', accountName: 'AccGap', levelName: 'Level 15', token: 'lvl_day15', isCompleted: true },
+      ],
+      accountSessionDates: new Map<string, string>(),
+    };
+
+    const result = await ImportPersistenceService.persistAll(data, 1, 10);
+
+    assert.deepStrictEqual(result.errors, [], 'no import errors');
+
+    const gapBranch = db.branches.find(b => b.name === 'GapBranch')!;
+    assert.ok(gapBranch, 'GapBranch created for the new game');
+
+    const gapLevels = db.levels.filter(l => l.branch_id === gapBranch.id);
+    const day6 = gapLevels.find(l => l.event_token === 'lvl_day6');
+    assert.ok(day6, 'sandwiched session row lvl_day6 created by the importer');
+    assert.strictEqual(day6.level_name, '-', 'created row is a Session Only row');
+    assert.strictEqual(day6.days_offset, 6, 'created row sits strictly between day5 and day15');
+    assert.ok(day6.time_spent > 0, 'created row carries an interpolated time_spent');
+
+    const createdRange = gapLevels
+      .filter(l => l.level_name === '-')
+      .every(l => l.days_offset != null && l.days_offset >= 0 && l.days_offset <= 15 && l.days_offset !== 5 && l.days_offset !== 15);
+    assert.ok(createdRange, 'only days in [0,15] without a level row are created');
+
+    const day0 = gapLevels.find(l => l.event_token === 'lvl_day0');
+    assert.ok(day0, 'session row before the first completed event (day0) created');
+
+    const accGap = db.accounts.find(a => a.name === 'AccGap')!;
+    const lp = db.levelProgress.find(p => p.account_id === accGap.id && p.level_id === day6.id);
+    assert.strictEqual(lp?.is_completed, true, 'created sandwiched session completed');
+
+    const lp0 = db.levelProgress.find(p => p.account_id === accGap.id && p.level_id === day0!.id);
+    assert.strictEqual(lp0?.is_completed, true, 'day0 session completed (blanket rule)');
+
+    const completionLog = db.logs.find(l => l.action === 'session_only_completed' && l.levelId === day6.id);
+    assert.ok(completionLog, 'session_only_completed trace log written for the created row');
   });
 });
