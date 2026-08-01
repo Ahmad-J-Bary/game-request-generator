@@ -6,3 +6,4 @@ pub mod level;
 pub mod purchase_event;
 pub mod progress;
 pub mod history;
+pub mod maintenance_log;

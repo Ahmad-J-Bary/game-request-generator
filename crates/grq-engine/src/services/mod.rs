@@ -7,6 +7,7 @@ pub mod purchase_event_service;
 pub mod progress_service;
 pub mod telegram_service;
 pub mod history_service;
+pub mod maintenance_log_service;
 
 #[cfg(test)]
 pub mod account_service_tests;

@@ -23,6 +23,26 @@ interface SessionCompletionDetail {
   markedAsCompleted: boolean;
 }
 
+/**
+ * Rule 1: a standalone Session carries the base token of its NEXT real Level
+ * Event (falling back to the previous real level when no event follows). This
+ * replaces the old `levels[0]` base that disconnected Session tokens from the
+ * event they follow.
+ */
+function getBaseTokenForOffset(offset: number, gameLevels: any[]): string {
+  const realLevels = gameLevels
+    .filter((l) => l.level_name !== '-' && typeof l.days_offset === 'number')
+    .sort((a, b) => a.days_offset - b.days_offset);
+
+  if (realLevels.length === 0) return 'lvl';
+
+  const nextReal = realLevels.find((l) => l.days_offset > offset);
+  const prevReal = [...realLevels].reverse().find((l) => l.days_offset <= offset);
+  const chosen = nextReal || prevReal;
+
+  return chosen.event_token ? chosen.event_token.split('_day')[0] : 'lvl';
+}
+
 function getInterpolatedTimeSpent(day: number, gameLevels: any[]): number {
   if (gameLevels.length === 0) return 0;
 
@@ -92,10 +112,14 @@ export async function applySessionCompletionForGame(
 
       let levels = await TauriService.getGameLevels(branch.id);
 
-      let baseToken = 'lvl';
-      if (levels.length > 0 && levels[0].event_token) {
-        baseToken = levels[0].event_token.split('_day')[0];
-      }
+      // Rule 2 (per token): a standalone Session must never coexist with a real
+      // Level Event on the same day. Offsets that carry a real level are handled
+      // exclusively by the parser cascade, so this processor skips them.
+      const realLevelOffsets = new Set<number>(
+        levels
+          .filter((l: any) => l.level_name !== '-' && l.days_offset != null)
+          .map((l: any) => l.days_offset as number),
+      );
 
       for (const account of branchAccounts) {
         result.totalAccountsScanned++;
@@ -131,7 +155,10 @@ export async function applySessionCompletionForGame(
           targetOffsets.add(d);
         }
 
-        result.totalSessionLevelsFound += targetOffsets.size;
+        // Rule 2 (per token): drop offsets that already have a real Level Event —
+        // the parser cascade completes those, never a standalone Session here.
+        const sessionOnlyOffsets = [...targetOffsets].filter((o) => !realLevelOffsets.has(o));
+        result.totalSessionLevelsFound += sessionOnlyOffsets.length;
 
         let levelProgress: any[] = [];
         try {
@@ -142,10 +169,12 @@ export async function applySessionCompletionForGame(
           if (p.is_completed) completedLevelSet.add(p.level_id);
         });
 
-        for (const offset of targetOffsets) {
+        for (const offset of sessionOnlyOffsets) {
           const eventDate = addDays(startLocal, offset);
           if (eventDate.getTime() > cutoffDate.getTime()) continue;
 
+          // Rule 1: token follows the next real level (previous as fallback).
+          const baseToken = getBaseTokenForOffset(offset, levels);
           const sessionToken = `${baseToken}_day${offset}`;
 
           let sessionLevel = levels.find(

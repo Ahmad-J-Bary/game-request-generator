@@ -1,4 +1,4 @@
-﻿// src-tauri/src/lib.rs
+// src-tauri/src/lib.rs
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -18,6 +18,7 @@ use grq_engine::models::game::{
 };
 use grq_engine::models::history::{AddCompletedTaskRequest, CompletedDailyTask};
 use grq_engine::models::level::{CreateLevelRequest, Level, UpdateLevelRequest};
+use grq_engine::models::maintenance_log::MaintenanceLog;
 use grq_engine::models::progress::{
     AccountLevelProgress, AccountPurchaseEventProgress, CreateAccountLevelProgressRequest,
     CreateAccountPurchaseEventProgressRequest, UpdateAccountLevelProgressRequest,
@@ -31,6 +32,7 @@ use grq_engine::services::account_service::{AccountService, CompletedAccount};
 use grq_engine::services::game_service::GameService;
 use grq_engine::services::history_service::HistoryService;
 use grq_engine::services::level_service::LevelService;
+use grq_engine::services::maintenance_log_service::MaintenanceLogService;
 use grq_engine::services::progress_service::ProgressService;
 use grq_engine::services::purchase_event_service::PurchaseEventService;
 
@@ -54,9 +56,7 @@ fn resolve_internal_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf
     }
 }
 
-async fn execute_hall_of_fame_send_clear(
-    app: &tauri::AppHandle,
-) -> Result<(usize, usize), String> {
+async fn execute_hall_of_fame_send_clear(app: &tauri::AppHandle) -> Result<(usize, usize), String> {
     let completed_accounts: Vec<CompletedAccount> = {
         let db = Database::new(app)?;
         let conn = db.get_connection();
@@ -356,16 +356,32 @@ fn resolve_backup_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Stri
         let dir = db_path.parent().ok_or("DB path has no parent")?;
         Ok(dir.to_path_buf())
     } else {
-        Ok(std::path::PathBuf::from(config.backup_custom_path.as_ref().unwrap()))
+        Ok(std::path::PathBuf::from(
+            config.backup_custom_path.as_ref().unwrap(),
+        ))
     }
 }
 
 fn files_identical(path1: &std::path::Path, path2: &std::path::Path) -> bool {
-    let meta1 = match std::fs::metadata(path1) { Ok(m) => m, Err(_) => return false };
-    let meta2 = match std::fs::metadata(path2) { Ok(m) => m, Err(_) => return false };
-    if meta1.len() != meta2.len() { return false; }
-    let content1 = match std::fs::read(path1) { Ok(c) => c, Err(_) => return false };
-    let content2 = match std::fs::read(path2) { Ok(c) => c, Err(_) => return false };
+    let meta1 = match std::fs::metadata(path1) {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    let meta2 = match std::fs::metadata(path2) {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    if meta1.len() != meta2.len() {
+        return false;
+    }
+    let content1 = match std::fs::read(path1) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let content2 = match std::fs::read(path2) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
     content1 == content2
 }
 
@@ -376,7 +392,10 @@ fn find_latest_backup(dir: &std::path::Path) -> Option<std::path::PathBuf> {
             let path = entry.path();
             if path.is_file() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if let Some(ts) = name.strip_prefix("backup_").and_then(|s| s.strip_suffix(".sqlite")) {
+                    if let Some(ts) = name
+                        .strip_prefix("backup_")
+                        .and_then(|s| s.strip_suffix(".sqlite"))
+                    {
                         if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d_%H%M%S") {
                             if latest.as_ref().map_or(true, |(t, _)| dt > *t) {
                                 latest = Some((dt, path));
@@ -402,7 +421,8 @@ fn cleanup_old_backups(dir: &std::path::Path) -> Result<(), String> {
             if path.is_file() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     if let Some(date_str) = name.strip_prefix("backup_").and_then(|s| s.get(..8)) {
-                        if let Ok(file_date) = chrono::NaiveDate::parse_from_str(date_str, "%Y%m%d") {
+                        if let Ok(file_date) = chrono::NaiveDate::parse_from_str(date_str, "%Y%m%d")
+                        {
                             if file_date < cutoff {
                                 let _ = std::fs::remove_file(&path);
                             }
@@ -418,7 +438,9 @@ fn cleanup_old_backups(dir: &std::path::Path) -> Result<(), String> {
 fn perform_backup_if_needed(app: &tauri::AppHandle) -> Result<(), String> {
     let config = ConfigService::load(app);
     let db_path = resolve_internal_db_path(app)?;
-    if !db_path.exists() { return Ok(()); }
+    if !db_path.exists() {
+        return Ok(());
+    }
 
     let backup_dir = resolve_backup_dir(app)?;
     std::fs::create_dir_all(&backup_dir)
@@ -435,8 +457,7 @@ fn perform_backup_if_needed(app: &tauri::AppHandle) -> Result<(), String> {
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
         let backup_filename = format!("backup_{}.sqlite", timestamp);
         let backup_path = backup_dir.join(&backup_filename);
-        std::fs::copy(&db_path, &backup_path)
-            .map_err(|e| format!("Failed to copy DB: {}", e))?;
+        std::fs::copy(&db_path, &backup_path).map_err(|e| format!("Failed to copy DB: {}", e))?;
     }
 
     // Cleanup old backups once per day (runs even if no new backup was needed).
@@ -455,10 +476,16 @@ fn perform_backup_if_needed(app: &tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn get_backup_config(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let config = ConfigService::load(&app);
-    let backup_dir = resolve_backup_dir(&app).ok().map(|p| p.to_string_lossy().to_string());
-    let latest = backup_dir.as_ref().and_then(|d| find_latest_backup(std::path::Path::new(d)));
+    let backup_dir = resolve_backup_dir(&app)
+        .ok()
+        .map(|p| p.to_string_lossy().to_string());
+    let latest = backup_dir
+        .as_ref()
+        .and_then(|d| find_latest_backup(std::path::Path::new(d)));
     let latest_time = latest.as_ref().and_then(|p| {
-        p.metadata().ok().and_then(|m| m.modified().ok())
+        p.metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64)
     });
@@ -489,13 +516,11 @@ fn backup_database_local_now(app: tauri::AppHandle) -> Result<(), String> {
     // Force backup even if identical â€” always create a new timestamped copy
     let db_path = resolve_internal_db_path(&app)?;
     let backup_dir = resolve_backup_dir(&app)?;
-    std::fs::create_dir_all(&backup_dir)
-        .map_err(|_| format!("Failed to create backup dir"))?;
+    std::fs::create_dir_all(&backup_dir).map_err(|_| format!("Failed to create backup dir"))?;
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
     let backup_filename = format!("backup_{}.sqlite", timestamp);
     let backup_path = backup_dir.join(&backup_filename);
-    std::fs::copy(&db_path, &backup_path)
-        .map_err(|e| format!("Failed to copy DB: {}", e))?;
+    std::fs::copy(&db_path, &backup_path).map_err(|e| format!("Failed to copy DB: {}", e))?;
     Ok(())
 }
 
@@ -1360,8 +1385,6 @@ fn get_daily_requests(
         };
 
         // 4. Generate requests for this group
-        let mut has_real_level = false;
-        let mut has_synthetic_level = false;
 
         // Sort levels within the group: Session (-) then Event (actual names)
         let mut sorted_group_levels = group_levels.clone();
@@ -1375,6 +1398,14 @@ fn get_daily_requests(
             }
         });
 
+        // Compound pair rule: a day with a real Level Event must carry BOTH a
+        // Level Session and a Level Event, exactly like a Purchase Event carries
+        // a Purchase Session and a Purchase Event. Track whether the group has a
+        // real event and/or a stored '-' session so a virtual Session can be
+        // synthesized below when the event has no session row yet.
+        let mut has_real_level = false;
+        let mut has_synthetic_level = false;
+
         // Unified group pacing (ms): ONE fresh jitter per (token, day), anchored
         // on the first real (event) level so the Session and its Event never
         // show a difference (e.g. base 25s + jitter 441 => 25441 for both).
@@ -1382,14 +1413,6 @@ fn get_daily_requests(
             request_time_spent_ms(group_anchor_time(&sorted_group_levels), &mut rng);
 
         for l in sorted_group_levels {
-            if l.level_name == "-" {
-                has_synthetic_level = true;
-            } else {
-                has_real_level = true;
-            }
-
-            // We no longer skip completed individual levels here to keep the group intact in the UI
-
             // Group-unified time (ms): shared by the Session and its Event.
             let request_time_spent = group_time_spent;
 
@@ -1406,6 +1429,8 @@ fn get_daily_requests(
                 base_request_content.replace("{days_offset}", &l.days_offset.to_string());
 
             if l.level_name == "-" {
+                has_synthetic_level = true;
+
                 // Generate ONLY Session
                 let session_content = process_content_length(base_request_content);
                 requests.push(serde_json::json!({
@@ -1417,6 +1442,8 @@ fn get_daily_requests(
                     "timestamp": target_date.clone()
                 }));
             } else {
+                has_real_level = true;
+
                 // Generate ONLY Event
                 let event_content = process_content_length(
                     base_request_content.replace("POST /session", "POST /event"),
@@ -1432,9 +1459,11 @@ fn get_daily_requests(
             }
         }
 
-        // 5. If day has real levels but no synthetic session level exists yet, add a virtual session.
-        // Guard: do NOT add a fallback session if a real '-' level already exists in all_levels
-        // for the same base token + day (to avoid duplicate sessions).
+        // Compound pair: when this (token, day) has a real Level Event but no
+        // stored '-' session row yet, synthesize a virtual Level Session that
+        // shares the group's unified pacing time, so the day emits a compound
+        // "Level Session + Level Event" card exactly like a Purchase Event emits
+        // "Purchase Session + Purchase Event" (and never a bare Event alone).
         let has_db_session_for_token = all_levels.iter().any(|l| {
             l.level_name == "-"
                 && l.event_token.split("_day").next().unwrap_or("") == clean_event_token
@@ -1442,29 +1471,25 @@ fn get_daily_requests(
         });
 
         if has_real_level && !has_synthetic_level && !has_db_session_for_token {
-            // Virtual session shares the group's unified pacing time so it never
-            // differs from the event it accompanies.
-            let virtual_session_time_spent = group_time_spent;
+            let mut virtual_content = template.clone();
+            virtual_content =
+                virtual_content.replace("{event_token}", &clean_event_token);
+            virtual_content =
+                virtual_content.replace("{time_spent}", &group_time_spent.to_string());
+            virtual_content = virtual_content.replace("{account_name}", &account.name);
+            virtual_content =
+                virtual_content.replace("{game_id}", &account.game_id.to_string());
+            virtual_content = virtual_content.replace("{level_name}", "-");
+            virtual_content =
+                virtual_content.replace("{days_offset}", &level.days_offset.to_string());
 
-            let mut base_request_content = template.clone();
-            base_request_content =
-                base_request_content.replace("{event_token}", &clean_event_token);
-            base_request_content =
-                base_request_content.replace("{time_spent}", &virtual_session_time_spent.to_string());
-            base_request_content = base_request_content.replace("{account_name}", &account.name);
-            base_request_content =
-                base_request_content.replace("{game_id}", &account.game_id.to_string());
-            base_request_content = base_request_content.replace("{level_name}", "-");
-            base_request_content =
-                base_request_content.replace("{days_offset}", &days_passed.to_string());
-
-            let session_content = process_content_length(base_request_content);
+            let session_content = process_content_length(virtual_content);
             requests.push(serde_json::json!({
                 "request_type": "session",
                 "content": session_content,
                 "event_token": clean_event_token.clone(),
                 "level_id": null,
-                "time_spent": virtual_session_time_spent,
+                "time_spent": group_time_spent,
                 "timestamp": target_date.clone()
             }));
         }
@@ -1788,10 +1813,7 @@ fn get_daily_requests(
 /// group's unified time), kept for the interpolation tests.
 #[cfg(test)]
 fn session_interpolated_time(day: i32, levels: &[Level]) -> i32 {
-    let mut real_levels: Vec<&Level> = levels
-        .iter()
-        .filter(|l| l.level_name != "-")
-        .collect();
+    let mut real_levels: Vec<&Level> = levels.iter().filter(|l| l.level_name != "-").collect();
     real_levels.sort_by_key(|l| l.days_offset);
 
     if real_levels.is_empty() {
@@ -1811,8 +1833,8 @@ fn session_interpolated_time(day: i32, levels: &[Level]) -> i32 {
 
     match (prev_level, next_level) {
         (Some(prev), Some(next)) => {
-            let ratio = (day - prev.days_offset) as f64
-                / (next.days_offset - prev.days_offset) as f64;
+            let ratio =
+                (day - prev.days_offset) as f64 / (next.days_offset - prev.days_offset) as f64;
             (prev.time_spent as f64 + ratio * (next.time_spent - prev.time_spent) as f64).round()
                 as i32
         }
@@ -1842,10 +1864,7 @@ fn jitter_range(base_seconds: i32) -> std::ops::RangeInclusive<i64> {
 /// Compute a time_spent (in ms) from a base time in seconds plus a fresh random
 /// jitter within the allowed range. Called ONCE per (token, day) group so the
 /// Session and its Event share the exact same value.
-fn request_time_spent_ms(
-    base_seconds: i32,
-    rng: &mut rand::rngs::ThreadRng,
-) -> i64 {
+fn request_time_spent_ms(base_seconds: i32, rng: &mut rand::rngs::ThreadRng) -> i64 {
     use rand::Rng;
     let jitter = rng.gen_range(jitter_range(base_seconds));
     (base_seconds as i64 * 1000) + jitter
@@ -1886,10 +1905,7 @@ fn get_task_history(
 }
 
 #[tauri::command]
-fn delete_completed_task(
-    state: tauri::State<AppState>,
-    id: String,
-) -> Result<(), String> {
+fn delete_completed_task(state: tauri::State<AppState>, id: String) -> Result<(), String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
     let service = HistoryService::new();
@@ -1904,6 +1920,48 @@ fn clear_task_history(state: tauri::State<AppState>) -> Result<(), String> {
     service.clear_history(conn)?;
     let _ = db_guard.reclaim_space()?;
     Ok(())
+}
+
+// ==================== سجلات صيانة البيانات (maintenance logs) ====================
+#[tauri::command]
+fn get_maintenance_logs(
+    state: tauri::State<AppState>,
+    limit: Option<u32>,
+) -> Result<Vec<MaintenanceLog>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    MaintenanceLogService::new()
+        .get_logs(conn, limit)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn log_maintenance_event(
+    state: tauri::State<AppState>,
+    action: String,
+    branch_id: Option<i64>,
+    level_id: Option<i64>,
+    event_token: Option<String>,
+    new_event_token: Option<String>,
+    days_offset: Option<i32>,
+    reason: Option<String>,
+    detail: Option<String>,
+) -> Result<(), String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    MaintenanceLogService::new()
+        .log(
+            conn,
+            &action,
+            branch_id,
+            level_id,
+            event_token.as_deref(),
+            new_event_token.as_deref(),
+            days_offset,
+            reason.as_deref(),
+            detail.as_deref(),
+        )
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2028,9 +2086,7 @@ pub fn run() {
             let db = Database::new(&handle)?;
             db.init()?;
 
-            app.manage(AppState {
-                db: Mutex::new(db),
-            });
+            app.manage(AppState { db: Mutex::new(db) });
 
             // Local backup check on startup (best effort, synchronous before window opens).
             if let Err(e) = perform_backup_if_needed(app.handle()) {
@@ -2101,6 +2157,8 @@ pub fn run() {
             get_task_history,
             clear_task_history,
             delete_completed_task,
+            get_maintenance_logs,
+            log_maintenance_event,
             get_backup_config,
             set_backup_config,
             backup_database_local_now,
@@ -2122,4 +2180,3 @@ mod backup_tests;
 #[cfg(test)]
 #[path = "session_time_tests.rs"]
 mod session_time_tests;
-

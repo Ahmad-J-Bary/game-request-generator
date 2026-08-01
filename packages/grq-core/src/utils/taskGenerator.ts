@@ -4,7 +4,7 @@ import {
   parseAccountStartDate,
 } from "./daily-tasks.utils";
 import { calculateTimerState } from "./timer.utils";
-import { buildRequestGroups } from "./request-groups.utils";
+import { buildRequestGroups, classifyLevelRequestType } from "./request-groups.utils";
 import type {
   Account,
   DailyRequestsResponse,
@@ -216,29 +216,37 @@ export class TaskGenerator {
             }
           }
 
+          // Compound-pair detection: a Level Session is considered paired (and
+          // therefore classified as "Level Session") when a Level Event request
+          // shares the same event token (same base + same day).
+          const hasCorrespondingEvent = (req: any) =>
+            tempRequests.some(
+              (r) =>
+                (r.event_token || "").trim() === (req.event_token || "").trim() &&
+                gameLevelByToken.has((r.event_token || "").trim()) &&
+                (r.request_type as string).toLowerCase() === "event",
+            );
+
           for (const req of tempRequests) {
             const matchingLevel = gameLevelByToken.get(req.event_token);
             const matchingPurchase = purchaseByToken.get(req.event_token);
 
             if (matchingLevel) {
               const rawType = (req.request_type as string).toLowerCase();
-              // For compound level events, skip the session request entirely
-              if (rawType === "session" || rawType === "session only") {
-                const hasCorrespondingEvent = tempRequests.some(
-                  (r) =>
-                    r.event_token === req.event_token &&
-                    (r.request_type as string).toLowerCase() === "event" &&
-                    r.level_id === req.level_id,
-                );
-                if (hasCorrespondingEvent) continue;
-              }
 
               req.level_name = matchingLevel.level_name;
               req.level_id = matchingLevel.id;
               req.days_offset = matchingLevel.days_offset;
 
               if (rawType === "session" || rawType === "session only") {
-                req.request_type = "Session Only";
+                // A Session paired with a Level Event on the same token forms a
+                // compound "Level Session + Level Event" card (like a Purchase
+                // Event). Standalone sessions (no corresponding event) stay as
+                // "Session Only".
+                req.request_type = classifyLevelRequestType(
+                  rawType,
+                  hasCorrespondingEvent(req),
+                );
                 // Re-resolve the correct session level ID (if one exists)
                 // to avoid using a real level's ID from the map collision.
                 const sessionDaysOffset = req.days_offset ?? 0;

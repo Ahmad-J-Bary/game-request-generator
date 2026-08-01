@@ -2,6 +2,7 @@
 
 use rusqlite::{params, OptionalExtension, Connection};
 use crate::models::level::{Level, CreateLevelRequest, UpdateLevelRequest};
+use crate::services::maintenance_log_service::MaintenanceLogService;
 
 pub struct LevelService;
 
@@ -23,6 +24,43 @@ impl LevelService {
                 .map_err(|e| format!("Failed to check for existing synthetic level: {}", e))?;
             
             if let Some(id) = existing_synthetic_id {
+                return Ok(id);
+            }
+
+            // Per-token rule: a standalone Session must never coexist with a real
+            // Level Event carrying the SAME base token on the SAME day. When a real
+            // event already exists for (branch, day, base), reuse it instead of
+            // creating the invalid '-' level.
+            let base = base_token_of(&request.event_token);
+            let existing_event_id: Option<i64> = conn
+                .query_row(
+                    "SELECT id FROM levels
+                     WHERE branch_id = ?1 AND days_offset = ?2 AND level_name != '-'
+                       AND (
+                            CASE
+                                WHEN instr(event_token, '_day') > 0 THEN substr(event_token, 1, instr(event_token, '_day') - 1)
+                                ELSE event_token
+                            END
+                           ) = ?3
+                     LIMIT 1",
+                    params![request.branch_id, request.days_offset, base],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| format!("Failed to check for existing real level: {}", e))?;
+
+            if let Some(id) = existing_event_id {
+                let _ = MaintenanceLogService::new().log(
+                    conn,
+                    "session_reused",
+                    Some(request.branch_id),
+                    Some(id),
+                    Some(&request.event_token),
+                    None,
+                    Some(request.days_offset),
+                    Some("real Level Event with same Event Token exists on same day"),
+                    Some("standalone Session creation skipped; real event reused"),
+                );
                 return Ok(id);
             }
         }
@@ -270,5 +308,13 @@ impl LevelService {
             .map_err(|e| format!("Failed to delete level: {}", e))?;
 
         Ok(conn.changes() > 0)
+    }
+}
+
+/// يُقصّ جزء "_dayN" فيبقى معرّف الحدث الأساسي (مثل connection.rs::base_token_of).
+fn base_token_of(token: &str) -> String {
+    match token.find("_day") {
+        Some(idx) => token[..idx].to_string(),
+        None => token.to_string(),
     }
 }

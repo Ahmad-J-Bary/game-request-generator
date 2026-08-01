@@ -39,6 +39,10 @@ export default defineConfig(async () => ({
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
+      // Use polling so edits to workspace packages (reached through pnpm
+      // junctions on Windows) are reliably detected and HMR timestamps update.
+      usePolling: true,
+      interval: 100,
     },
   },
   // إضافة هذا للتعامل مع CSS في Tauri

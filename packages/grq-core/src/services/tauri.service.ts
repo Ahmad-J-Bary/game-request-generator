@@ -34,6 +34,8 @@ import type {
   TelegramConfig,
   CompletedDailyTask,
   AddCompletedTaskRequest,
+  MaintenanceLog,
+  LogMaintenanceEventRequest,
 } from "@grq/api-bindings";
 
 export class TauriService {
@@ -409,6 +411,26 @@ export class TauriService {
 
   static async deleteCompletedTask(id: string): Promise<void> {
     return await invoke<void>("delete_completed_task", { id });
+  }
+
+  // ========== Maintenance Log Commands ==========
+  static async getMaintenanceLogs(limit?: number): Promise<MaintenanceLog[]> {
+    return await invoke<MaintenanceLog[]>("get_maintenance_logs", { limit });
+  }
+
+  static async logMaintenanceEvent(
+    request: LogMaintenanceEventRequest,
+  ): Promise<void> {
+    return await invoke<void>("log_maintenance_event", {
+      action: request.action,
+      branchId: request.branchId,
+      levelId: request.levelId,
+      eventToken: request.eventToken,
+      newEventToken: request.newEventToken,
+      daysOffset: request.daysOffset,
+      reason: request.reason,
+      detail: request.detail,
+    });
   }
 }
 

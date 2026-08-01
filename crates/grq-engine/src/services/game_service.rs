@@ -149,6 +149,11 @@ impl GameService {
                 params![new_branch_id, source_branch_id],
             )
             .map_err(|e| format!("Failed to duplicate purchase events: {}", e))?;
+
+            // Per-token rule: a copied standalone Session ('-') must never coexist
+            // with a copied Level Event sharing the same base token on the same day.
+            crate::db::connection::cleanup_branch_session_levels(conn, new_branch_id)
+                .map_err(|e| format!("Failed to clean up copied branch sessions: {}", e))?;
         }
 
         Ok(new_branch_id)

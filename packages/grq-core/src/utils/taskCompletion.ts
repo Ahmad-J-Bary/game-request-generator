@@ -369,6 +369,32 @@ export class TaskCompletionHandler {
           return existingSessionLevel.id;
         }
 
+        // Per-token rule: never create a standalone Session when a real Level
+        // Event with the SAME base token already exists on the same day — reuse
+        // the real event instead (matches LevelService::create_level guard).
+        const sameTokenEvent = gameLevels.find(
+          (level) =>
+            level.level_name !== "-" &&
+            level.days_offset === daysOffset &&
+            (level.event_token || "").split("_day")[0] === baseToken,
+        );
+
+        if (sameTokenEvent) {
+          console.log(
+            `[taskCompletion] Reusing real level ${sameTokenEvent.id} (${sameTokenEvent.event_token}) instead of creating standalone Session on day ${daysOffset}`,
+          );
+          TauriService.logMaintenanceEvent({
+            action: "session_reused",
+            branchId: account.branch_id,
+            levelId: sameTokenEvent.id,
+            eventToken: sessionEventToken,
+            daysOffset,
+            reason: "real Level Event with same Event Token exists on same day",
+            detail: "standalone Session completion reused the real event",
+          }).catch(() => {});
+          return sameTokenEvent.id;
+        }
+
         return TauriService.addLevel({
           game_id: account.game_id,
           branch_id: account.branch_id,

@@ -1,9 +1,11 @@
 ﻿// src-tauri/src/db/connection.rs
 
-use rusqlite::{params, Connection, Result as SqlResult};
+use rusqlite::{params, Connection, OptionalExtension, Result as SqlResult};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
+
+use crate::services::maintenance_log_service::MaintenanceLogService;
 
 /// Wrapper حول rusqlite::Connection مع وظائف إعداد الجداول
 pub struct Database {
@@ -234,6 +236,19 @@ impl Database {
                 FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
                 FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS maintenance_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                action TEXT NOT NULL,
+                branch_id INTEGER,
+                level_id INTEGER,
+                event_token TEXT,
+                new_event_token TEXT,
+                days_offset INTEGER,
+                reason TEXT,
+                detail TEXT
+            );
             ",
         )?;
 
@@ -241,6 +256,7 @@ impl Database {
         tx.execute_batch("
             CREATE INDEX IF NOT EXISTS idx_completed_tasks_account ON completed_daily_tasks(account_id);
             CREATE INDEX IF NOT EXISTS idx_completed_tasks_date ON completed_daily_tasks(completion_date);
+            CREATE INDEX IF NOT EXISTS idx_maintenance_logs_action ON maintenance_logs(action);
         ")?;
 
         // Helper to check column existence within transaction
@@ -519,7 +535,464 @@ impl Database {
               );
         ")?;
 
+        // 8. Data Cleanup: enforce the Session-token rules on existing data.
+        // Re-tokenizes standalone Sessions ('-') to their next Level Event's base
+        // token and removes any Session that shares a day with its own token's
+        // Level Event. Idempotent — safe to run on every startup.
+        cleanup_session_levels(&tx)?;
+
         tx.commit()?;
         Ok(())
+    }
+}
+
+/// قاعدة التوكن: يُقصّ جزء "_dayN" فيبقى معرّف الحدث الأساسي.
+fn base_token_of(token: &str) -> String {
+    token.split("_day").next().unwrap_or(token).to_string()
+}
+
+/// Session Cleanup Migration (Step 8)
+///
+/// Rule 1 (re-tokenize): a standalone Session (`level_name = '-'`) must carry the
+/// base token of the NEXT Level Event in the same branch (falling back to the
+/// previous Level Event when no event follows). Old sessions imported with a
+/// wrong base (e.g. `levels[0]`) are re-tokenized to `{next_base}_day{offset}`.
+///
+/// Rule 2 (per token): a standalone Session must NOT coexist with a Level Event of
+/// the SAME base token on the SAME day. Such sessions (and their progress) are
+/// removed so the UI only ever shows the Event for that day.
+fn cleanup_session_levels(conn: &Connection) -> SqlResult<()> {
+    cleanup_session_levels_filtered(conn, None)
+}
+
+/// Cleanup used when duplicating a branch (create_branch copy): applies the same
+/// per-token rules to just the newly-created branch.
+pub fn cleanup_branch_session_levels(conn: &Connection, branch_id: i64) -> SqlResult<()> {
+    cleanup_session_levels_filtered(conn, Some(branch_id))
+}
+
+fn cleanup_session_levels_filtered(conn: &Connection, branch_id: Option<i64>) -> SqlResult<()> {
+    let branch_filter = match branch_id {
+        Some(b) => format!(" AND s.branch_id = {}", b),
+        None => String::new(),
+    };
+
+    // Rule 2 (per token / same Event Token) FIRST: delete standalone Session
+    // levels ('-') that share (branch, day, BASE token) with a real Level Event.
+    // Runs before re-tokenization so a same-day event session is removed while it
+    // still carries its own token. (Re-tokenizing first would re-point it to the
+    // NEXT event and let it survive.) A Session with a different base token on an
+    // event day is kept — it belongs to a different token.
+    let doomed: Vec<(i64, i64, String, i32)> = {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT s.id, s.branch_id, s.event_token, s.days_offset
+             FROM levels s
+             JOIN levels e
+               ON e.branch_id = s.branch_id
+              AND e.days_offset = s.days_offset
+              AND e.level_name != '-'
+              AND s.level_name = '-'
+              AND (
+                 CASE
+                     WHEN instr(s.event_token, '_day') > 0 THEN substr(s.event_token, 1, instr(s.event_token, '_day') - 1)
+                     ELSE s.event_token
+                 END
+              ) = (
+                 CASE
+                     WHEN instr(e.event_token, '_day') > 0 THEN substr(e.event_token, 1, instr(e.event_token, '_day') - 1)
+                     ELSE e.event_token
+                 END
+              )
+             WHERE 1=1{}",
+            branch_filter
+        ))?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?;
+        rows.collect::<SqlResult<Vec<_>>>()?
+    };
+
+    for (id, _, _, _) in &doomed {
+        conn.execute(
+            "DELETE FROM account_level_progress WHERE level_id = ?1",
+            params![id],
+        )?;
+    }
+
+    let log_service = MaintenanceLogService::new();
+    for (id, branch, token, day) in &doomed {
+        let deleted = conn.execute("DELETE FROM levels WHERE id = ?1", params![id])?;
+        if deleted > 0 {
+            if let Err(e) = log_service.log(
+                conn,
+                "session_deleted",
+                Some(*branch),
+                Some(*id),
+                Some(token),
+                None,
+                Some(*day),
+                Some("standalone Session shares day + base Event Token with a real Level Event"),
+                Some("deleted automatically to enforce the per-token rule"),
+            ) {
+                eprintln!("[MaintenanceLog] failed to log session_deleted: {}", e);
+            }
+        }
+    }
+
+    if !doomed.is_empty() {
+        println!(
+            "[MaintenanceLog] Deleted {} invalid standalone Session level(s) sharing a day + base Event Token with a Level Event.",
+            doomed.len()
+        );
+    }
+
+    // Rule 1: re-tokenize the remaining standalone Sessions ('-') to the base
+    // token of their NEXT Level Event (falling back to the previous one when no
+    // event follows). Old sessions imported with a wrong base (e.g. `levels[0]`)
+    // are re-tokenized to `{next_base}_day{offset}`.
+    let mut session_sql =
+        "SELECT id, branch_id, event_token, days_offset FROM levels WHERE level_name = '-'".to_string();
+    if let Some(b) = branch_id {
+        session_sql.push_str(&format!(" AND branch_id = {}", b));
+    }
+
+    let sessions: Vec<(i64, i64, String, i32)> = {
+        let mut stmt = conn.prepare(&session_sql)?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?;
+        rows.collect::<SqlResult<Vec<_>>>()?
+    };
+
+    for (id, branch_id, token, day) in sessions {
+        let next_base: Option<String> = conn
+            .query_row(
+                "SELECT event_token FROM levels
+                 WHERE branch_id = ?1 AND level_name != '-' AND days_offset > ?2
+                 ORDER BY days_offset ASC LIMIT 1",
+                params![branch_id, day],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let base = match next_base {
+            Some(tok) => base_token_of(&tok),
+            None => {
+                let prev: Option<String> = conn
+                    .query_row(
+                        "SELECT event_token FROM levels
+                         WHERE branch_id = ?1 AND level_name != '-' AND days_offset <= ?2
+                         ORDER BY days_offset DESC LIMIT 1",
+                        params![branch_id, day],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                match prev {
+                    Some(tok) => base_token_of(&tok),
+                    None => continue,
+                }
+            }
+        };
+
+        let new_token = format!("{}_day{}", base, day);
+
+        // Skip when the token is already correct (avoids pointless writes),
+        // and guard against UNIQUE conflicts on (game_id, branch_id, event_token, days_offset).
+        if new_token != token {
+            let changed = conn.execute(
+                "UPDATE levels SET event_token = ?1 WHERE id = ?2 AND NOT EXISTS (
+                     SELECT 1 FROM levels
+                     WHERE branch_id = ?3 AND event_token = ?1 AND days_offset = ?4 AND id != ?2
+                 )",
+                params![new_token, id, branch_id, day],
+            )?;
+            if changed > 0 {
+                if let Err(e) = log_service.log(
+                    conn,
+                    "session_retokenized",
+                    Some(branch_id),
+                    Some(id),
+                    Some(&token),
+                    Some(&new_token),
+                    Some(day),
+                    Some("session re-tokenized to its next Level Event base"),
+                    None,
+                ) {
+                    eprintln!("[MaintenanceLog] failed to log session_retokenized: {}", e);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cleanup_branch_session_levels, cleanup_session_levels};
+    use rusqlite::{params, Connection};
+
+    fn setup_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE levels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                game_id INTEGER NOT NULL,
+                branch_id INTEGER,
+                event_token TEXT NOT NULL,
+                level_name TEXT NOT NULL,
+                days_offset INTEGER NOT NULL DEFAULT 0,
+                time_spent INTEGER NOT NULL DEFAULT 0,
+                is_bonus INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE account_level_progress (
+                account_id INTEGER NOT NULL,
+                level_id INTEGER NOT NULL,
+                is_completed INTEGER NOT NULL DEFAULT 0,
+                time_spent INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (account_id, level_id)
+            );
+            CREATE TABLE maintenance_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                action TEXT NOT NULL,
+                branch_id INTEGER,
+                level_id INTEGER,
+                event_token TEXT,
+                new_event_token TEXT,
+                days_offset INTEGER,
+                reason TEXT,
+                detail TEXT
+            );
+            ",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn insert_level(
+        conn: &Connection,
+        branch_id: i64,
+        event_token: &str,
+        level_name: &str,
+        days_offset: i32,
+    ) -> i64 {
+        conn.execute(
+            "INSERT INTO levels (game_id, branch_id, event_token, level_name, days_offset)
+             VALUES (1, ?1, ?2, ?3, ?4)",
+            params![branch_id, event_token, level_name, days_offset],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    fn token_of(conn: &Connection, id: i64) -> String {
+        conn.query_row(
+            "SELECT event_token FROM levels WHERE id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    fn count_rows(conn: &Connection, table: &str) -> i64 {
+        conn.query_row(
+            &format!("SELECT COUNT(*) FROM {}", table),
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    fn log_actions(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn
+            .prepare("SELECT action FROM maintenance_logs ORDER BY id ASC")
+            .unwrap();
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<Vec<_>>();
+        rows.into_iter().map(|r| r.unwrap()).collect()
+    }
+
+    #[test]
+    fn deletes_session_sharing_day_with_own_token_event() {
+        let conn = setup_db();
+        let event_id = insert_level(&conn, 1, "abc_day0", "Level 1", 0);
+        let session_id = insert_level(&conn, 1, "abc_day0", "-", 0);
+        insert_level(&conn, 1, "abc_day1", "-", 1);
+
+        cleanup_session_levels(&conn).unwrap();
+
+        assert_eq!(token_of(&conn, event_id), "abc_day0");
+        let gone: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM levels WHERE id = ?1",
+                params![session_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(gone, 0, "event-day session should be deleted");
+        assert_eq!(count_rows(&conn, "levels"), 2, "non-event-day session stays");
+        assert_eq!(
+            log_actions(&conn),
+            vec!["session_deleted".to_string()],
+            "deleted session must be logged for tracking"
+        );
+    }
+
+    #[test]
+    fn deletes_event_day_session_even_when_later_event_exists() {
+        // Regression: re-tokenizing BEFORE deleting would re-point this session to
+        // the LATER event and let it survive. Delete must run first.
+        let conn = setup_db();
+        let event_id = insert_level(&conn, 1, "abc_day0", "Level 1", 0);
+        let session_id = insert_level(&conn, 1, "abc_day0", "-", 0);
+        insert_level(&conn, 1, "def_day5", "Level 2", 5);
+
+        cleanup_session_levels(&conn).unwrap();
+
+        assert_eq!(token_of(&conn, event_id), "abc_day0");
+        let gone: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM levels WHERE id = ?1",
+                params![session_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(gone, 0, "same-day same-token session must be deleted");
+        assert_eq!(count_rows(&conn, "levels"), 2);
+    }
+
+    #[test]
+    fn deletes_progress_of_deleted_session() {
+        let conn = setup_db();
+        let event_id = insert_level(&conn, 1, "abc_day0", "Level 1", 0);
+        let session_id = insert_level(&conn, 1, "abc_day0", "-", 0);
+        conn.execute(
+            "INSERT INTO account_level_progress (account_id, level_id, is_completed) VALUES (7, ?1, 1)",
+            params![session_id],
+        )
+        .unwrap();
+        let _ = event_id;
+
+        cleanup_session_levels(&conn).unwrap();
+
+        assert_eq!(count_rows(&conn, "account_level_progress"), 0);
+    }
+
+    #[test]
+    fn retokenizes_session_to_next_event_base() {
+        let conn = setup_db();
+        insert_level(&conn, 1, "abc_day0", "Level 1", 0);
+        insert_level(&conn, 1, "def_day5", "Level 2", 5);
+        let session_id = insert_level(&conn, 1, "zzz_day2", "-", 2);
+
+        cleanup_session_levels(&conn).unwrap();
+
+        assert_eq!(token_of(&conn, session_id), "def_day2");
+        assert_eq!(
+            log_actions(&conn),
+            vec!["session_retokenized".to_string()],
+            "re-tokenized session must be logged for tracking"
+        );
+    }
+
+    #[test]
+    fn retokenizes_session_to_previous_event_when_no_next() {
+        let conn = setup_db();
+        insert_level(&conn, 1, "abc_day3", "Level 1", 3);
+        let session_id = insert_level(&conn, 1, "zzz_day6", "-", 6);
+
+        cleanup_session_levels(&conn).unwrap();
+
+        assert_eq!(token_of(&conn, session_id), "abc_day6");
+    }
+
+    #[test]
+    fn keeps_session_with_no_event_in_branch_unchanged() {
+        let conn = setup_db();
+        let session_id = insert_level(&conn, 1, "zzz_day2", "-", 2);
+
+        cleanup_session_levels(&conn).unwrap();
+
+        assert_eq!(token_of(&conn, session_id), "zzz_day2");
+    }
+
+    #[test]
+    fn keeps_session_with_different_token_on_event_day() {
+        // Per-token rule: a session whose base token differs from the day's event
+        // is KEPT — it belongs to a different token. Re-tokenization points it at
+        // the previous event base, but the UNIQUE guard keeps its old token.
+        let conn = setup_db();
+        let event_id = insert_level(&conn, 1, "abc_day0", "Level 1", 0);
+        let session_id = insert_level(&conn, 1, "zzz_day0", "-", 0);
+
+        cleanup_session_levels(&conn).unwrap();
+
+        assert_eq!(token_of(&conn, event_id), "abc_day0");
+        assert_eq!(token_of(&conn, session_id), "zzz_day0", "different-token session stays");
+        assert_eq!(count_rows(&conn, "levels"), 2);
+    }
+
+    #[test]
+    fn unique_conflict_does_not_error() {
+        let conn = setup_db();
+        let event_id = insert_level(&conn, 1, "abc_day0", "Level 1", 0);
+        let session_id = insert_level(&conn, 1, "abc_day0", "-", 0);
+        let second_session = insert_level(&conn, 1, "zzz_day0", "-", 0);
+
+        cleanup_session_levels(&conn).unwrap();
+
+        // Per-token rule: the same-token event-day session is deleted; the
+        // different-token one stays (its re-tokenize is blocked by the UNIQUE guard).
+        assert_eq!(token_of(&conn, event_id), "abc_day0");
+        let gone: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM levels WHERE id = ?1",
+                params![session_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(gone, 0, "same-token event-day session is deleted");
+        assert_eq!(token_of(&conn, second_session), "zzz_day0");
+        assert_eq!(count_rows(&conn, "levels"), 2);
+    }
+
+    #[test]
+    fn branch_cleanup_only_affects_given_branch() {
+        // cleanup_branch_session_levels must only touch the targeted branch:
+        // branch 1 keeps its invalid event-day session, branch 2's is removed.
+        let conn = setup_db();
+        let _event1 = insert_level(&conn, 1, "abc_day0", "Level 1", 0);
+        let session1 = insert_level(&conn, 1, "abc_day0", "-", 0);
+        let _event2 = insert_level(&conn, 2, "abc_day0", "Level 1", 0);
+        let session2 = insert_level(&conn, 2, "abc_day0", "-", 0);
+
+        cleanup_branch_session_levels(&conn, 2).unwrap();
+
+        let gone: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM levels WHERE id = ?1",
+                params![session1],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(gone, 1, "branch 1 is untouched");
+
+        let gone2: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM levels WHERE id = ?1",
+                params![session2],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(gone2, 0, "branch 2 invalid session is deleted");
+        assert_eq!(
+            log_actions(&conn),
+            vec!["session_deleted".to_string()],
+            "only the targeted branch deletion is logged"
+        );
     }
 }

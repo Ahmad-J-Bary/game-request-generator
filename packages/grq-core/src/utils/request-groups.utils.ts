@@ -7,6 +7,24 @@ export interface RequestGroup {
 }
 
 /**
+ * Classify a raw level request into its final type. A Session that is paired
+ * with a Level Event on the same token becomes a compound "Level Session"
+ * (mirroring a Purchase Event's "Purchase Session + Purchase Event"); a
+ * standalone Session without a corresponding event stays "Session Only".
+ */
+export const classifyLevelRequestType = (
+  rawType: string,
+  hasCorrespondingEvent: boolean,
+): "Level Session" | "Level Event" | "Session Only" => {
+  const type = (rawType || "").toLowerCase();
+  if (type === "event") return "Level Event";
+  if (type === "session" || type === "session only") {
+    return hasCorrespondingEvent ? "Level Session" : "Session Only";
+  }
+  return "Session Only";
+};
+
+/**
  * Groups requests into cards by event token. A session and its event are kept
  * in a single group even when their per-request time_spent values differ.
  * Requests within a group are sorted Session-first. Groups are sorted by their

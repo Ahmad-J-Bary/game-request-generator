@@ -9,4 +9,5 @@ export * from './purchaseEvent.types';
 export * from './progress.types';
 export * from './dailyRequest.types';
 export * from './daily-tasks.types';
+export * from './maintenance-log.types';
 export * from './telegram.types';

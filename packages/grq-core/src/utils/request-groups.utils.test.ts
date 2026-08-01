@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { buildRequestGroups } from './request-groups.utils.ts';
+import { buildRequestGroups, classifyLevelRequestType } from './request-groups.utils.ts';
 
 const sessionReq = (overrides: any = {}) => ({
   request_type: 'Session Only',
@@ -87,4 +87,21 @@ it('groups a compound (session + event) pair as one group by token', () => {
   const compound = groups.find((g) => g.event_token === 'evt-9')!;
   assert.equal(compound.requests.length, 2);
   assert.equal(compound.time_spent, 5000 * 1000);
+});
+
+// ===== Compound-pair classification (Level Session + Level Event) =====
+
+it('classifies an event as Level Event', () => {
+  assert.equal(classifyLevelRequestType('event', false), 'Level Event');
+  assert.equal(classifyLevelRequestType('event', true), 'Level Event');
+});
+
+it('classifies a session paired with an event as Level Session', () => {
+  assert.equal(classifyLevelRequestType('session', true), 'Level Session');
+  assert.equal(classifyLevelRequestType('session only', true), 'Level Session');
+});
+
+it('classifies a standalone session without an event as Session Only', () => {
+  assert.equal(classifyLevelRequestType('session', false), 'Session Only');
+  assert.equal(classifyLevelRequestType('session only', false), 'Session Only');
 });

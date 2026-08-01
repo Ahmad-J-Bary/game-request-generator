@@ -24,11 +24,41 @@ class ImportCache {
   levelCache: Record<string, number> = {};
   purchaseCache: Record<string, number> = {};
   accountCache: Record<string, number> = {};
+  /** branchId -> (day -> Set of base tokens) that already have a real Level Event */
+  branchEventDayCache: Map<number, Map<number, Set<string>>> = new Map();
 
   constructor(
     private contextGameId?: number,
     private contextBranchId?: number,
   ) {}
+
+  /** Per-token rule helper: does the branch have a real Level Event with the same
+   *  base token on the given day? A standalone Session sharing that (base, day)
+   *  must not be imported. */
+  async hasRealLevelForDayWithBase(
+    branchId: number,
+    day: number,
+    base: string,
+  ): Promise<boolean> {
+    let dayBases = this.branchEventDayCache.get(branchId);
+    if (!dayBases) {
+      dayBases = new Map<number, Set<string>>();
+      try {
+        const gameLevels = await TauriService.getGameLevels(branchId);
+        gameLevels
+          .filter((l: any) => l.level_name !== '-' && l.days_offset != null)
+          .forEach((l: any) => {
+            const d = l.days_offset as number;
+            const b = String(l.event_token || '').split('_day')[0];
+            if (!dayBases!.has(d)) dayBases!.set(d, new Set<string>());
+            dayBases!.get(d)!.add(b);
+          });
+      } catch (_) { /* ignore db error */ }
+      this.branchEventDayCache.set(branchId, dayBases);
+    }
+    const bases = dayBases.get(day);
+    return bases ? bases.has(base) : false;
+  }
 
   async init(): Promise<void> {
     const gamesList = await TauriService.getGames();
@@ -267,6 +297,33 @@ async function importLevels(
       if (!ids) continue;
 
       const { targetGameId, targetBranchId } = ids;
+
+      // Per-token rule: never import a standalone Session on a day that already
+      // has a real Level Event with the SAME base token.
+      if ((level as any).level_name === '-') {
+        const day = (level as any).days_offset;
+        const base = String((level as any).event_token || '').split('_day')[0];
+        if (day != null) {
+          const blocked = await cache.hasRealLevelForDayWithBase(targetBranchId, day, base);
+          if (blocked) {
+            result.errors.push({
+              type: 'info',
+              message: `Skipped standalone Session ${(level as any).event_token} on day ${day}: a Level Event with the same Event Token already exists.`,
+              item: level,
+            });
+            TauriService.logMaintenanceEvent({
+              action: 'session_skipped',
+              branchId: targetBranchId,
+              eventToken: (level as any).event_token,
+              daysOffset: day,
+              reason: 'real Level Event with same Event Token exists on same day',
+              detail: 'import skipped the standalone Session level',
+            }).catch(() => {});
+            continue;
+          }
+        }
+      }
+
       const levelKey = `${targetGameId}_${targetBranchId}_${(level.event_token || '').toLowerCase()}`;
       if (createdKeys.has(levelKey)) continue;
       createdKeys.add(levelKey);
@@ -593,6 +650,31 @@ async function importProgressMatrix(
         if (!lid) {
           // Create the level on the fly if not found anywhere
           const dayMatch = p.token.match(/_day(-?\d+)$/);
+          if (isSessionOnly) {
+            // Per-token rule: no standalone Session progress on a day that
+            // already has a real Level Event with the same base token.
+            const day = dayMatch ? parseInt(dayMatch[1], 10) : null;
+            const base = p.token.split('_day')[0];
+            if (day != null) {
+              const blocked = await cache.hasRealLevelForDayWithBase(bid, day, base);
+              if (blocked) {
+                result.errors.push({
+                  type: 'info',
+                  message: `Skipped standalone Session progress ${p.token} on day ${day}: a Level Event with the same Event Token already exists.`,
+                  item: p,
+                });
+                TauriService.logMaintenanceEvent({
+                  action: 'session_skipped',
+                  branchId: bid,
+                  eventToken: p.token,
+                  daysOffset: day,
+                  reason: 'real Level Event with same Event Token exists on same day',
+                  detail: 'import skipped the standalone Session progress',
+                }).catch(() => {});
+                continue;
+              }
+            }
+          }
           const newLevelName = p.levelName === '-' ? '-' : (p.levelName || '-');
           try {
             lid = await TauriService.addLevel({
