@@ -8,6 +8,7 @@ import { calculateTimerState, getTimerMessage, formatRemainingTime } from '@grq/
 import { TaskItemProps } from '@grq/api-bindings/types/daily-tasks.types';
 import { useTimer } from '@grq/core/hooks/useTimer';
 import { cn } from '@grq/ui/lib/utils';
+import { proxyStateBadgeClass, proxyStateCardClass } from '@grq/ui/lib/proxy-state-styles';
 
 interface TaskRequestListProps {
   task: TaskItemProps['task'];
@@ -143,16 +144,33 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
     );
   };
 
+  // Position-based container color: the FIRST task of the day is white, the
+  // LAST (n === N > 1) is a translucent black, and the middle ones take the
+  // account's region color. Applied to the card that wraps the requests.
+  const taskPosition = task.requests[0]?.day_index ?? accountTaskMeta.accountTaskIndex;
+  const taskTotal = task.dayTotalTasks ?? accountTaskMeta.accountTaskTotal;
+
+  const containerCardClass = () => {
+    if (taskPosition === 1) {
+      return "bg-white/70 dark:bg-white/10 border-white/40 dark:border-white/15 shadow-[0_0_24px_rgba(255,255,255,0.12)]";
+    }
+    if (taskPosition === taskTotal && taskTotal > 1) {
+      return "bg-black/15 dark:bg-white/5 border-black/25 dark:border-white/10";
+    }
+    return proxyStateCardClass(task.account.proxy_state);
+  };
+
   const card = (
       <Card
           key={task.account.id}
           className={cn(
-              "overflow-hidden transition-all duration-500",
+              "overflow-hidden backdrop-blur-md transition-all duration-500",
+              containerCardClass(),
               isPurchaseTask
-                  ? "glass-amber"
+                  ? "border-l-4 border-l-amber-400/70"
                   : isSessionOnlyTask
-                      ? "glass-emerald"
-                      : !effectiveIsReady ? "glass border-amber-200/30 dark:border-amber-800/20 bg-amber-50/10 dark:bg-amber-900/5" : "glass"
+                      ? "border-l-4 border-l-emerald-400/70"
+                      : !effectiveIsReady ? "border-amber-300/40 dark:border-amber-800/40" : ""
           )}
       >
         {/* Animated Progress Bar at top of card */}
@@ -177,11 +195,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
                   {task.account.proxy_state && (
                     <Badge variant="outline" className={cn(
                       "text-[10px] font-bold uppercase tracking-wider px-2 py-0 border-2",
-                      task.account.proxy_state === 'FLORIDA' && "border-orange-500/50 text-orange-600 bg-orange-50 dark:bg-orange-900/20 dark:text-orange-400",
-                      task.account.proxy_state === 'CALIFORNIA' && "border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400",
-                      task.account.proxy_state === 'TEXAS' && "border-red-500/50 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400",
-                      task.account.proxy_state === 'New York' && "border-slate-500/50 text-slate-600 bg-slate-50 dark:bg-slate-900/20 dark:text-slate-400",
-                      task.account.proxy_state === 'UK' && "border-teal-500/50 text-teal-600 bg-teal-50 dark:bg-teal-900/20 dark:text-teal-400",
+                      proxyStateBadgeClass(task.account.proxy_state),
                     )}>
                       {task.account.proxy_state}
                     </Badge>

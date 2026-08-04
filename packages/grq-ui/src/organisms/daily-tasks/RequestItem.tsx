@@ -48,8 +48,9 @@ export const RequestItem = React.memo(({ request, isCompleted, isReady, onComple
 
     return (
         <div className={cn(
-            "border rounded-xl p-3 sm:p-4 transition-all duration-300",
-            !isReady ? "bg-gray-100/50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800 opacity-60 grayscale-[0.5]" : "bg-card border-border shadow-sm"
+            "rounded-xl p-3 sm:p-4 transition-all duration-300 border",
+            "bg-white dark:bg-card border-border shadow-sm",
+            !isReady ? "opacity-60 grayscale-[0.5] border-gray-200 dark:border-gray-800" : "shadow-md"
         )}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
                 <div className="flex flex-wrap items-center gap-2.5">

@@ -27,6 +27,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { Badge } from '@grq/ui/atoms/badge';
 import { Progress } from '@grq/ui/atoms/progress';
+import { proxyStateProgressClass } from '@grq/ui/lib/proxy-state-styles';
 import { ExcelService } from '@grq/core/services/excel.service';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
 import { useTheme } from '@grq/ui/contexts/ThemeContext';
@@ -261,12 +262,13 @@ export default function Dashboard() {
           <CardContent className="px-0 pt-4">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
               {[
-                { state: 'FLORIDA', color: 'bg-orange-500', iconColor: 'text-orange-500', light: 'bg-orange-500/10' },
-                { state: 'CALIFORNIA', color: 'bg-blue-500', iconColor: 'text-blue-500', light: 'bg-blue-500/10' },
-                { state: 'TEXAS', color: 'bg-red-500', iconColor: 'text-red-500', light: 'bg-red-500/10' },
-                { state: 'New York', color: 'bg-slate-700', iconColor: 'text-slate-700', light: 'bg-slate-700/10' },
-                { state: 'UK', color: 'bg-teal-500', iconColor: 'text-teal-500', light: 'bg-teal-500/10' },
+                { state: 'FLORIDA' },
+                { state: 'CALIFORNIA' },
+                { state: 'TEXAS' },
+                { state: 'New York' },
+                { state: 'UK' },
               ].map((loc) => {
+                const progressClass = proxyStateProgressClass(loc.state);
                 const count = stateDistribution[loc.state as keyof typeof stateDistribution];
                 const percentage = allAccounts.length > 0 ? Math.round((count / allAccounts.length) * 100) : 0;
                 return (
@@ -275,7 +277,7 @@ export default function Dashboard() {
                       <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{loc.state}</span>
                       <span className="text-lg font-black">{count}</span>
                     </div>
-                    <Progress value={percentage} className="h-2" indicatorClassName={loc.color} />
+                    <Progress value={percentage} className="h-2" indicatorClassName={progressClass.color} />
                     <div className="text-[10px] text-muted-foreground font-bold flex justify-end uppercase">
                       {percentage}% {t('dashboard.percentageOfTotal')}
                     </div>

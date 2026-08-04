@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@grq/ui/atoms/card";
 import { Badge } from "@grq/ui/atoms/badge";
 import { cn } from "@grq/ui/lib/utils";
+import { proxyStateBadgeClass } from "@grq/ui/lib/proxy-state-styles";
 import {
   Edit3,
   CheckSquare,
@@ -1157,16 +1158,7 @@ export default function AccountDetailPage() {
                   variant="outline"
                   className={cn(
                     "text-[10px] font-bold uppercase tracking-wider px-2 py-0 border-2 shrink-0",
-                    account.proxy_state === "FLORIDA" &&
-                      "border-orange-500/50 text-orange-600 bg-orange-50 dark:bg-orange-900/20 dark:text-orange-400",
-                    account.proxy_state === "CALIFORNIA" &&
-                      "border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400",
-                    account.proxy_state === "TEXAS" &&
-                      "border-red-500/50 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400",
-                    account.proxy_state === "New York" &&
-                      "border-slate-500/50 text-slate-600 bg-slate-50 dark:bg-slate-900/20 dark:text-slate-400",
-                    account.proxy_state === "UK" &&
-                      "border-teal-500/50 text-teal-600 bg-teal-50 dark:bg-teal-900/20 dark:text-teal-400",
+                    proxyStateBadgeClass(account.proxy_state),
                   )}
                 >
                   {account.proxy_state}
