@@ -35,15 +35,22 @@ export const RequestItem = React.memo(({ request, isCompleted, isReady, onComple
         }
     };
 
-    const getRequestTypeBadgeVariant = (type: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
-        if (type.includes('Session')) return 'default';
-        if (type.includes('Event')) return 'secondary';
-        switch (type) {
-            case 'session': return 'default';
-            case 'event': return 'secondary';
-            case 'purchase_event': return 'outline';
-            default: return 'default';
+    // Inverted badge colors per task family: Session = solid family color with
+    // white text, Event = white with the family-colored text. Session Only stays
+    // black with white text.
+    const getBadgeClass = (type: string): string => {
+        if (type === 'Session Only') {
+            return "bg-black text-white border-black";
         }
+        const isEvent = type.includes('Event');
+        if (type.includes('Purchase')) {
+            return isEvent
+                ? "bg-white text-amber-800 border-amber-800"
+                : "bg-amber-800 text-white border-amber-800";
+        }
+        return isEvent
+            ? "bg-white text-green-700 border-green-700"
+            : "bg-green-700 text-white border-green-700";
     };
 
     return (
@@ -61,7 +68,7 @@ export const RequestItem = React.memo(({ request, isCompleted, isReady, onComple
                         </span>
                     </div>
 
-                    <Badge variant={getRequestTypeBadgeVariant(request.request_type)} className="shadow-sm">
+                    <Badge variant="outline" className={cn("shadow-sm", getBadgeClass(request.request_type))}>
                         <ShieldCheck className="h-3 w-3 ltr:mr-1 rtl:ml-1 opacity-70" />
                         {getRequestTypeLabel(request.request_type)}
                     </Badge>

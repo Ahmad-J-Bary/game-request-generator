@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Play, ShoppingCart, Trophy } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@grq/ui/atoms/card';
 import { Badge } from '@grq/ui/atoms/badge';
 import { RequestItem } from './RequestItem';
@@ -57,15 +58,26 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
   const accountId = task.account.id;
   const completionRecord = accountCompletionRecords[accountId];
 
-  // Determine if this is a purchase task (level_id is null for all requests in a purchase event)
-  const isPurchaseTask = useMemo(() => 
-    task.requests.some(req => req.level_id === null || req.level_id === undefined)
-  , [task.requests]);
+  // Task family derived from request types: 'purchase' | 'session' | 'level'.
+  const taskType = useMemo(() => {
+    if (task.requests.some((req) => req.request_type.includes('Purchase'))) return 'purchase';
+    if (task.requests.every((req) => req.request_type === 'Session Only')) return 'session';
+    return 'level';
+  }, [task.requests]);
 
-  // Determine if this is a Session Only task (all requests are Session Only)
-  const isSessionOnlyTask = useMemo(() => 
-    task.requests.every(req => req.request_type === 'Session Only')
-  , [task.requests]);
+  // Type identity for the header's opposite side: stage name for level events,
+  // purchase name (event token) for purchases, none for sessions.
+  const typeIcon = taskType === 'purchase' ? ShoppingCart : taskType === 'session' ? Play : Trophy;
+  const typeName = taskType === 'session'
+    ? undefined
+    : (task.requests.find((r) => r.request_type.includes('Event'))?.level_name ?? task.requests[0]?.level_name);
+  const typeColorClass =
+    taskType === 'purchase'
+      ? "text-amber-800 dark:text-amber-500"
+      : taskType === 'session'
+        ? "text-black dark:text-white"
+        : "text-green-700 dark:text-green-400";
+  const TypeIcon = typeIcon;
 
   // Compute account task metadata and previousTask for O(1) timer lookup
   const accountTaskMeta = useMemo(() => {
@@ -166,11 +178,13 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
           className={cn(
               "overflow-hidden backdrop-blur-md transition-all duration-500",
               containerCardClass(),
-              isPurchaseTask
-                  ? "border-l-4 border-l-amber-400/70"
-                  : isSessionOnlyTask
-                      ? "border-l-4 border-l-emerald-400/70"
-                      : !effectiveIsReady ? "border-amber-300/40 dark:border-amber-800/40" : ""
+              taskType === 'purchase'
+                  ? "border-l-4 border-l-amber-800/70"
+                  : taskType === 'session'
+                      ? "border-l-4 border-l-black/60 dark:border-l-white/50"
+                      : taskType === 'level'
+                          ? "border-l-4 border-l-green-700/70"
+                          : !effectiveIsReady ? "border-amber-300/40 dark:border-amber-800/40" : ""
           )}
       >
         {/* Animated Progress Bar at top of card */}
@@ -201,12 +215,6 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
                     </Badge>
                   )}
                 </div>
-                <Badge variant="outline" className="font-normal opacity-70">
-                  {t('dailyTasks.taskCount', {
-                    count: task.requests.length,
-                    plural: task.requests.length === 1 ? '' : 's'
-                  })}
-                </Badge>
                 {getStatusBadge()}
               </CardTitle>
               <CardDescription className="flex flex-col gap-0.5">
@@ -245,6 +253,16 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
                   </span>
                 )}
               </CardDescription>
+            </div>
+
+            {/* Type identity — the OPPOSITE side of account name / region / readiness */}
+            <div className="flex items-center gap-2 pl-3 self-start sm:self-center">
+              <div className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border bg-white/60 dark:bg-white/5 border-black/10 dark:border-white/10", typeColorClass)}>
+                <TypeIcon className="h-4 w-4" />
+                {typeName && (
+                  <span className="text-xs font-bold tracking-tight">{typeName}</span>
+                )}
+              </div>
             </div>
           </div>
         </CardHeader>
