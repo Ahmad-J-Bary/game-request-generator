@@ -86,6 +86,21 @@ export interface GameBatch {
     tasks: DailyTask[];
 }
 
+/**
+ * Compact per-account day-plan stats produced by the `get_all_daily_stats`
+ * bulk command so the Dashboard can compute Daily Tasks totals and the ready
+ * count immediately, without running the Daily Tasks generator.
+ */
+export interface DailyAccountStat {
+    accountId: number;
+    gameId: number;
+    totalTasks: number;          // N = full-day card count incl. completed
+    pendingCards: number;        // non-completed card count for today
+    firstPendingCardTimeSpent: number | null; // midpoint seconds (deterministic)
+    firstPendingEventToken: string | null;
+    firstPendingLevelId: number | null;
+}
+
 export interface TaskItemProps {
     task: DailyTask;
     onCompleteTask: (accountId: number, requestIndex: number, batchIndex: number | string, task: DailyTask) => void;

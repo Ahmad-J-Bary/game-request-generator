@@ -1279,6 +1279,145 @@ fn get_daily_requests(
 
 // ==================== أوامر تاريخ المهام اليومية ====================
 
+/// Bulk day-plan stats for the Dashboard, in ONE IPC round-trip. Returns a
+/// compact per-account summary so the Dashboard can show Daily Tasks totals
+/// (Σ N), completed count, and the number of ready tasks immediately without
+/// visiting Daily Tasks. Branch levels/purchases are cached to avoid
+/// re-fetching for every account.
+#[tauri::command]
+fn get_all_daily_stats(
+    state: tauri::State<AppState>,
+    target_date: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+
+    let account_service = AccountService::new();
+    let accounts = account_service
+        .get_all_accounts(conn)
+        .map_err(|e| format!("Failed to load accounts: {}", e))?;
+
+    let target_date_parsed = chrono::NaiveDate::parse_from_str(&target_date, "%Y-%m-%d")
+        .map_err(|_| "Invalid target date format".to_string())?;
+
+    let level_service = LevelService::new();
+    let purchase_event_service = PurchaseEventService::new();
+    let progress_service = ProgressService::new();
+
+    let mut levels_cache: std::collections::HashMap<i64, Vec<Level>> =
+        std::collections::HashMap::new();
+    let mut purchases_cache: std::collections::HashMap<i64, Vec<PurchaseEvent>> =
+        std::collections::HashMap::new();
+
+    let mut stats: Vec<serde_json::Value> = Vec::new();
+
+    for account in accounts {
+        let start = if account.start_date.contains('-') && account.start_date.len() <= 6 {
+            let current_year = chrono::Utc::now().year();
+            chrono::NaiveDate::parse_from_str(
+                &format!("{}-{}", current_year, account.start_date),
+                "%Y-%d-%b",
+            )
+        } else {
+            chrono::NaiveDate::parse_from_str(&account.start_date, "%Y-%m-%d")
+        };
+
+        let Ok(account_start) = start else { continue; };
+        let days_passed = (target_date_parsed - account_start).num_days();
+        if days_passed < 0 {
+            continue;
+        }
+
+        let branch_id = account.branch_id.unwrap_or(0);
+
+        let levels = match levels_cache.entry(branch_id) {
+            std::collections::hash_map::Entry::Occupied(e) => e.get().clone(),
+            std::collections::hash_map::Entry::Vacant(e) => {
+                let v = level_service
+                    .get_levels_by_branch(conn, branch_id)
+                    .map_err(|e| format!("Failed to get levels: {}", e))?;
+                e.insert(v.clone());
+                v
+            }
+        };
+
+        let purchases = match purchases_cache.entry(branch_id) {
+            std::collections::hash_map::Entry::Occupied(e) => e.get().clone(),
+            std::collections::hash_map::Entry::Vacant(e) => {
+                let v = purchase_event_service
+                    .get_purchase_events_by_branch(conn, branch_id)
+                    .map_err(|e| format!("Failed to get purchase events: {}", e))?;
+                e.insert(v.clone());
+                v
+            }
+        };
+
+        let level_progress_list = progress_service
+            .get_account_level_progress(conn, account.id)
+            .map_err(|e| format!("Failed to get level progress: {}", e))?;
+        let level_progress_map: std::collections::HashMap<i64, &AccountLevelProgress> =
+            level_progress_list.iter().map(|p| (p.level_id, p)).collect();
+
+        let purchase_progress_list = progress_service
+            .get_account_purchase_event_progress(conn, account.id)
+            .map_err(|e| format!("Failed to get purchase event progress: {}", e))?;
+        let purchase_progress_map: std::collections::HashMap<i64, &AccountPurchaseEventProgress> =
+            purchase_progress_list
+                .iter()
+                .map(|p| (p.purchase_event_id, p))
+                .collect();
+
+        let day_plan = grq_engine::request::plan::plan_day(&grq_engine::request::plan::PlanInput {
+            account: &account,
+            levels: &levels,
+            level_progress: &level_progress_map,
+            purchase_events: &purchases,
+            purchase_progress: &purchase_progress_map,
+            days_passed,
+            target_date: &target_date,
+        });
+
+        // Pending card count = distinct day_index among returned requests.
+        let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
+        for r in &day_plan.requests {
+            seen.insert(r.day_index);
+        }
+        let pending_cards = seen.len() as i64;
+
+        // First pending card = the card with the smallest day_index. Recover the
+        // base and return the deterministic MIDPOINT of the jitter range so the
+        // ready count is stable across refreshes despite the per-generation jitter.
+        let mut first_time_spent: Option<i64> = None;
+        let mut first_event_token: Option<String> = None;
+        let mut first_level_id: Option<i64> = None;
+        if let Some(min_idx) = seen.iter().min() {
+            if let Some(first_req) = day_plan
+                .requests
+                .iter()
+                .find(|r| &r.day_index == min_idx)
+            {
+                let base = (first_req.time_spent as f64 / 1000.0).round() as i32;
+                let mid_jitter = if base < 25 { 200i64 } else { 375i64 };
+                first_time_spent = Some(base as i64 * 1000 + mid_jitter);
+                first_event_token = Some(first_req.event_token.clone());
+                first_level_id = first_req.level_id;
+            }
+        }
+
+        stats.push(serde_json::json!({
+            "accountId": account.id,
+            "gameId": account.game_id,
+            "totalTasks": day_plan.total_cards,
+            "pendingCards": pending_cards,
+            "firstPendingCardTimeSpent": first_time_spent,
+            "firstPendingEventToken": first_event_token,
+            "firstPendingLevelId": first_level_id,
+        }));
+    }
+
+    Ok(stats)
+}
+
 #[tauri::command]
 fn add_completed_task(
     state: tauri::State<AppState>,
@@ -1564,6 +1703,7 @@ pub fn run() {
             update_purchase_event_progress,
             get_account_purchase_event_progress,
             get_daily_requests,
+            get_all_daily_stats,
             import_request_templates,
             import_database,
             export_database,

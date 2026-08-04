@@ -366,6 +366,9 @@
     "managedTitles": "عناوين مدارة",
     "acrossAllGames": "عبر جميع الألعاب",
     "taskCompletion": "إكمال المهام",
+    "completedOfTotal": "{{completed}} / {{total}} مكتملة • {{percent}}%",
+    "readyTasks": "المهام الجاهزة",
+    "readyTasksDesc": "مهام جاهزة للتنفيذ الآن",
     "percentageOfTotal": "من الإجمالي"
   },
   "branches": {

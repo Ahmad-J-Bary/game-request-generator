@@ -366,6 +366,9 @@
     "managedTitles": "Managed titles",
     "acrossAllGames": "Across all games",
     "taskCompletion": "Task Completion",
+    "completedOfTotal": "{{completed}} / {{total}} completed • {{percent}}%",
+    "readyTasks": "Ready Tasks",
+    "readyTasksDesc": "Tasks ready to run now",
     "percentageOfTotal": "of total"
   },
   "branches": {

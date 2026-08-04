@@ -7,7 +7,6 @@ import type {
   AccountCompletionRecord,
   CompletedDailyTask,
 } from "@grq/api-bindings";
-import { asyncStorageService } from "@grq/core/services/storage.service";
 
 export interface TaskCompletionOptions {
   batches: GameBatch[];
@@ -653,33 +652,8 @@ export class TaskCompletionHandler {
                 [accountId]: [],
               }));
 
-              const completedDate = new Date().toISOString().split("T")[0];
               this.options.setBatches(updatedBatches);
               this.options.setDeferredTasks(updatedDeferredTasks);
-
-              // Update AsyncStorage with updated batches
-              const serializedBatches = updatedBatches.map((batch) => ({
-                ...batch,
-                tasks: batch.tasks.map((task) => ({
-                  ...task,
-                  completedTasks: Array.from(task.completedTasks),
-                })),
-              }));
-              const serializedDeferredTasks = updatedDeferredTasks.map(
-                (task) => ({
-                  ...task,
-                  completedTasks: Array.from(task.completedTasks),
-                }),
-              );
-
-              await asyncStorageService.set(
-                `dailyTasks_batches_${completedDate}`,
-                {
-                  batches: serializedBatches,
-                  deferredTasks: serializedDeferredTasks,
-                  accountScheduledTime: {}, // This would need to be passed in or managed differently
-                },
-              );
 
               // Dispatch progress-updated event
               window.dispatchEvent(

@@ -1,6 +1,6 @@
 // src/pages/Dashboard.tsx
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useGames } from '@grq/core/hooks/useGames';
@@ -17,12 +17,15 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@grq/ui/atoms/card';
 import { Button } from '@grq/ui/atoms/button';
 import { 
-  Gamepad2, Users, CheckCircle, Clock, ArrowRight, 
-  Trash2, ShieldCheck, MapPin, TrendingUp,
-  LayoutDashboard, Zap, Star, Send
+  Gamepad2, Users, CheckCircle, ClipboardList, Clock, 
+  Trash2, ShieldCheck, MapPin,
+  LayoutDashboard, Zap, Send
 } from 'lucide-react';
 import { TauriService } from '@grq/core/services/tauri.service';
-import type { CompletedAccount, Account, CompletedDailyTask } from '@grq/api-bindings';
+import { asyncStorageService } from '@grq/core/services/storage.service';
+import { calculateTimerState } from '@grq/core/utils/timer.utils';
+import { parseAccountStartDate } from '@grq/core/utils/daily-tasks.utils';
+import type { CompletedAccount, Account, DailyAccountStat, DailyTask, AccountCompletionRecord, AccountStartState } from '@grq/api-bindings';
 import { invoke } from '@tauri-apps/api/core';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { Badge } from '@grq/ui/atoms/badge';
@@ -37,8 +40,9 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { games } = useGames();
 
-  const [todayTasksCount, setTodayTasksCount] = useState(0);
+  const [totalTasksToday, setTotalTasksToday] = useState(0);
   const [completedTodayCount, setCompletedTodayCount] = useState(0);
+  const [readyTasksCount, setReadyTasksCount] = useState(0);
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [completedAccounts, setCompletedAccounts] = useState<CompletedAccount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,52 +128,123 @@ export default function Dashboard() {
     }
   };
 
+  // Keep the latest accounts available to the stable loadStats callback without
+  // forcing the main effect to re-run on every accounts change (which caused an
+  // endless "Calling archives..." loop).
+  const allAccountsRef = useRef<Account[]>([]);
+
   useEffect(() => {
-    // Load daily task stats
-    const loadStats = () => {
-      const today = new Date().toISOString().split('T')[0];
+    allAccountsRef.current = allAccounts;
+  }, [allAccounts]);
 
-      // Pending tasks
-      const storedTasks = localStorage.getItem(`dailyTasks_batches_${today}`);
-      if (storedTasks) {
-        try {
-          const parsed = JSON.parse(storedTasks);
-          const batches = parsed.batches || [];
-          let count = 0;
-          batches.forEach((batch: { tasks: unknown[] }) => {
-            count += batch.tasks.length;
-          });
-          setTodayTasksCount(count);
-        } catch (e) {
-          console.error(e);
+  // Load daily task stats immediately from the bulk DB stats command. No need
+  // to visit Daily Tasks first.
+  const loadStats = useCallback(async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const currentTime = Date.now();
+    const accounts = allAccountsRef.current;
+
+    let dailyStats: DailyAccountStat[] = [];
+    try {
+      dailyStats = await TauriService.getAllDailyStats(today);
+    } catch (err) {
+      console.error('Error loading daily stats:', err);
+    }
+
+    // Total (Σ per-account N) and completed (card-consistent units).
+    let total = 0;
+    let pending = 0;
+    dailyStats.forEach((s) => {
+      total += s.totalTasks ?? 0;
+      pending += s.pendingCards ?? 0;
+    });
+    setTotalTasksToday(total);
+    setCompletedTodayCount(Math.max(0, total - pending));
+
+    // Ready count: only the first pending card per account can be ready.
+    try {
+      const completionRecords = (await asyncStorageService.get<{ [accountId: number]: AccountCompletionRecord }>('accountCompletionRecords')) || {};
+      const persistedStartStates = (await asyncStorageService.get<{ [accountId: number]: AccountStartState }>('accountStartStates')) || {};
+      const accountsById: { [id: number]: Account } = {};
+      accounts.forEach((a) => { accountsById[a.id] = a; });
+
+      const history = await TauriService.getTaskHistory();
+      const todayHistory = (history || []).filter((c) => c.completionDate === today);
+
+      let ready = 0;
+      dailyStats.forEach((s) => {
+        if (s.firstPendingCardTimeSpent == null) return;
+        const account = accountsById[s.accountId];
+        if (!account) return;
+
+        // Build a start state from the account when not persisted, so
+        // first-task readiness (startTime + timeSpent) is still meaningful.
+        const startStates = { ...persistedStartStates };
+        if (!startStates[s.accountId]) {
+          const parsed = parseAccountStartDate(account);
+          if (!parsed) return;
+          startStates[s.accountId] = {
+            accountId: account.id,
+            startTime: `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}T${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}:${String(parsed.getSeconds()).padStart(2, '0')}`,
+            firstRequestAllowedAt: parsed.getTime() + (s.firstPendingCardTimeSpent ?? 0) * 1000,
+            isInitialized: true,
+          };
         }
-      }
 
-      // Completed tasks
-      const completedKey = `dailyTasks_completed_${today}`;
-      const storedCompleted = localStorage.getItem(completedKey);
-      if (storedCompleted) {
-        try {
-          const completed: CompletedDailyTask[] = JSON.parse(storedCompleted);
-          setCompletedTodayCount(completed.length);
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    };
+        const task = {
+          account,
+          requests: [{
+            request_type: '',
+            event_token: s.firstPendingEventToken ?? '',
+            level_id: s.firstPendingLevelId ?? null,
+            time_spent: s.firstPendingCardTimeSpent,
+          }],
+          requestGroups: [{ time_spent: s.firstPendingCardTimeSpent, requests: [] }],
+          targetDate: today,
+          completedTasks: new Set<string>(),
+        } as unknown as DailyTask;
 
+        const st = calculateTimerState(
+          task,
+          0,
+          [],
+          currentTime,
+          completionRecords,
+          startStates,
+          todayHistory,
+        );
+        if (st.isReady) ready += 1;
+      });
+      setReadyTasksCount(ready);
+    } catch (err) {
+      console.error('Error computing ready task count:', err);
+    }
+  }, []);
+
+  // Run once on mount: load stats + accounts, then keep stats live via a
+  // periodic timer and completion/progress events.
+  useEffect(() => {
     loadStats();
     loadData();
 
-    // Listen for updates
+    const interval = window.setInterval(loadStats, 45000);
     window.addEventListener('daily-task-completed', loadStats);
     window.addEventListener('progress-updated', loadStats);
 
     return () => {
+      window.clearInterval(interval);
       window.removeEventListener('daily-task-completed', loadStats);
       window.removeEventListener('progress-updated', loadStats);
     };
-  }, []);
+  }, [loadStats]);
+
+  // Recompute the ready count once accounts are loaded. This must NOT call
+  // loadData (that would re-loop setting allAccounts -> effect -> loadData).
+  useEffect(() => {
+    if (allAccounts.length > 0) {
+      loadStats();
+    }
+  }, [allAccounts, loadStats]);
 
   const stateDistribution = {
     FLORIDA: allAccounts.filter(a => a.proxy_state === 'FLORIDA').length,
@@ -179,8 +254,8 @@ export default function Dashboard() {
     UK: allAccounts.filter(a => a.proxy_state === 'UK').length,
   };
 
-  const successRate = (todayTasksCount + completedTodayCount) > 0 
-    ? Math.round((completedTodayCount / (todayTasksCount + completedTodayCount)) * 100) 
+  const successRate = totalTasksToday > 0 
+    ? Math.round((completedTodayCount / totalTasksToday) * 100) 
     : 0;
 
   return (
@@ -225,12 +300,20 @@ export default function Dashboard() {
 
       {/* --- KPI STATS --- */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {[
+        {((): Array<{
+          label: string;
+          val: number;
+          icon: typeof Gamepad2;
+          color: string;
+          desc?: string;
+          percent?: number;
+          progressNote?: string;
+        }> => [
           { label: t('dashboard.totalGames'), val: games.length, icon: Gamepad2, color: 'text-blue-500', desc: t('dashboard.managedTitles') },
           { label: t('dashboard.totalAccounts'), val: allAccounts.length, icon: Users, color: 'text-purple-500', desc: t('dashboard.acrossAllGames') },
-          { label: t('dailyTasks.title'), val: todayTasksCount, icon: Clock, color: 'text-orange-500', desc: t('dailyTasks.noTasksDescription') },
-          { label: t('dashboard.successRate'), val: `${successRate}%`, icon: TrendingUp, color: 'text-green-500', desc: t('dashboard.taskCompletion') },
-        ].map((stat, i) => (
+          { label: t('dailyTasks.title'), val: totalTasksToday, icon: ClipboardList, color: 'text-orange-500', percent: successRate, progressNote: t('dashboard.completedOfTotal', { completed: completedTodayCount, total: totalTasksToday, percent: successRate }) },
+          { label: t('dashboard.readyTasks'), val: readyTasksCount, icon: Zap, color: 'text-green-500', desc: t('dashboard.readyTasksDesc') },
+        ])().map((stat, i) => (
           <Card key={i} className="group hover:border-primary/50 transition-all duration-300 overflow-hidden relative border-none bg-card/50 backdrop-blur-sm border-2">
             <div className={`absolute top-0 left-0 w-1 h-full bg-gradient-to-b ${stat.color.replace('text', 'from').replace('-500', '-600')} to-transparent opacity-50`} />
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -241,9 +324,18 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-black">{stat.val}</div>
-              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1 font-medium">
-                {stat.desc}
-              </p>
+              {typeof stat.percent === 'number' ? (
+                <>
+                  <Progress value={stat.percent} className="h-2 mt-2" indicatorClassName="bg-orange-500" />
+                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1 font-medium">
+                    {stat.progressNote}
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1 font-medium">
+                  {stat.desc}
+                </p>
+              )}
             </CardContent>
           </Card>
         ))}
@@ -287,59 +379,6 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-
-        {/* --- QUICK ACCESS --- */}
-        <div className="lg:col-span-4 space-y-6">
-           <Card className="border-primary/20 bg-primary/5">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-bold">{t('dashboard.recommended')}</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              <Button 
-                variant="default" 
-                className="w-full justify-between h-12 rounded-xl group"
-                onClick={() => navigate('/daily-tasks')}
-              >
-                <span className="flex items-center gap-2">
-                  <Zap className="h-4 w-4" />
-                  {t('dashboard.proceedDaily')}
-                </span>
-                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-between h-12 bg-background/50 rounded-xl"
-                onClick={() => navigate('/games')}
-              >
-                <span className="flex items-center gap-2 text-muted-foreground group-hover:text-foreground">
-                  <Gamepad2 className="h-4 w-4" />
-                  {t('dashboard.manageInventory')}
-                </span>
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="border-none shadow-none bg-transparent">
-             <CardHeader className="px-0 pb-3">
-                <CardTitle className="text-lg font-bold italic">{t('dashboard.latestWin')}</CardTitle>
-             </CardHeader>
-             <CardContent className="px-0">
-                {completedAccounts.length > 0 ? (
-                  <div className="p-4 rounded-2xl bg-green-500/10 border border-green-500/20 flex gap-4 items-center">
-                    <div className="h-10 w-10 flex-shrink-0 rounded-full bg-green-500/20 flex items-center justify-center text-green-600">
-                      <Star className="h-5 w-5 fill-green-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold truncate max-w-[150px]">{completedAccounts[0].name}</p>
-                      <p className="text-[10px] text-green-600 dark:text-green-400 font-black uppercase tracking-tighter">{t('dashboard.achievementUnlocked')}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm text-muted-foreground p-4 italic">{t('dashboard.noCompleted')}</div>
-                )}
-             </CardContent>
-          </Card>
-        </div>
       </div>
 
       {/* --- HALL OF FAME --- */}
