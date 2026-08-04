@@ -48,11 +48,23 @@ struct Card {
     time_spent: i64,
     has_event: bool,
     has_purchase: bool,
+    /// Whether the whole card is already completed (skipped from the returned
+    /// list, but still counted when numbering the account's full day plan).
+    completed: bool,
     requests: Vec<DailyRequest>,
 }
 
-/// Plan the full request list for one account on one target date.
-pub fn plan_daily_requests(input: &PlanInput) -> Vec<DailyRequest> {
+/// The full plan for one account on one day: the pending requests to show plus
+/// the total number of tasks (cards) the account has for the day (including
+/// completed ones) — the "N" of the Daily Tasks "TASK n/N" counter.
+pub struct DayPlan {
+    pub requests: Vec<DailyRequest>,
+    pub total_cards: i64,
+}
+
+/// Plan the full request list for one account on one target date, including the
+/// numbering metadata over the account's whole day plan.
+pub fn plan_day(input: &PlanInput) -> DayPlan {
     let mut rng = rand::thread_rng();
     let day = input.days_passed as i32;
 
@@ -61,11 +73,38 @@ pub fn plan_daily_requests(input: &PlanInput) -> Vec<DailyRequest> {
     let mut cards = plan_level_groups(input, day, &purchase_days, &mut rng);
     cards.extend(plan_purchase_groups(input, day, &mut rng));
 
+    // The full-day plan is ordered and filtered by the same legacy ordering
+    // guard the frontend displays. Completed cards stay in this ordering so
+    // their requests occupy their natural position in the day, then they are
+    // dropped from the returned (pending) list.
+    let ordered = legacy_ordering_filter(cards);
+
+    // "N" is the number of tasks (cards) in the full-day plan. Every request of
+    // a card (e.g. the Session + Event pair) shares the card's "n" (day_index).
+    let total_cards = ordered.len() as i64;
+
+    let mut day_index = 1i64;
     let mut requests = Vec::new();
-    for card in legacy_ordering_filter(cards) {
-        requests.extend(card.requests);
+    for card in ordered {
+        for mut request in card.requests {
+            request.day_index = day_index;
+            if !card.completed {
+                requests.push(request);
+            }
+        }
+        day_index += 1;
     }
-    requests
+
+    DayPlan {
+        requests,
+        total_cards,
+    }
+}
+
+/// Plan the pending (non-completed) requests for one account on one target
+/// date. Thin wrapper over [`plan_day`] kept for backwards compatibility.
+pub fn plan_daily_requests(input: &PlanInput) -> Vec<DailyRequest> {
+    plan_day(input).requests
 }
 
 /// The days on which a purchase event fires, using the same effective offset
@@ -165,20 +204,15 @@ fn plan_level_groups(
             && group_levels.iter().all(|l| {
                 input.level_progress.get(&l.id).is_some_and(|p| p.is_completed)
             });
-        if session_only_all_completed {
-            continue;
-        }
 
-        // A group is skipped only when EVERY level of the group was completed
-        // on the target date (matches the legacy "group fully completed" skip).
+        // A group is completed when EVERY level of the group was completed on
+        // the target date (matches the legacy "group fully completed" skip).
         let group_fully_completed = group_levels.iter().all(|l| {
             input.level_progress.get(&l.id).is_some_and(|p| {
                 p.is_completed && p.target_date.as_deref() == Some(input.target_date)
             })
         });
-        if group_fully_completed {
-            continue;
-        }
+        let completed = session_only_all_completed || group_fully_completed;
 
         // Sort: '-' session rows first, then real events.
         let mut sorted = group_levels;
@@ -227,6 +261,7 @@ fn plan_level_groups(
                     level_id: Some(l.id),
                     time_spent: group_time_spent,
                     timestamp: input.target_date.to_string(),
+                    day_index: 0,
                 });
             } else {
                 requests.push(DailyRequest {
@@ -236,6 +271,7 @@ fn plan_level_groups(
                     level_id: Some(l.id),
                     time_spent: group_time_spent,
                     timestamp: input.target_date.to_string(),
+                    day_index: 0,
                 });
             }
         }
@@ -252,6 +288,7 @@ fn plan_level_groups(
                 level_id: None,
                 time_spent: group_time_spent,
                 timestamp: input.target_date.to_string(),
+                day_index: 0,
             });
         }
 
@@ -259,6 +296,7 @@ fn plan_level_groups(
             time_spent: group_time_spent,
             has_event: has_real,
             has_purchase: false,
+            completed,
             requests,
         });
     }
@@ -275,9 +313,10 @@ fn plan_purchase_groups(input: &PlanInput, day: i32, rng: &mut rand::rngs::Threa
 
         let Some(event_day_offset) = effective_offset else { continue; };
         let is_completed = prog.map(|p| p.is_completed).unwrap_or(false);
-        if event_day_offset != day || is_completed {
+        if event_day_offset != day {
             continue;
         }
+        let completed = is_completed;
 
         let time_spent = if let Some(p) = prog.filter(|p| {
             p.is_completed && p.target_date.as_deref() == Some(input.target_date)
@@ -311,6 +350,7 @@ fn plan_purchase_groups(input: &PlanInput, day: i32, rng: &mut rand::rngs::Threa
                 level_id: None,
                 time_spent,
                 timestamp: input.target_date.to_string(),
+                day_index: 0,
             },
             DailyRequest {
                 request_type: RequestType::PurchaseEvent.as_str().to_string(),
@@ -319,6 +359,7 @@ fn plan_purchase_groups(input: &PlanInput, day: i32, rng: &mut rand::rngs::Threa
                 level_id: None,
                 time_spent,
                 timestamp: input.target_date.to_string(),
+                day_index: 0,
             },
         ];
 
@@ -326,6 +367,7 @@ fn plan_purchase_groups(input: &PlanInput, day: i32, rng: &mut rand::rngs::Threa
             time_spent,
             has_event: true,
             has_purchase: true,
+            completed,
             requests,
         });
     }
@@ -722,6 +764,7 @@ mod tests {
             time_spent: t,
             has_event,
             has_purchase,
+            completed: false,
             requests: vec![DailyRequest {
                 request_type: ty.to_string(),
                 content: String::new(),
@@ -729,6 +772,7 @@ mod tests {
                 level_id: None,
                 time_spent: t,
                 timestamp: "".to_string(),
+                day_index: 0,
             }],
         };
 
@@ -746,5 +790,108 @@ mod tests {
         ];
         let filtered = legacy_ordering_filter(cards);
         assert_eq!(filtered.len(), 2, "session before purchase is kept");
+    }
+
+    #[test]
+    fn plan_day_numbers_all_day_tasks_per_card() {
+        // Two real Level Event pairs on the same day = 2 tasks (cards).
+        let a = level(1, 4, "Level 1", 1000, "a_day4");
+        let b = level(2, 4, "Level B", 2000, "b_day4");
+        let plan = plan_day(&PlanInput {
+            account: &account(),
+            levels: &[a, b],
+            level_progress: &HashMap::new(),
+            purchase_events: &[],
+            purchase_progress: &HashMap::new(),
+            days_passed: 4,
+            target_date: "2024-01-05",
+        });
+
+        assert_eq!(plan.total_cards, 2);
+        // Both rows of a card share the card's "n" (1 then 2).
+        let indices: Vec<i64> = plan.requests.iter().map(|r| r.day_index).collect();
+        assert_eq!(indices, vec![1, 1, 2, 2]);
+        // Every returned request is pending (none completed here).
+        assert_eq!(plan_daily_requests(&PlanInput {
+            account: &account(),
+            levels: &[level(1, 4, "Level 1", 1000, "a_day4"), level(2, 4, "Level B", 2000, "b_day4")],
+            level_progress: &HashMap::new(),
+            purchase_events: &[],
+            purchase_progress: &HashMap::new(),
+            days_passed: 4,
+            target_date: "2024-01-05",
+        }).len(), 4);
+    }
+
+    #[test]
+    fn plan_day_total_includes_completed_tasks() {
+        // Group A (day 4) is fully completed today -> only group B is returned,
+        // but the full-day task count stays 2 and B keeps its position (2/2).
+        let a = level(1, 4, "Level 1", 1000, "a_day4");
+        let b = level(2, 4, "Level B", 2000, "b_day4");
+        let mut progress: HashMap<i64, &AccountLevelProgress> = HashMap::new();
+        let completed_a = AccountLevelProgress {
+            account_id: 1,
+            level_id: 1,
+            is_completed: true,
+            time_spent: 1000000,
+            target_date: Some("2024-01-05".to_string()),
+            completed_at: None,
+        };
+        progress.insert(1, &completed_a);
+
+        let plan = plan_day(&PlanInput {
+            account: &account(),
+            levels: &[a, b],
+            level_progress: &progress,
+            purchase_events: &[],
+            purchase_progress: &HashMap::new(),
+            days_passed: 4,
+            target_date: "2024-01-05",
+        });
+
+        assert_eq!(plan.total_cards, 2, "total includes the completed pair");
+        assert_eq!(plan.requests.len(), 2, "only the pending pair is returned");
+        let indices: Vec<i64> = plan.requests.iter().map(|r| r.day_index).collect();
+        assert_eq!(indices, vec![2, 2], "pending requests keep the card's absolute position");
+    }
+
+    #[test]
+    fn plan_day_single_request_is_one_of_one() {
+        let lv = level(1, 7, "Level 1", 1000, "tok_day7");
+        let plan = plan_day(&PlanInput {
+            account: &account(),
+            levels: &[lv],
+            level_progress: &HashMap::new(),
+            purchase_events: &[],
+            purchase_progress: &HashMap::new(),
+            days_passed: 4,
+            target_date: "2024-01-05",
+        });
+
+        assert_eq!(plan.total_cards, 1);
+        assert_eq!(plan.requests[0].day_index, 1);
+        assert_eq!(plan.requests[0].request_type, "Session Only");
+    }
+
+    #[test]
+    fn plan_day_total_counts_purchase_pairs() {
+        // A purchase event = 1 task (card) of 2 rows; with one pending level
+        // pair that is 2 tasks total.
+        let lv = level(1, 4, "Level 1", 1000, "tok_day4");
+        let pe = purchase_event(1, "pev1_day4", 4);
+        let plan = plan_day(&PlanInput {
+            account: &account(),
+            levels: &[lv],
+            level_progress: &HashMap::new(),
+            purchase_events: &[pe],
+            purchase_progress: &HashMap::new(),
+            days_passed: 4,
+            target_date: "2024-01-05",
+        });
+
+        assert_eq!(plan.total_cards, 2);
+        let indices: Vec<i64> = plan.requests.iter().map(|r| r.day_index).collect();
+        assert_eq!(indices, vec![1, 1, 2, 2]);
     }
 }

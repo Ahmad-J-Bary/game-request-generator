@@ -1255,7 +1255,7 @@ fn get_daily_requests(
             .map(|p| (p.purchase_event_id, p))
             .collect();
 
-    let requests = grq_engine::request::plan::plan_daily_requests(
+    let day_plan = grq_engine::request::plan::plan_day(
         &grq_engine::request::plan::PlanInput {
             account: &account,
             levels: &levels,
@@ -1272,7 +1272,8 @@ fn get_daily_requests(
         "account_name": account.name,
         "target_date": target_date,
         "days_passed": days_passed,
-        "requests": requests,
+        "total_tasks": day_plan.total_cards,
+        "requests": day_plan.requests,
     }))
 }
 

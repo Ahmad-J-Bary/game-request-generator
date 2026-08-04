@@ -46,4 +46,7 @@ pub struct DailyRequest {
     pub level_id: Option<i64>,
     pub time_spent: i64,
     pub timestamp: String,
+    /// 1-based position of this request in the account's FULL day plan
+    /// (including completed requests), used for the "TASK n/N" counter.
+    pub day_index: i64,
 }

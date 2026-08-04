@@ -370,6 +370,7 @@ export class TaskGenerator {
                 requestGroups: [group],
                 targetDate: response.target_date,
                 completedTasks,
+                dayTotalTasks: response.total_tasks,
               };
 
               // Only the first pending group is shown in the ready section.

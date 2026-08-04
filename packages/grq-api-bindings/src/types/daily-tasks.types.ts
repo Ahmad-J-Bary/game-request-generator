@@ -78,6 +78,7 @@ export interface DailyTask {
     requestGroups?: RequestGroup[]; // Groups of related requests (Session + Event pairs)
     targetDate: string;
     completedTasks: Set<string>; // Track completed tasks by index
+    dayTotalTasks?: number; // Full day's task (card) count incl. completed, frozen at generation
 }
 
 export interface GameBatch {

@@ -34,8 +34,8 @@ const TaskRequestList = React.memo(({
         return (
           <RequestItem
             key={index}
-            index={accountTaskIndex}
-            total={accountTaskTotal}
+            index={request.day_index ?? accountTaskIndex}
+            total={task.dayTotalTasks ?? accountTaskTotal}
             request={request}
             isCompleted={task.completedTasks.has(index.toString())}
             isReady={isReady}

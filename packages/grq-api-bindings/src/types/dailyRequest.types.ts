@@ -7,6 +7,7 @@ export interface DailyRequest {
   level_name?: string;
   time_spent: number;
   timestamp?: string;
+  day_index?: number;
 }
 
 export interface DailyRequestsResponse {
@@ -14,5 +15,6 @@ export interface DailyRequestsResponse {
   account_name: string;
   target_date: string;
   days_passed: number;
+  total_tasks: number;
   requests: DailyRequest[];
 }

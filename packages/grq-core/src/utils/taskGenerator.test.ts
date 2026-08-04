@@ -30,6 +30,7 @@ function installMocks(opts: {
   levels: MockLevel[];
   requests: any[];
   progress?: { level_id: number; is_completed: boolean }[];
+  total_tasks?: number;
 }) {
   (TauriService as any).getAllAccounts = async () => [
     {
@@ -50,6 +51,7 @@ function installMocks(opts: {
     account_name: 'Acc1',
     target_date: '2024-01-03',
     days_passed: 2,
+    total_tasks: opts.total_tasks ?? opts.requests.length,
     requests: opts.requests,
   });
   (TauriService as any).getAccountLevelProgress = async () => opts.progress || [];
@@ -206,5 +208,25 @@ describe('TaskGenerator — Session Only requests in Daily Tasks', () => {
 
     assert.strictEqual(req.request_type, 'Session Only');
     assert.strictEqual(req.days_offset, 3);
+  });
+
+  it('propagates day_index and total_tasks to the generated DailyTask', async () => {
+    installMocks({
+      levels: [
+        level({ id: 1, level_name: 'Level 1', event_token: 'abc_day0', days_offset: 0, time_spent: 100 }),
+      ],
+      requests: [
+        { request_type: 'Level Session', content: 'POST /session\r\n\r\n100', event_token: 'abc_day0', level_id: 1, time_spent: 100, timestamp: '2024-01-03', day_index: 2 },
+        { request_type: 'Level Event', content: 'POST /event\r\n\r\n100', event_token: 'abc_day0', level_id: 1, time_spent: 100, timestamp: '2024-01-03', day_index: 2 },
+      ],
+      total_tasks: 2,
+    });
+
+    const tasks = await runGenerator();
+    const task = accountTask(tasks);
+
+    assert.strictEqual(task.dayTotalTasks, 2, 'full-day task count is frozen on the task');
+    assert.strictEqual(task.requests[0].day_index, 2, 'Session row keeps the card position');
+    assert.strictEqual(task.requests[1].day_index, 2, 'Event row shares the same n as its Session');
   });
 });
