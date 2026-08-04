@@ -48,7 +48,6 @@ export function GameDataTable({
   onUpdatePurchaseEvent,
   onAddLevel,
   onAddPurchaseEvent,
-  mode = 'event-only'
 }: GameDataTableProps) {
   const { t } = useTranslation();
   const { colors } = useSettings();
@@ -88,12 +87,7 @@ export function GameDataTable({
           case 'daysOffset':
             return col.daysOffset != null ? String(col.daysOffset) : '';
           case 'timeSpent':
-            if (col.kind === 'level') {
-              return col.timeSpent != null ? String(col.timeSpent) : '';
-            }
-            if (mode === 'all' && col.timeSpent != null) {
-              return String(col.timeSpent);
-            }
+            if (col.timeSpent != null) return String(col.timeSpent);
             return '';
           default:
             return '';
@@ -227,7 +221,7 @@ export function GameDataTable({
         }
         return '-';
       case 'timeSpent':
-        return col.kind === 'level' ? (col.timeSpent != null ? col.timeSpent : '-') : '-';
+        return col.timeSpent != null ? col.timeSpent : '-';
       default:
         return '-';
     }

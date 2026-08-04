@@ -11,12 +11,15 @@
 //!   via an interpolated synthetic '-' row. A "Session Only" request ALWAYS
 //!   carries the BASE token (never a `_day*` suffix), so the filled request and
 //!   the frontend card show the clean event token.
+//! - A purchase day with a real Level Event never carries a standalone "Session
+//!   Only"; a purchase-only day (no real level) keeps its Session Only, ordered
+//!   before the purchase.
 //! - Every (token, day) group shares ONE `time_spent` value between its Session
 //!   and its Event.
 //! - Legacy ordering guard: a standalone "Session Only" card never trails a
 //!   purchase card on the same day's timeline.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::models::account::Account;
 use crate::models::level::Level;
@@ -53,7 +56,9 @@ pub fn plan_daily_requests(input: &PlanInput) -> Vec<DailyRequest> {
     let mut rng = rand::thread_rng();
     let day = input.days_passed as i32;
 
-    let mut cards = plan_level_groups(input, day, &mut rng);
+    let purchase_days = purchase_days(input);
+
+    let mut cards = plan_level_groups(input, day, &purchase_days, &mut rng);
     cards.extend(plan_purchase_groups(input, day, &mut rng));
 
     let mut requests = Vec::new();
@@ -61,6 +66,22 @@ pub fn plan_daily_requests(input: &PlanInput) -> Vec<DailyRequest> {
         requests.extend(card.requests);
     }
     requests
+}
+
+/// The days on which a purchase event fires, using the same effective offset
+/// resolution as `plan_purchase_groups` (progress overrides the event default).
+fn purchase_days(input: &PlanInput) -> HashSet<i32> {
+    input
+        .purchase_events
+        .iter()
+        .filter_map(|e| {
+            input
+                .purchase_progress
+                .get(&e.id)
+                .map(|p| p.days_offset)
+                .or(e.days_offset)
+        })
+        .collect()
 }
 
 /// Legacy ordering guard: a standalone "Session Only" card never trails a
@@ -86,7 +107,12 @@ fn legacy_ordering_filter(cards: Vec<Card>) -> Vec<Card> {
     kept
 }
 
-fn plan_level_groups(input: &PlanInput, day: i32, rng: &mut rand::rngs::ThreadRng) -> Vec<Card> {
+fn plan_level_groups(
+    input: &PlanInput,
+    day: i32,
+    purchase_days: &HashSet<i32>,
+    rng: &mut rand::rngs::ThreadRng,
+) -> Vec<Card> {
     let mut groups: HashMap<(String, i32), Vec<Level>> = HashMap::new();
     for l in input.levels {
         if l.days_offset != day {
@@ -116,6 +142,19 @@ fn plan_level_groups(input: &PlanInput, day: i32, rng: &mut rand::rngs::ThreadRn
 
     for (_key, group_levels) in groups {
         let has_real_event = group_levels.iter().any(|l| l.level_name != "-");
+
+        // A standalone "Session Only" group (no real event in it) must NEVER
+        // coexist with a purchase event on a day that also carries a real Level
+        // Event. A purchase-only day (no real level) keeps its Session Only,
+        // which the legacy ordering filter then places before the purchase.
+        let day_has_purchase = purchase_days.contains(&day);
+        let day_has_real_level = input
+            .levels
+            .iter()
+            .any(|l| l.days_offset == day && l.level_name != "-");
+        if !has_real_event && day_has_purchase && day_has_real_level {
+            continue;
+        }
 
         // A standalone "Session Only" group (no real event in it) is skipped as
         // soon as EVERY session row is completed — REGARDLESS of target_date.
@@ -489,6 +528,65 @@ mod tests {
         assert!(reqs.iter().any(|r| r.request_type == "Purchase Session"));
         assert!(reqs.iter().any(|r| r.request_type == "Purchase Event"));
         assert_eq!(reqs[0].time_spent, reqs[1].time_spent);
+    }
+
+    #[test]
+    fn purchase_and_level_event_same_day_never_emits_session_only() {
+        // A real Level Event + purchase on the same day -> Level pair + purchase
+        // pair, and NO standalone "Session Only".
+        let lv = level(1, 4, "Level 1", 1000, "tok_day4");
+        let pe = purchase_event(1, "pev1_day4", 4);
+        let reqs = plan_with_purchases(vec![lv], vec![pe], 4);
+
+        assert_eq!(reqs.len(), 4);
+        assert!(
+            reqs.iter().all(|r| r.request_type != "Session Only"),
+            "a purchase day with a real Level Event must never emit Session Only"
+        );
+        assert!(reqs.iter().any(|r| r.request_type == "Level Session"));
+        assert!(reqs.iter().any(|r| r.request_type == "Level Event"));
+        assert!(reqs.iter().any(|r| r.request_type == "Purchase Session"));
+        assert!(reqs.iter().any(|r| r.request_type == "Purchase Event"));
+    }
+
+    #[test]
+    fn purchase_day_with_real_level_drops_persisted_session_only() {
+        // Legacy DB state: a persisted '-' row (different base token) on a day
+        // that also has a real Level Event AND a purchase event. The Session
+        // Only must be suppressed; the level pair and purchase pair survive.
+        let session = level(1, 4, "-", 18, "b_day4");
+        let ev = level(2, 4, "Level 1", 1000, "tok_day4");
+        let pe = purchase_event(1, "pev1_day4", 4);
+        let reqs = plan_with_purchases(vec![session, ev], vec![pe], 4);
+
+        assert!(
+            reqs.iter().all(|r| r.request_type != "Session Only"),
+            "persisted Session Only must be suppressed on a purchase day with a real Level Event"
+        );
+        assert!(reqs.iter().any(|r| r.request_type == "Level Event"));
+        assert!(reqs.iter().any(|r| r.request_type == "Purchase Event"));
+    }
+
+    #[test]
+    fn purchase_only_day_emits_session_only_before_purchase() {
+        // No real level on the purchase day (a real level exists later) ->
+        // "Session Only" appears and is ordered BEFORE the purchase requests.
+        let lv = level(1, 7, "Level 1", 1000, "tok_day7");
+        let pe = purchase_event(1, "pev1_day4", 4);
+        let reqs = plan_with_purchases(vec![lv], vec![pe], 4);
+
+        let session_idx = reqs
+            .iter()
+            .position(|r| r.request_type == "Session Only")
+            .expect("purchase-only day must keep its Session Only");
+        let purchase_idx = reqs
+            .iter()
+            .position(|r| r.request_type.starts_with("Purchase"))
+            .expect("purchase pair must be emitted");
+        assert!(
+            session_idx < purchase_idx,
+            "Session Only must appear before the purchase on a purchase-only day"
+        );
     }
 
     #[test]
