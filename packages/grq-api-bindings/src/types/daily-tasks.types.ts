@@ -7,6 +7,7 @@ export interface CompletedDailyTask {
     accountName: string;
     gameId: number;
     gameName: string;
+    accountStartDate?: string; // account.start_date, for same-day sibling cooldown
     eventToken: string;
     timeSpent: number;
     completionTime: number; 
@@ -114,6 +115,7 @@ export interface DailyRecentCompletion {
     levelId: number | null;
     eventToken: string;
     completionTime: number; // epoch ms
+    startDate?: string; // account.start_date, for same-day sibling cooldown
 }
 
 /**

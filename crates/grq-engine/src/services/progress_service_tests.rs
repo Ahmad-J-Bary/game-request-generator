@@ -123,6 +123,16 @@ mod tests {
         conn.last_insert_rowid()
     }
 
+    fn add_account_with_start_date(conn: &Connection, name: &str, start_date: &str) -> i64 {
+        conn.execute(
+            "INSERT INTO accounts (game_id, branch_id, name, start_date, start_time, request_template)
+             VALUES (1, 1, ?1, ?2, '10:00:00', 'template')",
+            rusqlite::params![name, start_date],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
     // ── Level cooldown ────────────────────────────────────────────────
 
     #[test]
@@ -260,6 +270,54 @@ mod tests {
         assert_eq!(is_completed, 1, "Acc B must be completed with bypass_cooldown");
     }
 
+    #[test]
+    fn test_level_cooldown_skips_accounts_started_on_different_days() {
+        let conn = setup_db();
+        let svc = ProgressService::new();
+        let acc_a = add_account(&conn, "Acc A");
+        let acc_b = add_account_with_start_date(&conn, "Acc B", "2026-07-02");
+
+        for acc in [acc_a, acc_b] {
+            svc.create_or_update_level_progress(
+                &conn,
+                CreateAccountLevelProgressRequest {
+                    account_id: acc,
+                    level_id: 1,
+                    time_spent: Some(10),
+                    target_date: None,
+                },
+            )
+            .unwrap();
+        }
+
+        svc.update_level_progress(
+            &conn,
+            UpdateAccountLevelProgressRequest {
+                account_id: acc_a,
+                level_id: 1,
+                is_completed: true,
+                time_spent: Some(10),
+                target_date: None,
+                bypass_cooldown: None,
+            },
+        )
+        .unwrap();
+
+        // Acc B started on a different day -> NOT a sibling -> no cooldown
+        let result = svc.update_level_progress(
+            &conn,
+            UpdateAccountLevelProgressRequest {
+                account_id: acc_b,
+                level_id: 1,
+                is_completed: true,
+                time_spent: Some(10),
+                target_date: None,
+                bypass_cooldown: None,
+            },
+        );
+        assert!(result.is_ok(), "different-day accounts must not be cooldown-blocked: {:?}", result.err());
+    }
+
     // ── Purchase event cooldown ───────────────────────────────────────
 
     #[test]
@@ -370,5 +428,56 @@ mod tests {
             )
             .unwrap();
         assert_eq!(is_completed, 1, "Acc B must be completed with bypass_cooldown");
+    }
+
+    #[test]
+    fn test_purchase_cooldown_skips_accounts_started_on_different_days() {
+        let conn = setup_db();
+        let svc = ProgressService::new();
+        let acc_a = add_account(&conn, "Acc A");
+        let acc_b = add_account_with_start_date(&conn, "Acc B", "2026-07-02");
+
+        for acc in [acc_a, acc_b] {
+            svc.create_or_update_purchase_event_progress(
+                &conn,
+                CreateAccountPurchaseEventProgressRequest {
+                    account_id: acc,
+                    purchase_event_id: 1,
+                    days_offset: 4,
+                    time_spent: 0,
+                    target_date: None,
+                },
+            )
+            .unwrap();
+        }
+
+        svc.update_purchase_event_progress(
+            &conn,
+            UpdateAccountPurchaseEventProgressRequest {
+                account_id: acc_a,
+                purchase_event_id: 1,
+                is_completed: Some(true),
+                days_offset: Some(4),
+                time_spent: Some(0),
+                target_date: None,
+                bypass_cooldown: None,
+            },
+        )
+        .unwrap();
+
+        // Acc B started on a different day -> NOT a sibling -> no cooldown
+        let result = svc.update_purchase_event_progress(
+            &conn,
+            UpdateAccountPurchaseEventProgressRequest {
+                account_id: acc_b,
+                purchase_event_id: 1,
+                is_completed: Some(true),
+                days_offset: Some(4),
+                time_spent: Some(0),
+                target_date: None,
+                bypass_cooldown: None,
+            },
+        );
+        assert!(result.is_ok(), "different-day accounts must not be cooldown-blocked: {:?}", result.err());
     }
 }

@@ -1420,6 +1420,7 @@ fn get_all_daily_stats(
                             "levelId": p.level_id,
                             "eventToken": event_token,
                             "completionTime": ms,
+                            "startDate": account.start_date,
                         }));
                     }
                 }
@@ -1443,6 +1444,7 @@ fn get_all_daily_stats(
                             "levelId": serde_json::Value::Null,
                             "eventToken": event_token,
                             "completionTime": ms,
+                            "startDate": account.start_date,
                         }));
                     }
                 }

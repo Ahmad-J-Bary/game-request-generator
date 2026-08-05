@@ -172,6 +172,20 @@ export const calculateTimerState = (
       if (completedTask.accountId === accountId) continue;
       if (completedTask.gameId !== taskGameId) continue;
 
+      // Sibling gate: the 1-hour cooldown only applies between accounts of the
+      // same game created on the SAME day. Accounts started on other days (or
+      // other branches sharing a purchase token) must NOT trigger it.
+      const otherStartDate =
+        completedTask.accountStartDate ?? (completedTask as any).startDate;
+      const thisStartDate = (task.account as any).start_date;
+      if (
+        !otherStartDate ||
+        !thisStartDate ||
+        otherStartDate !== thisStartDate
+      ) {
+        continue;
+      }
+
       const isSameLevel = taskLevelId && completedTask.levelId === taskLevelId;
       const isSameEvent =
         taskEventToken &&

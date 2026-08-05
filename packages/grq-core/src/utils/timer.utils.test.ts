@@ -338,6 +338,7 @@ describe('calculateTimerState — global 1h cooldown', () => {
         levelId: 10,
         eventToken: 'evt-other',
         completionTime: now - 60 * 1000, // 59 min ago
+        startDate: '2026-01-01', // same-day sibling of the task's account
       },
     ];
     const state = calculateTimerState(
@@ -366,6 +367,7 @@ describe('calculateTimerState — global 1h cooldown', () => {
         levelId: 10,
         eventToken: 'evt-other',
         completionTime: now - 61 * 60 * 1000,
+        startDate: '2026-01-01', // same-day sibling of the task's account
       },
     ];
     const state = calculateTimerState(
@@ -380,6 +382,203 @@ describe('calculateTimerState — global 1h cooldown', () => {
       null,
     );
     assert.strictEqual(state.isReady, true);
+  });
+
+  it('does NOT apply cooldown when the other account started on a different day', () => {
+    const now = 2000000;
+    const completedTasks = [
+      {
+        accountId: 999,
+        gameId: 100,
+        levelId: 10,
+        eventToken: 'evt-other',
+        completionTime: now - 60 * 1000,
+        startDate: '2026-01-02', // sibling created on a different day
+      },
+    ];
+    const state = calculateTimerState(
+      makeTask(),
+      0,
+      [],
+      now,
+      {},
+      {},
+      completedTasks,
+      [],
+      null,
+    );
+    assert.strictEqual(state.isReady, true);
+    assert.strictEqual(state.reason, 'ready');
+    assert.strictEqual(state.totalWaitSec, 0);
+  });
+
+  it('does NOT apply cooldown when the other completion has no start date', () => {
+    const now = 2000000;
+    const completedTasks = [
+      {
+        accountId: 999,
+        gameId: 100,
+        levelId: 10,
+        eventToken: 'evt-other',
+        completionTime: now - 60 * 1000,
+      },
+    ];
+    const state = calculateTimerState(
+      makeTask(),
+      0,
+      [],
+      now,
+      {},
+      {},
+      completedTasks,
+      [],
+      null,
+    );
+    assert.strictEqual(state.isReady, true);
+    assert.strictEqual(state.reason, 'ready');
+  });
+
+  it('does NOT apply cooldown when the same-level completion is from another game', () => {
+    const now = 2000000;
+    const completedTasks = [
+      {
+        accountId: 999,
+        gameId: 200,
+        levelId: 10,
+        eventToken: 'evt-other',
+        completionTime: now - 60 * 1000,
+        startDate: '2026-01-01',
+      },
+    ];
+    const state = calculateTimerState(
+      makeTask(),
+      0,
+      [],
+      now,
+      {},
+      {},
+      completedTasks,
+      [],
+      null,
+    );
+    assert.strictEqual(state.isReady, true);
+    assert.strictEqual(state.reason, 'ready');
+  });
+
+  it('does NOT apply cooldown when a sibling completed a DIFFERENT level', () => {
+    const now = 2000000;
+    const completedTasks = [
+      {
+        accountId: 999,
+        gameId: 100,
+        levelId: 11,
+        eventToken: 'evt-other',
+        completionTime: now - 60 * 1000,
+        startDate: '2026-01-01',
+      },
+    ];
+    const state = calculateTimerState(
+      makeTask(),
+      0,
+      [],
+      now,
+      {},
+      {},
+      completedTasks,
+      [],
+      null,
+    );
+    assert.strictEqual(state.isReady, true);
+    assert.strictEqual(state.reason, 'ready');
+  });
+
+  it('applies cooldown when a sibling completed the SAME purchase event token', () => {
+    const now = 2000000;
+    const purchaseTask = makeTask({
+      requests: [
+        {
+          event_token: 'pev1_day4',
+          level_id: null,
+          request_type: 'Purchase',
+          time_spent: 100,
+        },
+      ],
+      requestGroups: [
+        {
+          event_token: 'pev1_day4',
+          time_spent: 100,
+          requests: [],
+        },
+      ],
+    });
+    const completedTasks = [
+      {
+        accountId: 999,
+        gameId: 100,
+        levelId: null,
+        eventToken: 'pev1_day4',
+        completionTime: now - 60 * 1000,
+        startDate: '2026-01-01',
+      },
+    ];
+    const state = calculateTimerState(
+      purchaseTask,
+      0,
+      [],
+      now,
+      {},
+      {},
+      completedTasks,
+      [],
+      null,
+    );
+    assert.strictEqual(state.isReady, false);
+    assert.strictEqual(state.reason, 'cooldown');
+    assert.strictEqual(state.totalWaitSec, 3600);
+  });
+
+  it('does NOT apply cooldown when a sibling completed the same purchase event on a different day', () => {
+    const now = 2000000;
+    const purchaseTask = makeTask({
+      requests: [
+        {
+          event_token: 'pev1_day4',
+          level_id: null,
+          request_type: 'Purchase',
+          time_spent: 100,
+        },
+      ],
+      requestGroups: [
+        {
+          event_token: 'pev1_day4',
+          time_spent: 100,
+          requests: [],
+        },
+      ],
+    });
+    const completedTasks = [
+      {
+        accountId: 999,
+        gameId: 100,
+        levelId: null,
+        eventToken: 'pev1_day4',
+        completionTime: now - 60 * 1000,
+        startDate: '2026-01-02',
+      },
+    ];
+    const state = calculateTimerState(
+      purchaseTask,
+      0,
+      [],
+      now,
+      {},
+      {},
+      completedTasks,
+      [],
+      null,
+    );
+    assert.strictEqual(state.isReady, true);
+    assert.strictEqual(state.reason, 'ready');
   });
 });
 

@@ -77,19 +77,21 @@ impl HistoryService {
         limit: Option<u32>,
         account_id: Option<i64>,
     ) -> Result<Vec<CompletedDailyTask>, String> {
-        let mut query = "SELECT id, account_id, account_name, game_id, game_name, event_token, 
-                         time_spent, completion_time, completion_date, completed_at,
-                         level_id, level_name, request_type, is_purchase 
-                         FROM completed_daily_tasks".to_string();
+        let mut query = "SELECT m.id, m.account_id, m.account_name, m.game_id, m.game_name, m.event_token, 
+                         m.time_spent, m.completion_time, m.completion_date, m.completed_at,
+                         m.level_id, m.level_name, m.request_type, m.is_purchase,
+                         a.start_date
+                         FROM completed_daily_tasks m
+                         LEFT JOIN accounts a ON a.id = m.account_id".to_string();
         
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(aid) = account_id {
-            query.push_str(" WHERE account_id = ?1");
+            query.push_str(" WHERE m.account_id = ?1");
             params_vec.push(Box::new(aid));
         }
 
-        query.push_str(" ORDER BY completed_at DESC");
+        query.push_str(" ORDER BY m.completed_at DESC");
 
         if let Some(l) = limit {
             query.push_str(&format!(" LIMIT {}", l));
@@ -114,6 +116,7 @@ impl HistoryService {
                 level_name: row.get(11)?,
                 request_type: row.get(12)?,
                 is_purchase: row.get::<_, i32>(13)? == 1,
+                account_start_date: row.get(14)?,
             })
         }).map_err(|e| format!("Failed to execute history query: {}", e))?;
 

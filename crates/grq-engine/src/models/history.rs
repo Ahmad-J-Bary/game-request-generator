@@ -10,6 +10,10 @@ pub struct CompletedDailyTask {
     pub account_name: String,
     pub game_id: i64,
     pub game_name: String,
+    /// The owning account's start_date, joined from the accounts table. Used by
+    /// the frontend to restrict the 1-hour cooldown to same-day-created
+    /// siblings (same game + same start date).
+    pub account_start_date: Option<String>,
     pub event_token: String,
     pub time_spent: i64,
     pub completion_time: i64, // Milliseconds since epoch

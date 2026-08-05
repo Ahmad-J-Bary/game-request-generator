@@ -40,14 +40,17 @@ impl ProgressService {
         request: UpdateAccountLevelProgressRequest,
     ) -> Result<bool, String> {
         if request.is_completed && !request.bypass_cooldown.unwrap_or(false) {
-            // Cooldown check: Has anyone else completed this SAME level in the last 1 hour?
+            // Cooldown check: has a SAME-DAY sibling (account created on the
+            // same start_date) completed this SAME level in the last 1 hour?
             let cooldown_exists: bool = conn
                 .query_row(
                     "SELECT EXISTS(
-                    SELECT 1 FROM account_level_progress
-                    WHERE level_id = ?1 AND is_completed = 1
-                    AND account_id != ?2
-                    AND datetime(completed_at) > datetime('now', '-1 hour')
+                    SELECT 1 FROM account_level_progress p
+                    JOIN accounts a ON a.id = p.account_id
+                    WHERE p.level_id = ?1 AND p.is_completed = 1
+                    AND p.account_id != ?2
+                    AND datetime(p.completed_at) > datetime('now', '-1 hour')
+                    AND a.start_date = (SELECT start_date FROM accounts WHERE id = ?2)
                  )",
                     params![request.level_id, request.account_id],
                     |row| row.get(0),
@@ -267,14 +270,17 @@ impl ProgressService {
         }
 
         if request.is_completed.unwrap_or(false) && !request.bypass_cooldown.unwrap_or(false) {
-            // Cooldown check: Has anyone else completed this SAME event in the last 1 hour?
+            // Cooldown check: has a SAME-DAY sibling (account created on the
+            // same start_date) completed this SAME event in the last 1 hour?
             let cooldown_exists: bool = conn
                 .query_row(
                     "SELECT EXISTS(
-                    SELECT 1 FROM account_purchase_event_progress
-                    WHERE purchase_event_id = ?1 AND is_completed = 1
-                    AND account_id != ?2
-                    AND datetime(completed_at) > datetime('now', '-1 hour')
+                    SELECT 1 FROM account_purchase_event_progress p
+                    JOIN accounts a ON a.id = p.account_id
+                    WHERE p.purchase_event_id = ?1 AND p.is_completed = 1
+                    AND p.account_id != ?2
+                    AND datetime(p.completed_at) > datetime('now', '-1 hour')
+                    AND a.start_date = (SELECT start_date FROM accounts WHERE id = ?2)
                  )",
                     params![request.purchase_event_id, request.account_id],
                     |row| row.get(0),
