@@ -47,6 +47,8 @@
     "off": "Off",
     "live": "Live",
     "open": "Open",
+    "up": "Up",
+    "down": "Down",
     "months": {
       "january": "January", "february": "February", "march": "March", "april": "April",
       "may": "May", "june": "June", "july": "July", "august": "August",
@@ -343,6 +345,8 @@
     "successRate": "Success Rate",
     "regionalDist": "Regional Distribution",
     "regionalDistDesc": "Account spread across US regions",
+    "regionalDistEmpty": "No regions yet — add them from Settings to see the account spread here.",
+    "manageRegions": "Manage regions",
     "recommended": "Recommended",
     "proceedDaily": "Proceed to Daily Tasks",
     "manageInventory": "Manage Inventory",
@@ -618,6 +622,26 @@
       "backupFailed": "Failed to create backup",
       "backupInProgress": "Creating backup...",
       "backupHint": "On each app start, the database is compared with the latest backup. If different, a new timestamped copy (backup_YYYYMMDD_HHMMSS.sqlite) is created automatically. Backups older than 2 days are cleaned up."
+    },
+    "regions": {
+      "tab": "Regions",
+      "title": "Regions & Distribution",
+      "subtitle": "Manage primary and sub-regions that control Daily Tasks ordering and the regional distribution chart",
+      "loadFailed": "Failed to load regions",
+      "nameRequired": "Region name is required",
+      "addPrimary": "Add primary region",
+      "primaryName": "Region name",
+      "primaryNamePlaceholder": "e.g. UNITED STATES (US)",
+      "addSub": "Sub-region",
+      "subName": "Sub-region name",
+      "subNamePlaceholder": "e.g. FLORIDA",
+      "noPrimaries": "No primary regions yet",
+      "noSubs": "No sub-regions",
+      "primary": "Primary",
+      "editTitle": "Edit region",
+      "deleteConfirm": "Delete {{name}}? This cannot be undone.",
+      "hint": "Ordering here controls the display order on the Daily Tasks page. Sub-regions are cycled when creating new accounts.",
+      "colorUsed": "Already used by another region"
     }
   },
   "theme": {

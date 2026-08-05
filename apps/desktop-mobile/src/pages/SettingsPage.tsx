@@ -2,13 +2,14 @@
 
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings, Database, MessageSquare, Palette } from 'lucide-react';
+import { Settings, Database, MessageSquare, Palette, MapPin } from 'lucide-react';
 import { cn } from '@grq/ui/lib/utils';
 import { StorageSettingsPanel } from '@grq/ui/molecules/StorageSettingsPanel';
 import { TelegramSettingsPanel } from '@grq/ui/molecules/TelegramSettingsPanel';
 import { AppearanceSettingsPanel } from '@grq/ui/molecules/AppearanceSettingsPanel';
+import { RegionsSettingsPanel } from '@grq/ui/molecules/RegionsSettingsPanel';
 
-type SettingTab = 'appearance' | 'storage' | 'telegram';
+type SettingTab = 'appearance' | 'storage' | 'telegram' | 'regions';
 
 interface SettingsPageProps {
   section?: SettingTab;
@@ -23,6 +24,7 @@ export default function SettingsPage({ section }: SettingsPageProps) {
     { id: 'appearance' as const, label: t('settings.appearance.title', 'Appearance'),     icon: Palette,       href: '/settings/appearance', color: 'text-violet-500' },
     { id: 'storage'    as const, label: t('settings.storage.title', 'Database & Backup'), icon: Database,      href: '/settings/storage',    color: 'text-emerald-500' },
     { id: 'telegram'   as const, label: t('settings.telegram.title', 'Telegram Bot'),     icon: MessageSquare, href: '/settings/telegram',   color: 'text-amber-500'  },
+    { id: 'regions'    as const, label: t('settings.regions.tab', 'Regions'),       icon: MapPin,        href: '/settings/regions',    color: 'text-rose-500'    },
   ];
 
   const renderActivePanel = () => {
@@ -30,6 +32,7 @@ export default function SettingsPage({ section }: SettingsPageProps) {
       case 'appearance': return <AppearanceSettingsPanel />;
       case 'storage':    return <StorageSettingsPanel />;
       case 'telegram':   return <TelegramSettingsPanel />;
+      case 'regions':    return <RegionsSettingsPanel />;
     }
   };
 

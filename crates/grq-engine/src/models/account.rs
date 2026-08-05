@@ -27,7 +27,6 @@ pub struct CreateAccountRequest {
     pub start_date: String,
     pub start_time: String,
     pub request_template: String,
-    pub country: String,
 }
 
 #[derive(Debug, Deserialize, Default)]

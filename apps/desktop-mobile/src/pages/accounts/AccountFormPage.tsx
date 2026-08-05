@@ -353,9 +353,6 @@ export default function AccountFormPage() {
   );
   const [startTime, setStartTime] = useState(account?.start_time || (isEditMode ? '' : getDefaultStartTime()));
   const [requestTemplate, setRequestTemplate] = useState(account?.request_template || '');
-  // Derive country from existing proxy_state for edit mode
-  const initialCountry = account?.proxy_state === 'UK' ? 'UNITED STATES (UK)' : 'UNITED STATES (US)';
-  const [country, setCountry] = useState(initialCountry);
   const [loading, setLoading] = useState(false);
   
   const { fetchBranches } = useGames();
@@ -476,7 +473,6 @@ export default function AccountFormPage() {
           start_date: formatDateForAPI(startDate),
           start_time: startTime,
           request_template: requestTemplate,
-          proxy_state: country === 'UNITED STATES (UK)' ? 'UK' : undefined,
         };
         await updateAccount(request);
       } else {
@@ -487,7 +483,6 @@ export default function AccountFormPage() {
           start_date: formatDateForAPI(startDate),
           start_time: startTime,
           request_template: requestTemplate,
-          country,
         };
         await addAccount(request);
       }
@@ -567,19 +562,6 @@ export default function AccountFormPage() {
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-2">
-                <Label>{t('accounts.country', 'Country')}</Label>
-                <Select value={country} onValueChange={setCountry}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={t('accounts.selectCountry', 'Select country')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="UNITED STATES (US)">🇺🇸 UNITED STATES (US)</SelectItem>
-                    <SelectItem value="UNITED STATES (UK)">🇬🇧 UNITED STATES (UK)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">

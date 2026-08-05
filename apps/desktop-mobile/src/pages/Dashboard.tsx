@@ -19,13 +19,13 @@ import { Button } from '@grq/ui/atoms/button';
 import { 
   Gamepad2, Users, CheckCircle, ClipboardList, Clock, 
   Trash2, ShieldCheck, MapPin,
-  LayoutDashboard, Zap, Send
+  LayoutDashboard, Zap, Send, Settings2
 } from 'lucide-react';
 import { TauriService } from '@grq/core/services/tauri.service';
 import { asyncStorageService } from '@grq/core/services/storage.service';
 import { calculateTimerState } from '@grq/core/utils/timer.utils';
 import { parseAccountStartDate } from '@grq/core/utils/daily-tasks.utils';
-import type { CompletedAccount, Account, DailyAccountStat, DailyRecentCompletion, DailyTask, AccountCompletionRecord, AccountStartState } from '@grq/api-bindings';
+import type { CompletedAccount, Account, DailyAccountStat, DailyRecentCompletion, DailyTask, AccountCompletionRecord, AccountStartState, Region } from '@grq/api-bindings';
 import { invoke } from '@tauri-apps/api/core';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { Badge } from '@grq/ui/atoms/badge';
@@ -34,6 +34,7 @@ import { proxyStateProgressClass } from '@grq/ui/lib/proxy-state-styles';
 import { ExcelService } from '@grq/core/services/excel.service';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
 import { useTheme } from '@grq/ui/contexts/ThemeContext';
+import { cn } from '@grq/ui/lib/utils';
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -45,6 +46,7 @@ export default function Dashboard() {
   const [readyTasksCount, setReadyTasksCount] = useState(0);
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [completedAccounts, setCompletedAccounts] = useState<CompletedAccount[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState<number | null>(null);
@@ -56,12 +58,14 @@ export default function Dashboard() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [accounts, completed] = await Promise.all([
+      const [accounts, completed, regionList] = await Promise.all([
         TauriService.getAllAccounts(),
-        TauriService.getCompletedAccounts()
+        TauriService.getCompletedAccounts(),
+        TauriService.getRegions(),
       ]);
       setAllAccounts(accounts);
       setCompletedAccounts(completed);
+      setRegions(regionList);
     } catch (e) {
       console.error(e);
     } finally {
@@ -263,13 +267,25 @@ export default function Dashboard() {
     }
   }, [allAccounts, loadStats]);
 
-  const stateDistribution = {
-    FLORIDA: allAccounts.filter(a => a.proxy_state === 'FLORIDA').length,
-    CALIFORNIA: allAccounts.filter(a => a.proxy_state === 'CALIFORNIA').length,
-    TEXAS: allAccounts.filter(a => a.proxy_state === 'TEXAS').length,
-    'New York': allAccounts.filter(a => a.proxy_state === 'New York').length,
-    UK: allAccounts.filter(a => a.proxy_state === 'UK').length,
-  };
+  const subRegions = regions
+    .filter((r) => r.parent_id != null)
+    .sort((a, b) => a.sort_order - b.sort_order);
+
+  const usedStates = new Set(
+    allAccounts.map((a) => a.proxy_state || 'Unknown'),
+  );
+
+  const distributionTiles = [
+    ...subRegions.map((r) => ({
+      key: r.name,
+      name: r.name,
+      color: r.color || undefined,
+      emoji: r.emoji || undefined,
+    })),
+    ...[...usedStates]
+      .filter((s) => !subRegions.some((r) => r.name === s))
+      .map((s) => ({ key: s, name: s, color: undefined, emoji: undefined })),
+  ];
 
   const successRate = totalTasksToday > 0 
     ? Math.round((completedTodayCount / totalTasksToday) * 100) 
@@ -331,7 +347,7 @@ export default function Dashboard() {
           { label: t('dailyTasks.title'), val: totalTasksToday, icon: ClipboardList, color: 'text-orange-500', percent: successRate, progressNote: t('dashboard.completedOfTotal', { completed: completedTodayCount, total: totalTasksToday, percent: successRate }) },
           { label: t('dashboard.readyTasks'), val: readyTasksCount, icon: Zap, color: 'text-green-500', desc: t('dashboard.readyTasksDesc') },
         ])().map((stat, i) => (
-          <Card key={i} className="group hover:border-primary/50 transition-all duration-300 overflow-hidden relative border-none bg-card/50 backdrop-blur-sm border-2">
+          <Card key={i} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card/60 backdrop-blur-sm shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg">
             <div className={`absolute top-0 left-0 w-1 h-full bg-gradient-to-b ${stat.color.replace('text', 'from').replace('-500', '-600')} to-transparent opacity-50`} />
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
@@ -358,64 +374,109 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-12">
-        {/* --- REGIONAL DISTRIBUTION --- */}
-        <Card className="lg:col-span-8 bg-card/30 backdrop-blur-md border-none shadow-none">
-          <CardHeader className="px-0 pt-0">
-            <CardTitle className="flex items-center gap-2 text-xl font-bold italic underline decoration-primary/30 decoration-4 underline-offset-4">
-              <MapPin className="h-5 w-5 text-primary" />
-              {t('dashboard.regionalDist')}
-            </CardTitle>
-            <CardDescription>{t('dashboard.regionalDistDesc')}</CardDescription>
-          </CardHeader>
-          <CardContent className="px-0 pt-4">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
-              {[
-                { state: 'FLORIDA' },
-                { state: 'CALIFORNIA' },
-                { state: 'TEXAS' },
-                { state: 'New York' },
-                { state: 'UK' },
-              ].map((loc) => {
-                const progressClass = proxyStateProgressClass(loc.state);
-                const count = stateDistribution[loc.state as keyof typeof stateDistribution];
-                const percentage = allAccounts.length > 0 ? Math.round((count / allAccounts.length) * 100) : 0;
-                return (
-                  <div key={loc.state} className="space-y-3 p-4 rounded-2xl bg-card border shadow-sm group hover:ring-2 hover:ring-primary/20 transition-all">
-                    <div className="flex items-baseline justify-between mb-1">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{loc.state}</span>
-                      <span className="text-lg font-black">{count}</span>
-                    </div>
-                    <Progress value={percentage} className="h-2" indicatorClassName={progressClass.color} />
-                    <div className="text-[10px] text-muted-foreground font-bold flex justify-end uppercase">
-                      {percentage}% {t('dashboard.percentageOfTotal')}
-                    </div>
-                  </div>
-                );
-              })}
+      {/* --- REGIONAL DISTRIBUTION --- */}
+      <Card className="group/regions relative overflow-hidden rounded-3xl bg-card/50 backdrop-blur-md border border-border/10 shadow-sm">
+        <MapPin className="absolute -bottom-8 -right-8 h-44 w-44 text-primary/5 pointer-events-none transition-transform duration-700 group-hover/regions:scale-125 rotate-12" />
+        <CardHeader className="relative z-10 px-6 pt-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-primary text-white shadow-lg shadow-primary/20 shrink-0">
+                  <MapPin className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                  <CardTitle className="text-2xl font-black italic leading-none">
+                    {t('dashboard.regionalDist')}
+                  </CardTitle>
+                  <CardDescription className="font-medium">{t('dashboard.regionalDistDesc')}</CardDescription>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="group/btn shrink-0 rounded-full border-primary/20 bg-background/50 px-4 font-bold shadow-sm backdrop-blur-sm transition-all hover:scale-105 hover:border-primary hover:bg-primary hover:text-primary-foreground hover:shadow-lg"
+                onClick={() => navigate('/settings/regions')}
+              >
+                <Settings2 className="h-4 w-4 ltr:mr-1.5 rtl:ml-1.5 transition-transform group-hover/btn:rotate-12" />
+                {t('dashboard.manageRegions')}
+              </Button>
             </div>
+          </CardHeader>
+          <CardContent className="relative z-10 px-6 pt-4">
+            {distributionTiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-center p-10 rounded-2xl border-2 border-dashed bg-muted/20">
+                <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-4 opacity-40">
+                  <MapPin className="h-7 w-7" />
+                </div>
+                <p className="text-sm font-bold text-muted-foreground max-w-xs leading-relaxed">
+                  {t('dashboard.regionalDistEmpty')}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                {distributionTiles.map((loc) => {
+                  const progressClass = proxyStateProgressClass(loc.color || loc.key);
+                  const count = allAccounts.filter((a) => (a.proxy_state || 'Unknown') === loc.key).length;
+                  const percentage = allAccounts.length > 0 ? Math.round((count / allAccounts.length) * 100) : 0;
+                  return (
+                    <div
+                      key={loc.key}
+                      className={cn(
+                        'group/tile relative overflow-hidden rounded-2xl border p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl',
+                        progressClass.card,
+                      )}
+                    >
+                      <div className={cn('absolute top-0 left-0 right-0 h-1', progressClass.color)} />
+                      <div className="flex items-center justify-between mb-3">
+                        <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', progressClass.light)}>
+                          {loc.emoji ? (
+                            <span className="text-base leading-none">{loc.emoji}</span>
+                          ) : (
+                            <MapPin className={cn('h-4 w-4', progressClass.iconColor)} />
+                          )}
+                        </div>
+                        <span className="text-2xl font-black leading-none">{count}</span>
+                      </div>
+                      <div className="mb-2 truncate text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        {loc.name}
+                      </div>
+                      <Progress value={percentage} className="h-1.5 rounded-full bg-border/40" indicatorClassName={progressClass.color} />
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                          {t('dashboard.percentageOfTotal')}
+                        </span>
+                        <span className={cn('text-xs font-black', progressClass.iconColor)}>{percentage}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
-      </div>
 
       {/* --- HALL OF FAME --- */}
-      <section className="space-y-6 pt-6">
-        <div className="flex items-center justify-between border-b-2 pb-2">
-          <div className="space-y-1">
-            <h3 className="text-2xl font-black flex items-center gap-3 italic">
-              <ShieldCheck className="h-7 w-7 text-green-500" />
-              {t('dashboard.hallOfFame')}
-            </h3>
-            <CardDescription className="font-medium text-sm">
-              {t('dashboard.hallOfFameDesc')}
-            </CardDescription>
+      <Card className="group/fame relative overflow-hidden rounded-3xl bg-card/50 backdrop-blur-md border border-border/10 shadow-sm">
+        <ShieldCheck className="absolute -bottom-8 -right-8 h-44 w-44 text-green-500/5 pointer-events-none transition-transform duration-700 group-hover/fame:scale-125 rotate-12" />
+        <CardHeader className="relative z-10 px-6 pt-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/20 shrink-0">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <CardTitle className="text-2xl font-black italic leading-none">
+                  {t('dashboard.hallOfFame')}
+                </CardTitle>
+                <CardDescription className="font-medium">{t('dashboard.hallOfFameDesc')}</CardDescription>
+              </div>
+            </div>
+            <Badge variant="secondary" className="px-4 py-1.5 text-sm font-black bg-green-500 text-white rounded-full shadow-md shadow-green-500/30">
+              {completedAccounts.length} {t('dashboard.legends')}
+            </Badge>
           </div>
-          <Badge variant="secondary" className="px-4 py-1 text-sm font-black border-2 bg-green-500 text-white rounded-full">
-            {completedAccounts.length} {t('dashboard.legends')}
-          </Badge>
-        </div>
-
-        <div className="pt-6">
+        </CardHeader>
+        <CardContent className="relative z-10 px-6 pt-4">
+        <div>
           {loading ? (
              <div className="flex items-center justify-center p-20 text-muted-foreground italic">
                <div className="animate-pulse flex items-center gap-3">
@@ -424,7 +485,7 @@ export default function Dashboard() {
                </div>
              </div>
           ) : completedAccounts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center p-16 rounded-3xl border-2 border-dashed bg-muted/20">
+              <div className="flex flex-col items-center justify-center text-center p-12 rounded-2xl border-2 border-dashed bg-muted/20">
                 <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center mb-6 opacity-40">
                   <ShieldCheck className="h-10 w-10" />
                 </div>
@@ -438,7 +499,7 @@ export default function Dashboard() {
               {completedAccounts.map((account) => (
                 <div 
                   key={account.id} 
-                  className="group relative flex flex-col rounded-3xl border-2 bg-card p-6 shadow-sm hover:shadow-xl hover:border-green-500/50 hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+                  className="group relative flex flex-col rounded-2xl border border-border/60 bg-card/60 backdrop-blur-sm p-6 shadow-sm hover:shadow-xl hover:border-green-500/50 hover:-translate-y-1 transition-all duration-300 overflow-hidden"
                 >
                   <div className="absolute top-0 right-0 p-4 flex gap-2 translate-x-4 -translate-y-4 group-hover:translate-x-0 group-hover:translate-y-0 transition-all opacity-0 group-hover:opacity-100 z-20">
                     <Button
@@ -492,7 +553,8 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-      </section>
+        </CardContent>
+      </Card>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>

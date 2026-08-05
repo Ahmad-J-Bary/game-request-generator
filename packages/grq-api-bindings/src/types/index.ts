@@ -11,3 +11,4 @@ export * from './dailyRequest.types';
 export * from './daily-tasks.types';
 export * from './maintenance-log.types';
 export * from './telegram.types';
+export * from './region.types';

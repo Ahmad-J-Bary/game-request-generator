@@ -117,6 +117,10 @@ function AppContent() {
                         path="/settings/telegram"
                         element={<SettingsPage section="telegram" />}
                       />
+                      <Route
+                        path="/settings/regions"
+                        element={<SettingsPage section="regions" />}
+                      />
                     </Routes>
                   </MainLayout>
                 </BrowserRouter>

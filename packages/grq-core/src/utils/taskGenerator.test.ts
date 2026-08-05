@@ -44,6 +44,7 @@ function installMocks(opts: {
       request_template: 'POST /session\r\n\r\n{time_spent}',
     },
   ];
+  (TauriService as any).getRegions = async () => [];
   (TauriService as any).getGameLevels = async () => opts.levels;
   (TauriService as any).getGamePurchaseEvents = async () => [];
   (TauriService as any).getDailyRequests = async () => ({
@@ -81,6 +82,7 @@ function accountTask(tasks: any[]): any {
 describe('TaskGenerator — Session Only requests in Daily Tasks', () => {
   beforeEach(() => {
     (TauriService as any).getAllAccounts = undefined;
+    (TauriService as any).getRegions = undefined;
     (TauriService as any).getGameLevels = undefined;
     (TauriService as any).getGamePurchaseEvents = undefined;
     (TauriService as any).getDailyRequests = undefined;

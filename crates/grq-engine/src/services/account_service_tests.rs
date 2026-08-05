@@ -200,7 +200,6 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "template".into(),
-                    country: "US".into(),
                 },
             )
             .unwrap();
@@ -297,7 +296,6 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
-                    country: "US".into(),
                 },
             )
             .unwrap();
@@ -355,7 +353,6 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
-                    country: "US".into(),
                 },
             )
             .unwrap();
@@ -393,7 +390,6 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
-                    country: "US".into(),
                 },
             )
             .unwrap();
@@ -424,7 +420,6 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
-                    country: "US".into(),
                 },
             )
             .unwrap();
@@ -449,7 +444,6 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
-                    country: "US".into(),
                 },
             )
             .unwrap();
@@ -497,7 +491,6 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
-                    country: "US".into(),
                 },
             )
             .unwrap();

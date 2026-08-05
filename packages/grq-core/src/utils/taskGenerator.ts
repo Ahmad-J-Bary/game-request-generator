@@ -5,6 +5,7 @@ import {
 } from "./daily-tasks.utils.ts";
 import { calculateTimerState } from "./timer.utils.ts";
 import { buildRequestGroups } from "./request-groups.utils.ts";
+import { buildRegionProcessingOrder } from "./region-order.utils.ts";
 import type {
   Account,
   DailyRequestsResponse,
@@ -52,10 +53,12 @@ export class TaskGenerator {
     accountScheduledTime: { [accountId: number]: number[] };
   }> {
     const today = new Date().toISOString().split("T")[0];
-    const statesOrder = ["FLORIDA", "CALIFORNIA", "TEXAS", "New York", "UK"];
 
     // 1. Get all accounts and group them by state
-    const allAccounts: Account[] = await TauriService.getAllAccounts();
+    const [allAccounts, regions] = await Promise.all([
+      TauriService.getAllAccounts(),
+      TauriService.getRegions(),
+    ]);
     const stateGroups: { [state: string]: Account[] } = {};
 
     for (const acc of allAccounts) {
@@ -67,10 +70,7 @@ export class TaskGenerator {
     }
 
     const allStateKeys = Object.keys(stateGroups);
-    const processingOrder = [
-      ...statesOrder.filter((s) => allStateKeys.includes(s)),
-      ...allStateKeys.filter((s) => !statesOrder.includes(s)),
-    ];
+    const processingOrder = buildRegionProcessingOrder(regions, allStateKeys);
 
     const allBatches: GameBatch[] = [];
     const globalDeferredTasks: DailyTask[] = [];

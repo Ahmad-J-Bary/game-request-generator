@@ -27,6 +27,9 @@ use grq_engine::models::progress::{
 use grq_engine::models::purchase_event::{
     CreatePurchaseEventRequest, PurchaseEvent, UpdatePurchaseEventRequest,
 };
+use grq_engine::models::region::{
+    CreateRegionRequest, Region, UpdateRegionRequest,
+};
 
 use grq_engine::services::account_service::{AccountService, CompletedAccount};
 use grq_engine::services::game_service::GameService;
@@ -35,6 +38,7 @@ use grq_engine::services::level_service::LevelService;
 use grq_engine::services::maintenance_log_service::MaintenanceLogService;
 use grq_engine::services::progress_service::ProgressService;
 use grq_engine::services::purchase_event_service::PurchaseEventService;
+use grq_engine::services::region_service::RegionService;
 
 use grq_engine::db::config::ConfigService;
 use grq_engine::db::key_value::KeyValueService;
@@ -885,6 +889,57 @@ fn preview_transfer_account_branch(
     let conn = db_guard.get_connection();
     let service = AccountService::new();
     service.preview_transfer_account_branch(conn, account_id, target_branch_id)
+}
+
+// ==================== أوامر المناطق ====================
+#[tauri::command]
+fn get_regions(state: tauri::State<AppState>) -> Result<Vec<Region>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = RegionService::new();
+    service.list(conn)
+}
+
+#[tauri::command]
+fn add_region(
+    state: tauri::State<AppState>,
+    request: CreateRegionRequest,
+) -> Result<i64, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = RegionService::new();
+    service.create(conn, request)
+}
+
+#[tauri::command]
+fn update_region(
+    state: tauri::State<AppState>,
+    request: UpdateRegionRequest,
+) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = RegionService::new();
+    service.update(conn, request)
+}
+
+#[tauri::command]
+fn delete_region(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = RegionService::new();
+    service.delete(conn, id)
+}
+
+#[tauri::command]
+fn reorder_regions(
+    state: tauri::State<AppState>,
+    parent_id: Option<i64>,
+    ordered_ids: Vec<i64>,
+) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = RegionService::new();
+    service.reorder(conn, parent_id, ordered_ids)
 }
 
 // ==================== أوامر أحداث الشراء ====================
@@ -1815,6 +1870,11 @@ pub fn run() {
             get_store_value,
             set_store_value,
             delete_store_value,
+            get_regions,
+            add_region,
+            update_region,
+            delete_region,
+            reorder_regions,
             get_config_version,
             run_legacy_config_cleanup_once,
             add_completed_task,

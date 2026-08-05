@@ -53,7 +53,6 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
   const [importing, setImporting] = useState(false);
   const [dismissedUpdates, setDismissedUpdates] = useState<number[]>([]);
   const [selectedTime, setSelectedTime] = useState<string>('');
-  const [selectedCountry, setSelectedCountry] = useState<string>('UNITED STATES (US)');
   const [telegramStatus, setTelegramStatus] = useState<'loading' | 'ready' | 'disabled' | 'incomplete' | 'error'>('loading');
 
   const isTelegramReady = (config: TelegramConfig) => {
@@ -263,7 +262,6 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         start_date: selectedImport.date.split(' ')[0],
         start_time: selectedTime ? `${selectedTime}:00` : (selectedImport.date.split(' ')[1] || '00:00:00'),
         request_template: content,
-        country: selectedCountry,
       });
 
       applySessionCompletionForGame(parseInt(selectedGameId)).catch(() => {});
@@ -551,13 +549,12 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                     <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
                       🌍 {t('accounts.country', 'Country')}
                     </label>
-                    <Select value={selectedCountry} onValueChange={setSelectedCountry}>
+                    <Select value="UNITED STATES (US)">
                       <SelectTrigger className="rounded-xl bg-background border-border/40">
-                        <SelectValue />
+                        <SelectValue>🇺🇸 UNITED STATES (US)</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="UNITED STATES (US)">🇺🇸 UNITED STATES (US)</SelectItem>
-                        <SelectItem value="UNITED STATES (UK)">🇬🇧 UNITED STATES (UK)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

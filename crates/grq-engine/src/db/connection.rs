@@ -249,6 +249,18 @@ impl Database {
                 reason TEXT,
                 detail TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS regions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                parent_id INTEGER,
+                is_primary INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                emoji TEXT,
+                color TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (parent_id) REFERENCES regions(id) ON DELETE CASCADE
+            );
             ",
         )?;
 
@@ -466,6 +478,86 @@ impl Database {
             }
         }
 
+        // 5b. Data Migration: Seed default regions on first run (only when the
+        // regions table is empty). UNITED STATES (US) is the default primary
+        // with FLORIDA/CALIFORNIA/TEXAS/New York sub-regions. Primary regions
+        // carry no color; each sub-region uses a distinct color (one color per
+        // region) mirroring the account styling so visuals are preserved.
+        let region_count: i64 = tx
+            .query_row("SELECT COUNT(*) FROM regions", [], |row| row.get(0))
+            .unwrap_or(0);
+
+        if region_count == 0 {
+            // Primary regions carry no color; each sub-region gets a distinct
+            // color that mirrors the account styling so pre-existing visuals
+            // are preserved.
+            tx.execute(
+                "INSERT INTO regions (name, parent_id, is_primary, sort_order, emoji, color)
+                 VALUES (?1, NULL, 1, 0, ?2, NULL)",
+                params!["UNITED STATES (US)", "🇺🇸"],
+            )?;
+            let us_id = tx.last_insert_rowid();
+
+            let us_children: [(&str, &str); 4] = [
+                ("FLORIDA", "orange"),
+                ("CALIFORNIA", "blue"),
+                ("TEXAS", "red"),
+                ("New York", "purple"),
+            ];
+            for (i, (name, color)) in us_children.iter().enumerate() {
+                tx.execute(
+                    "INSERT INTO regions (name, parent_id, is_primary, sort_order, emoji, color)
+                     VALUES (?1, ?2, 0, ?3, NULL, ?4)",
+                    params![name, us_id, (i + 1) as i64, color],
+                )?;
+            }
+        }
+
+        // 5c. Data Migration: remove the legacy UNITED STATES/UNITED KINGDOM (UK)
+        // primary and its 'UK' sub-region (ON DELETE CASCADE removes the child).
+        tx.execute(
+            "DELETE FROM regions WHERE name IN ('UNITED STATES (UK)', 'UNITED KINGDOM (UK)')",
+            [],
+        )?;
+
+        // 5d. Data Migration: primary regions carry no color. Ensure each
+        // sub-region has a unique color: keep the first occurrence and
+        // reassign duplicates to the first free palette color.
+        tx.execute("UPDATE regions SET color = NULL WHERE parent_id IS NULL", [])?;
+        {
+            use crate::models::region::REGION_PALETTE;
+            let mut stmt = tx.prepare(
+                "SELECT id, color FROM regions WHERE parent_id IS NOT NULL
+                 AND color IS NOT NULL AND TRIM(color) != ''",
+            )?;
+            let rows = stmt
+                .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+                .collect::<SqlResult<Vec<_>>>()?;
+
+            let mut used: Vec<String> = Vec::new();
+            let mut updates = Vec::new();
+            for (id, color) in rows {
+                if used.iter().any(|u| u == &color) {
+                    let free = REGION_PALETTE
+                        .iter()
+                        .find(|p| !used.iter().any(|u| u.as_str() == **p))
+                        .map(|s| s.to_string());
+                    if let Some(f) = &free {
+                        used.push(f.clone());
+                        updates.push((id, f.clone()));
+                    }
+                } else {
+                    used.push(color);
+                }
+            }
+            for (rid, c) in updates {
+                tx.execute(
+                    "UPDATE regions SET color = ?1 WHERE id = ?2",
+                    params![c, rid],
+                )?;
+            }
+        }
+
         // 6. Data Migration: Account Packages
         let accounts: Vec<(i64, i64)> = {
             let mut stmt =
@@ -478,14 +570,29 @@ impl Database {
 
         if !accounts.is_empty() {
             use crate::models::account::PROXY_STATES;
+            let mut sub_regions: Vec<String> = {
+                let mut stmt = tx.prepare(
+                    "SELECT name FROM regions WHERE parent_id IS NOT NULL ORDER BY sort_order, id",
+                )?;
+                let rows = stmt.query_map([], |row| row.get(0))?;
+                let mut names = Vec::new();
+                for row in rows {
+                    names.push(row?);
+                }
+                names
+            };
+            if sub_regions.is_empty() {
+                sub_regions = PROXY_STATES.iter().map(|s| s.to_string()).collect();
+            }
             let mut game_counters: HashMap<i64, i32> = HashMap::new();
 
             for (id, game_id) in accounts {
                 let counter = game_counters.entry(game_id).or_insert(0);
                 *counter += 1;
                 let package_id = *counter;
-                let state_idx = (package_id - 1) as usize % PROXY_STATES.len();
-                let proxy_state = PROXY_STATES[state_idx];
+                let state_idx =
+                    (package_id - 1) as usize % sub_regions.len();
+                let proxy_state = sub_regions[state_idx].clone();
 
                 tx.execute(
                     "UPDATE accounts SET package_id = ?1, proxy_state = ?2 WHERE id = ?3",

@@ -36,6 +36,9 @@ import type {
   MaintenanceLog,
   LogMaintenanceEventRequest,
     GetAllDailyStatsResponse,
+  Region,
+  CreateRegionRequest,
+  UpdateRegionRequest,
 } from "@grq/api-bindings";
 
 export class TauriService {
@@ -124,6 +127,33 @@ export class TauriService {
       "preview_transfer_account_branch",
       { accountId, targetBranchId },
     );
+  }
+
+  // ========== Region Commands ==========
+  static async getRegions(): Promise<Region[]> {
+    return await invoke<Region[]>("get_regions");
+  }
+
+  static async addRegion(request: CreateRegionRequest): Promise<number> {
+    return await invoke<number>("add_region", { request });
+  }
+
+  static async updateRegion(request: UpdateRegionRequest): Promise<boolean> {
+    return await invoke<boolean>("update_region", { request });
+  }
+
+  static async deleteRegion(id: number): Promise<boolean> {
+    return await invoke<boolean>("delete_region", { id });
+  }
+
+  static async reorderRegions(
+    parentId: number | null,
+    orderedIds: number[],
+  ): Promise<boolean> {
+    return await invoke<boolean>("reorder_regions", {
+      parentId,
+      orderedIds,
+    });
   }
 
   // ========== Level Commands ==========

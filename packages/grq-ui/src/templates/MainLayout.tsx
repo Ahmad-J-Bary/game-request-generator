@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Palette,
   History,
+  MapPin,
 } from 'lucide-react';
 import { cn } from '@grq/ui/lib/utils';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
@@ -43,6 +44,7 @@ const settingsNavigation = [
   { name: 'appearance', href: '/settings/appearance', icon: Palette,      labelKey: 'settings.appearance.title' },
   { name: 'storage',    href: '/settings/storage',    icon: Database,     labelKey: 'settings.storage.title'    },
   { name: 'telegram',   href: '/settings/telegram',   icon: MessageSquare,labelKey: 'settings.telegram.title'   },
+  { name: 'regions',    href: '/settings/regions',    icon: MapPin,       labelKey: 'settings.regions.tab'      },
 ];
 
 export function MainLayout({ children }: MainLayoutProps) {

@@ -23,7 +23,6 @@ export interface CreateAccountRequest {
   start_date: string;
   start_time: string;
   request_template: string;
-  country: string;
 }
 
 export interface UpdateAccountRequest {

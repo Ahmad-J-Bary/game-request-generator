@@ -47,6 +47,8 @@
     "off": "إيقاف",
     "live": "مباشر",
     "open": "مفتوح",
+    "up": "أعلى",
+    "down": "أسفل",
     "months": {
       "january": "يناير", "february": "فبراير", "march": "مارس", "april": "أبريل",
       "may": "مايو", "june": "يونيو", "july": "يوليو", "august": "أغسطس",
@@ -343,6 +345,8 @@
     "successRate": "نسبة النجاح",
     "regionalDist": "التوزيع الإقليمي",
     "regionalDistDesc": "توزيع الحسابات حسب المناطق في أمريكا",
+    "regionalDistEmpty": "لا توجد مناطق بعد — أضفها من الإعدادات لترى توزيع الحسابات هنا.",
+    "manageRegions": "إدارة المناطق",
     "recommended": "موصى به",
     "proceedDaily": "الانتقال للمهام اليومية",
     "manageInventory": "إدارة المخزن",
@@ -619,6 +623,26 @@
       "testFailed": "فشل التحقق: {{error}}",
       "botTokenPlaceholder": "مثال: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
       "chatIdPlaceholder": "مثال: -100123456789"
+    },
+    "regions": {
+      "tab": "المناطق",
+      "title": "المناطق والتوزيع",
+      "subtitle": "إدارة المناطق الأساسية والفرعية التي تتحكم بترتيب المهام اليومية ومخطط التوزيع الإقليمي",
+      "loadFailed": "فشل تحميل المناطق",
+      "nameRequired": "اسم المنطقة مطلوب",
+      "addPrimary": "إضافة منطقة أساسية",
+      "primaryName": "اسم المنطقة",
+      "primaryNamePlaceholder": "مثال: UNITED STATES (US)",
+      "addSub": "منطقة فرعية",
+      "subName": "اسم المنطقة الفرعية",
+      "subNamePlaceholder": "مثال: FLORIDA",
+      "noPrimaries": "لا توجد مناطق أساسية بعد",
+      "noSubs": "لا توجد مناطق فرعية",
+      "primary": "أساسية",
+      "editTitle": "تعديل المنطقة",
+      "deleteConfirm": "حذف {{name}}؟ لا يمكن التراجع عن هذا الإجراء.",
+      "hint": "الترتيب هنا يتحكم بترتيب العرض في صفحة المهام اليومية. يتم التنقل بين المناطق الفرعية عند إنشاء حسابات جديدة.",
+      "colorUsed": "مُستخدم بالفعل من منطقة أخرى"
     }
   },
   "theme": {
