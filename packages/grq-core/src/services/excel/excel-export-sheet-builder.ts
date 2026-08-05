@@ -68,6 +68,7 @@ export function generateGameMatrixData(
 
     const historyLevelMap = new Map<string, number>();
     const historyPEMap = new Map<string, number>();
+    const latestHistoryTimeByAccount = new Map<number, number>();
     const histGameId = accounts[0]?.game_id;
     if (taskHistory && histGameId != null) {
       for (const h of taskHistory) {
@@ -76,6 +77,11 @@ export function generateGameMatrixData(
           historyLevelMap.set(`${h.accountId}_${h.levelId}`, h.timeSpent);
         } else if (h.isPurchase) {
           historyPEMap.set(`${h.accountId}_${h.eventToken}`, h.timeSpent);
+        }
+        // History is UPSERTed per account (id: last_${accountId}) and ordered
+        // DESC, so the first occurrence per account is the latest completion.
+        if (!latestHistoryTimeByAccount.has(h.accountId)) {
+          latestHistoryTimeByAccount.set(h.accountId, h.timeSpent);
         }
       }
     }
@@ -86,7 +92,7 @@ export function generateGameMatrixData(
 
       const start = parseDate(acc.start_date);
       let lastCompletedDate = '-';
-      let lastCompletedTimeSpent = '-';
+      let lastCompletedTimeSpent: string | number = '-';
       let maxOffset = -1;
 
       for (const [key, prog] of Object.entries(levelsProgress || {})) {
@@ -117,6 +123,14 @@ export function generateGameMatrixData(
           const progTime = (prog as any).time_spent;
           lastCompletedTimeSpent = hTime ?? ((progTime != null && progTime !== 0) ? progTime : '-');
         }
+      }
+
+      // Time column = the account's LAST used time_spent, exactly as the
+      // "Dur. (ms)" value in the History Report (the per-account history row).
+      // Falls back to the last-completed-event derivation when no history exists.
+      const historyTime = latestHistoryTimeByAccount.get(acc.id);
+      if (historyTime != null) {
+        lastCompletedTimeSpent = historyTime;
       }
 
       matrixRow.forEach((date, colIdx) => {

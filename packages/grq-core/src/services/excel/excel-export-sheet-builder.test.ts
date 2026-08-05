@@ -112,3 +112,99 @@ describe('generateGameMatrixData — ALL mode renders (C) on completed Session O
     );
   });
 });
+
+describe('generateGameMatrixData — Time column mirrors History Report Dur. (ms)', () => {
+  const levels = [
+    level({ id: 1, event_token: 'abc_day0', level_name: 'Level 1', days_offset: 0, time_spent: 100 }),
+    level({ id: 2, event_token: 'abc_day5', level_name: 'Level 5', days_offset: 5, time_spent: 200 }),
+  ];
+
+  const accounts = [
+    { id: 10, name: 'Acc1', start_date: '2024-01-01', start_time: '00:00:00', game_id: 1, branch_id: 1 },
+  ] as any[];
+
+  const timeCellValue = (wsData: any[][]): any => {
+    const accountRow = wsData[5];
+    const cell = accountRow[accountRow.length - 1];
+    return typeof cell === 'object' && cell !== null && 'v' in cell ? cell.v : cell;
+  };
+
+  it('exports the account last used time_spent from history as the Time column', () => {
+    const columns = buildModeColumns(levels as any, [], 'all');
+    const levelsProgress: Record<string, any> = {
+      '10_1': { account_id: 10, level_id: 1, is_completed: true },
+    };
+    const taskHistory = [
+      { id: 'last_10', accountId: 10, gameId: 1, eventToken: 'abc_day5', timeSpent: 123456, levelId: 2, isPurchase: false },
+    ] as any;
+
+    const { wsData } = generateGameMatrixData(
+      levels as any,
+      [] as any,
+      accounts,
+      columns,
+      'vertical',
+      colors,
+      'light',
+      getCellStyle as any,
+      levelsProgress,
+      {},
+      undefined,
+      taskHistory,
+    );
+
+    assert.strictEqual(timeCellValue(wsData), 123456, 'Time must mirror the history Dur. (ms) value');
+  });
+
+  it('uses history timeSpent even when it references a level other than the last completed event', () => {
+    const columns = buildModeColumns(levels as any, [], 'all');
+    // Last completed event by days_offset is level 2 (day5, time_spent 200),
+    // but the account last used level 1's duration -> Time must be 777.
+    const levelsProgress: Record<string, any> = {
+      '10_1': { account_id: 10, level_id: 1, is_completed: true },
+      '10_2': { account_id: 10, level_id: 2, is_completed: true },
+    };
+    const taskHistory = [
+      { id: 'last_10', accountId: 10, gameId: 1, eventToken: 'abc_day0', timeSpent: 777, levelId: 1, isPurchase: false },
+    ] as any;
+
+    const { wsData } = generateGameMatrixData(
+      levels as any,
+      [] as any,
+      accounts,
+      columns,
+      'vertical',
+      colors,
+      'light',
+      getCellStyle as any,
+      levelsProgress,
+      {},
+      undefined,
+      taskHistory,
+    );
+
+    assert.strictEqual(timeCellValue(wsData), 777, 'Time must be the account last used time_spent, not the event static value');
+  });
+
+  it('falls back to the level time_spent when no history exists', () => {
+    const columns = buildModeColumns(levels as any, [], 'all');
+    const levelsProgress: Record<string, any> = {
+      '10_1': { account_id: 10, level_id: 1, is_completed: true },
+    };
+
+    const { wsData } = generateGameMatrixData(
+      levels as any,
+      [] as any,
+      accounts,
+      columns,
+      'vertical',
+      colors,
+      'light',
+      getCellStyle as any,
+      levelsProgress,
+      {},
+    );
+
+    assert.strictEqual(timeCellValue(wsData), 100, 'without history, Time falls back to the last completed event time_spent');
+  });
+});
