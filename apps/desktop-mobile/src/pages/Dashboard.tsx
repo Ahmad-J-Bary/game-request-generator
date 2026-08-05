@@ -25,7 +25,7 @@ import { TauriService } from '@grq/core/services/tauri.service';
 import { asyncStorageService } from '@grq/core/services/storage.service';
 import { calculateTimerState } from '@grq/core/utils/timer.utils';
 import { parseAccountStartDate } from '@grq/core/utils/daily-tasks.utils';
-import type { CompletedAccount, Account, DailyAccountStat, DailyTask, AccountCompletionRecord, AccountStartState } from '@grq/api-bindings';
+import type { CompletedAccount, Account, DailyAccountStat, DailyRecentCompletion, DailyTask, AccountCompletionRecord, AccountStartState } from '@grq/api-bindings';
 import { invoke } from '@tauri-apps/api/core';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { Badge } from '@grq/ui/atoms/badge';
@@ -145,21 +145,26 @@ export default function Dashboard() {
     const accounts = allAccountsRef.current;
 
     let dailyStats: DailyAccountStat[] = [];
+    let recentCompletions: DailyRecentCompletion[] = [];
     try {
-      dailyStats = await TauriService.getAllDailyStats(today);
+      const result = await TauriService.getAllDailyStats(today);
+      dailyStats = result.stats || [];
+      recentCompletions = result.recentCompletions || [];
     } catch (err) {
       console.error('Error loading daily stats:', err);
     }
 
-    // Total (Σ per-account N) and completed (card-consistent units).
+    // Total (Σ per-account N) and completed (card-consistent units). Completed
+    // comes straight from the DB (lenient, includes manual completions from
+    // Accounts Detail) instead of total - pending.
     let total = 0;
-    let pending = 0;
+    let completed = 0;
     dailyStats.forEach((s) => {
       total += s.totalTasks ?? 0;
-      pending += s.pendingCards ?? 0;
+      completed += s.completedCards ?? 0;
     });
     setTotalTasksToday(total);
-    setCompletedTodayCount(Math.max(0, total - pending));
+    setCompletedTodayCount(Math.max(0, completed));
 
     // Ready count: only the first pending card per account can be ready.
     try {
@@ -168,8 +173,20 @@ export default function Dashboard() {
       const accountsById: { [id: number]: Account } = {};
       accounts.forEach((a) => { accountsById[a.id] = a; });
 
-      const history = await TauriService.getTaskHistory();
-      const todayHistory = (history || []).filter((c) => c.completionDate === today);
+      // Fall back to the account's last DB completion when this device has no
+      // local record (e.g. the account was completed via Accounts Detail or on
+      // another run), so the first-pending-card anchor is accurate.
+      dailyStats.forEach((s) => {
+        if (completionRecords[s.accountId]) return;
+        if (s.lastCompletionTimeMs == null || s.lastCompletionTimeSpent == null) return;
+        completionRecords[s.accountId] = {
+          accountId: s.accountId,
+          completionTime: s.lastCompletionTimeMs,
+          timeSpent: s.lastCompletionTimeSpent,
+          levelId: s.firstPendingLevelId ?? 0,
+          eventToken: s.firstPendingEventToken ?? '',
+        };
+      });
 
       let ready = 0;
       dailyStats.forEach((s) => {
@@ -211,7 +228,7 @@ export default function Dashboard() {
           currentTime,
           completionRecords,
           startStates,
-          todayHistory,
+          recentCompletions,
         );
         if (st.isReady) ready += 1;
       });

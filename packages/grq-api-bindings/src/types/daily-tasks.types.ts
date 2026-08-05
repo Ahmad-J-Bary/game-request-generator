@@ -96,9 +96,32 @@ export interface DailyAccountStat {
     gameId: number;
     totalTasks: number;          // N = full-day card count incl. completed
     pendingCards: number;        // non-completed card count for today
+    completedCards: number;      // cards completed as of today (lenient, includes manual)
     firstPendingCardTimeSpent: number | null; // midpoint seconds (deterministic)
     firstPendingEventToken: string | null;
     firstPendingLevelId: number | null;
+    lastCompletionTimeMs: number | null;   // most recent completed_at (epoch ms), any day
+    lastCompletionTimeSpent: number | null; // that completion's time_spent (seconds)
+}
+
+/**
+ * A completion recorded within the last hour, used for the global 1-hour
+ * cooldown check in the Dashboard ready count.
+ */
+export interface DailyRecentCompletion {
+    accountId: number;
+    gameId: number;
+    levelId: number | null;
+    eventToken: string;
+    completionTime: number; // epoch ms
+}
+
+/**
+ * Bundled response of the `get_all_daily_stats` command.
+ */
+export interface GetAllDailyStatsResponse {
+    stats: DailyAccountStat[];
+    recentCompletions: DailyRecentCompletion[];
 }
 
 export interface TaskItemProps {

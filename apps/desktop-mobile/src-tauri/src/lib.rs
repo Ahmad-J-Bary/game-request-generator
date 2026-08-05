@@ -1288,7 +1288,7 @@ fn get_daily_requests(
 fn get_all_daily_stats(
     state: tauri::State<AppState>,
     target_date: String,
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<serde_json::Value, String> {
     let db_guard = state.db.lock().unwrap();
     let conn = db_guard.get_connection();
 
@@ -1310,6 +1310,11 @@ fn get_all_daily_stats(
         std::collections::HashMap::new();
 
     let mut stats: Vec<serde_json::Value> = Vec::new();
+    // Recent completions (last hour) across ALL accounts, used by the Dashboard
+    // for the accurate global 1-hour cooldown check (manual completions included).
+    let mut recent_completions: Vec<serde_json::Value> = Vec::new();
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let one_hour_ms = 3600 * 1000;
 
     for account in accounts {
         let start = if account.start_date.contains('-') && account.start_date.len() <= 6 {
@@ -1367,6 +1372,83 @@ fn get_all_daily_stats(
                 .map(|p| (p.purchase_event_id, p))
                 .collect();
 
+        // Last-completion anchor: the most recent is_completed row (any level or
+        // purchase) with a completed_at stamp. Used by the Dashboard as the
+        // "previous completion" base for the first pending card's ready time when
+        // no local completion record exists.
+        let mut last_completion_time_ms: Option<i64> = None;
+        let mut last_completion_time_spent: Option<i64> = None;
+        for (stamp, time_spent) in level_progress_list
+            .iter()
+            .filter(|p| p.is_completed)
+            .filter_map(|p| p.completed_at.as_ref().map(|s| (s, p.time_spent)))
+            .chain(
+                purchase_progress_list
+                    .iter()
+                    .filter(|p| p.is_completed)
+                    .filter_map(|p| p.completed_at.as_ref().map(|s| (s, p.time_spent))),
+            )
+        {
+            let Some(ms) = chrono::DateTime::parse_from_rfc3339(stamp)
+                .ok()
+                .map(|dt| dt.timestamp_millis())
+            else {
+                continue;
+            };
+            if last_completion_time_ms.is_none() || ms > last_completion_time_ms.unwrap() {
+                last_completion_time_ms = Some(ms);
+                last_completion_time_spent = Some(time_spent as i64);
+            }
+        }
+
+        // Collect completions from the last hour for the global cooldown check.
+        for p in level_progress_list.iter().filter(|p| p.is_completed) {
+            if let Some(stamp) = &p.completed_at {
+                if let Some(ms) = chrono::DateTime::parse_from_rfc3339(stamp)
+                    .ok()
+                    .map(|dt| dt.timestamp_millis())
+                {
+                    if ms >= now_ms - one_hour_ms {
+                        let event_token = levels
+                            .iter()
+                            .find(|l| l.id == p.level_id)
+                            .map(|l| l.event_token.clone())
+                            .unwrap_or_default();
+                        recent_completions.push(serde_json::json!({
+                            "accountId": account.id,
+                            "gameId": account.game_id,
+                            "levelId": p.level_id,
+                            "eventToken": event_token,
+                            "completionTime": ms,
+                        }));
+                    }
+                }
+            }
+        }
+        for p in purchase_progress_list.iter().filter(|p| p.is_completed) {
+            if let Some(stamp) = &p.completed_at {
+                if let Some(ms) = chrono::DateTime::parse_from_rfc3339(stamp)
+                    .ok()
+                    .map(|dt| dt.timestamp_millis())
+                {
+                    if ms >= now_ms - one_hour_ms {
+                        let event_token = purchases
+                            .iter()
+                            .find(|e| e.id == p.purchase_event_id)
+                            .map(|e| e.event_token.clone())
+                            .unwrap_or_default();
+                        recent_completions.push(serde_json::json!({
+                            "accountId": account.id,
+                            "gameId": account.game_id,
+                            "levelId": serde_json::Value::Null,
+                            "eventToken": event_token,
+                            "completionTime": ms,
+                        }));
+                    }
+                }
+            }
+        }
+
         let day_plan = grq_engine::request::plan::plan_day(&grq_engine::request::plan::PlanInput {
             account: &account,
             levels: &levels,
@@ -1409,13 +1491,19 @@ fn get_all_daily_stats(
             "gameId": account.game_id,
             "totalTasks": day_plan.total_cards,
             "pendingCards": pending_cards,
+            "completedCards": day_plan.completed_cards,
             "firstPendingCardTimeSpent": first_time_spent,
             "firstPendingEventToken": first_event_token,
             "firstPendingLevelId": first_level_id,
+            "lastCompletionTimeMs": last_completion_time_ms,
+            "lastCompletionTimeSpent": last_completion_time_spent,
         }));
     }
 
-    Ok(stats)
+    Ok(serde_json::json!({
+        "stats": stats,
+        "recentCompletions": recent_completions,
+    }))
 }
 
 #[tauri::command]

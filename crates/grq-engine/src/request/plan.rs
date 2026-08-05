@@ -51,6 +51,11 @@ struct Card {
     /// Whether the whole card is already completed (skipped from the returned
     /// list, but still counted when numbering the account's full day plan).
     completed: bool,
+    /// The level ids of every level row in this group (event + persisted '-'
+    /// session rows). Empty for purchase cards.
+    level_ids: Vec<i64>,
+    /// The purchase event id when this is a purchase card, else None.
+    purchase_event_id: Option<i64>,
     requests: Vec<DailyRequest>,
 }
 
@@ -60,6 +65,12 @@ struct Card {
 pub struct DayPlan {
     pub requests: Vec<DailyRequest>,
     pub total_cards: i64,
+    /// Cards fully completed as of today, using a lenient completion check
+    /// (is_completed, dated by `completed_at`) so manually-completed cards
+    /// without a `target_date` stamp are still counted. The returned
+    /// `requests` keep the strict target-date rule, so the pending list on the
+    /// Daily Tasks page is unchanged.
+    pub completed_cards: i64,
 }
 
 /// Plan the full request list for one account on one target date, including the
@@ -82,6 +93,10 @@ pub fn plan_day(input: &PlanInput) -> DayPlan {
     // "N" is the number of tasks (cards) in the full-day plan. Every request of
     // a card (e.g. the Session + Event pair) shares the card's "n" (day_index).
     let total_cards = ordered.len() as i64;
+    let completed_cards = ordered
+        .iter()
+        .filter(|c| card_completed_lenient(input, c))
+        .count() as i64;
 
     let mut day_index = 1i64;
     let mut requests = Vec::new();
@@ -98,6 +113,46 @@ pub fn plan_day(input: &PlanInput) -> DayPlan {
     DayPlan {
         requests,
         total_cards,
+        completed_cards,
+    }
+}
+
+/// Lenient card completion used only for counting completed cards: the card is
+/// done when every one of its rows is completed, dated by `completed_at` (the
+/// actual completion moment) instead of the strict `target_date == today` rule.
+/// A missing `completed_at` is treated as completed to avoid undercounting
+/// imported/manual progress that predates the timestamp column.
+fn card_completed_lenient(input: &PlanInput, card: &Card) -> bool {
+    if let Some(purchase_event_id) = card.purchase_event_id {
+        return input
+            .purchase_progress
+            .get(&purchase_event_id)
+            .is_some_and(|p| {
+                p.is_completed && completed_on_date(&p.completed_at, input.target_date)
+            });
+    }
+
+    if card.level_ids.is_empty() {
+        return false;
+    }
+
+    card.level_ids.iter().all(|level_id| {
+        input
+            .level_progress
+            .get(level_id)
+            .is_some_and(|p| p.is_completed && completed_on_date(&p.completed_at, input.target_date))
+    })
+}
+
+/// Whether a `completed_at` timestamp falls on the target date (YYYY-MM-DD,
+/// UTC, matching how the app resolves "today"). A None timestamp (legacy rows
+/// without the column populated) counts as completed.
+fn completed_on_date(completed_at: &Option<String>, target_date: &str) -> bool {
+    match completed_at {
+        Some(stamp) => chrono::DateTime::parse_from_rfc3339(stamp)
+            .map(|dt| dt.date_naive().to_string() == target_date)
+            .unwrap_or(false),
+        None => true,
     }
 }
 
@@ -297,6 +352,8 @@ fn plan_level_groups(
             has_event: has_real,
             has_purchase: false,
             completed,
+            level_ids: sorted.iter().map(|l| l.id).collect(),
+            purchase_event_id: None,
             requests,
         });
     }
@@ -368,6 +425,8 @@ fn plan_purchase_groups(input: &PlanInput, day: i32, rng: &mut rand::rngs::Threa
             has_event: true,
             has_purchase: true,
             completed,
+            level_ids: Vec::new(),
+            purchase_event_id: Some(event.id),
             requests,
         });
     }
@@ -765,6 +824,8 @@ mod tests {
             has_event,
             has_purchase,
             completed: false,
+            level_ids: Vec::new(),
+            purchase_event_id: None,
             requests: vec![DailyRequest {
                 request_type: ty.to_string(),
                 content: String::new(),
@@ -854,6 +915,112 @@ mod tests {
         assert_eq!(plan.requests.len(), 2, "only the pending pair is returned");
         let indices: Vec<i64> = plan.requests.iter().map(|r| r.day_index).collect();
         assert_eq!(indices, vec![2, 2], "pending requests keep the card's absolute position");
+    }
+
+    #[test]
+    fn plan_day_completed_cards_counts_manual_completion_without_target_date() {
+        // A card completed manually (is_completed, completed_at today, but NO
+        // target_date) is NOT dropped from the pending requests (strict rule),
+        // yet `completed_cards` still counts it so the dashboard is accurate.
+        let a = level(1, 4, "Level 1", 1000, "a_day4");
+        let b = level(2, 4, "Level B", 2000, "b_day4");
+        let mut progress: HashMap<i64, &AccountLevelProgress> = HashMap::new();
+        let completed_a = AccountLevelProgress {
+            account_id: 1,
+            level_id: 1,
+            is_completed: true,
+            time_spent: 1000000,
+            target_date: None, // manual completion leaves target_date NULL
+            completed_at: Some("2026-08-05T10:00:00.000Z".to_string()),
+        };
+        progress.insert(1, &completed_a);
+
+        let plan = plan_day(&PlanInput {
+            account: &account(),
+            levels: &[a, b],
+            level_progress: &progress,
+            purchase_events: &[],
+            purchase_progress: &HashMap::new(),
+            days_passed: 4,
+            target_date: "2026-08-05",
+        });
+
+        // Manually-completed card still appears as pending (strict target_date rule).
+        assert_eq!(plan.requests.len(), 2, "manual card stays in pending list");
+        assert_eq!(plan.total_cards, 2);
+        assert_eq!(plan.completed_cards, 1, "manual card counted as completed today");
+    }
+
+    #[test]
+    fn plan_day_completed_cards_ignores_stale_completed_at() {
+        // A card completed on a previous day must not count as completed today.
+        let a = level(1, 4, "Level 1", 1000, "a_day4");
+        let b = level(2, 4, "Level B", 2000, "b_day4");
+        let mut progress: HashMap<i64, &AccountLevelProgress> = HashMap::new();
+        let completed_a = AccountLevelProgress {
+            account_id: 1,
+            level_id: 1,
+            is_completed: true,
+            time_spent: 1000000,
+            target_date: None,
+            completed_at: Some("2026-08-04T10:00:00.000Z".to_string()),
+        };
+        progress.insert(1, &completed_a);
+
+        let plan = plan_day(&PlanInput {
+            account: &account(),
+            levels: &[a, b],
+            level_progress: &progress,
+            purchase_events: &[],
+            purchase_progress: &HashMap::new(),
+            days_passed: 4,
+            target_date: "2026-08-05",
+        });
+
+        assert_eq!(plan.completed_cards, 0, "yesterday's completion is not 'today'");
+    }
+
+    #[test]
+    fn plan_day_completed_cards_counts_purchase_and_null_stamp() {
+        // Purchase card completed today counts; a level with NULL completed_at
+        // also counts (legacy rows without a timestamp).
+        let lv = level(1, 4, "Level 1", 1000, "tok_day4");
+        let pe = purchase_event(1, "pev1_day4", 4);
+        let mut purchase_progress: HashMap<i64, &AccountPurchaseEventProgress> = HashMap::new();
+        let completed_pe = AccountPurchaseEventProgress {
+            account_id: 1,
+            purchase_event_id: 1,
+            is_completed: true,
+            days_offset: 4,
+            time_spent: 5000,
+            target_date: None,
+            completed_at: Some("2026-08-05T11:00:00.000Z".to_string()),
+        };
+        purchase_progress.insert(1, &completed_pe);
+
+        let mut progress: HashMap<i64, &AccountLevelProgress> = HashMap::new();
+        let null_stamped = AccountLevelProgress {
+            account_id: 1,
+            level_id: 1,
+            is_completed: true,
+            time_spent: 1000,
+            target_date: None,
+            completed_at: None,
+        };
+        progress.insert(1, &null_stamped);
+
+        let plan = plan_day(&PlanInput {
+            account: &account(),
+            levels: &[lv],
+            level_progress: &progress,
+            purchase_events: &[pe],
+            purchase_progress: &purchase_progress,
+            days_passed: 4,
+            target_date: "2026-08-05",
+        });
+
+        assert_eq!(plan.total_cards, 2);
+        assert_eq!(plan.completed_cards, 2, "purchase (today) + level (null stamp) count");
     }
 
     #[test]

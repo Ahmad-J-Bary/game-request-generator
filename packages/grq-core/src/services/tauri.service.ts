@@ -35,7 +35,7 @@ import type {
   AddCompletedTaskRequest,
   MaintenanceLog,
   LogMaintenanceEventRequest,
-  DailyAccountStat,
+    GetAllDailyStatsResponse,
 } from "@grq/api-bindings";
 
 export class TauriService {
@@ -208,8 +208,8 @@ export class TauriService {
 
   static async getAllDailyStats(
     targetDate: string,
-  ): Promise<DailyAccountStat[]> {
-    return await invoke<DailyAccountStat[]>("get_all_daily_stats", {
+  ): Promise<GetAllDailyStatsResponse> {
+    return await invoke<GetAllDailyStatsResponse>("get_all_daily_stats", {
       targetDate,
     });
   }
