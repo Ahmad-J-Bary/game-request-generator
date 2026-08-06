@@ -33,7 +33,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@grq/ui/atoms/scroll-area';
 import { toast } from 'sonner';
 import { TauriService } from '@grq/core/services/tauri.service';
-import { TelegramImportPreview, Game, GameBranch, TelegramConfig, Region, Account } from '@grq/api-bindings';
+import { TelegramImportPreview, Game, GameBranch, TelegramConfig, Region, Account, Owner } from
+  '@grq/api-bindings';
 import { cn } from '@grq/ui/lib/utils';
 import { asyncStorageService } from '@grq/core/services/storage.service';
 import { applySessionCompletionForGame } from '@grq/core/services/excel/excel-session-processor';
@@ -64,6 +65,8 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
   const [selectedPrimaryId, setSelectedPrimaryId] = useState<number | null>(null);
   const [suggestedSub, setSuggestedSub] = useState('');
   const [selectedSub, setSelectedSub] = useState('');
+  const [owner, setOwner] = useState('');
+  const [owners, setOwners] = useState<Owner[]>([]);
 
   const isTelegramReady = (config: TelegramConfig) => {
     return Boolean(config.enabled && config.bot_token?.trim() && config.chat_id?.trim());
@@ -183,6 +186,15 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
     }
   };
 
+  const fetchOwners = async () => {
+    try {
+      const owned = await TauriService.getOwners();
+      setOwners(owned || []);
+    } catch (error) {
+      console.error('Failed to load owners:', error);
+    }
+  };
+
   // Mirror the backend create_account auto-assignment so the sub-region
   // selector can show the rotating region for the next account of a game.
   const computeSuggestedSubRegion = (gameId: number): string => {
@@ -239,6 +251,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
       fetchGames();
       fetchRegions();
       fetchAllAccounts();
+      fetchOwners();
     }
   }, [open]);
 
@@ -354,6 +367,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         start_time: selectedTime ? `${selectedTime}:00` : (selectedImport.date.split(' ')[1] || '00:00:00'),
         request_template: content,
         proxy_state: selectedSub ? selectedSub : undefined,
+        owner: owner.trim() || undefined,
       });
 
       applySessionCompletionForGame(parseInt(selectedGameId)).catch(() => {});
@@ -644,6 +658,31 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                     <p className="text-[10px] text-muted-foreground">
                       {t('settings.telegramImport.detectedTime', 'Detected from message')}: {selectedImport.date.split(' ')[1] || '00:00:00'}
                     </p>
+                  </div>
+
+                  {/* Owner */}
+                  <div className="space-y-2.5">
+                    <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5" /> {t('accounts.owner', 'Owner')}
+                    </label>
+                    <Select
+                      value={owner}
+                      onValueChange={(val) => setOwner(val === 'none' ? '' : val)}
+                    >
+                      <SelectTrigger className="rounded-xl bg-background border-border/40">
+                        <SelectValue placeholder={t('accounts.selectOwner', 'Select owner (optional)')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">
+                          {t('accounts.noOwner', 'No owner')}
+                        </SelectItem>
+                        {owners.map((o) => (
+                          <SelectItem key={o.id} value={o.name}>
+                            {o.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   {/* Region Selection */}

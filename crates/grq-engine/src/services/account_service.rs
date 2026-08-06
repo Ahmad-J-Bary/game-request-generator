@@ -19,6 +19,7 @@ pub struct CompletedAccount {
     pub game_name: String,
     pub package_id: Option<i32>,
     pub proxy_state: Option<String>,
+    pub owner: Option<String>,
 }
 
 pub struct AccountService;
@@ -152,8 +153,8 @@ impl AccountService {
         }
 
         conn.execute(
-            "INSERT INTO accounts (game_id, branch_id, name, start_date, start_time, request_template, package_id, proxy_state)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO accounts (game_id, branch_id, name, start_date, start_time, request_template, package_id, proxy_state, owner)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 request.game_id,
                 request.branch_id.or_else(|| {
@@ -170,6 +171,7 @@ impl AccountService {
                 request.request_template,
                 package_id,
                 proxy_state,
+                request.owner.as_deref().map(str::trim).filter(|s| !s.is_empty()),
             ],
         )
         .map_err(|e| format!("Failed to create account: {}", e))?;
@@ -183,7 +185,7 @@ impl AccountService {
         game_id: i64,
     ) -> Result<Vec<Account>, String> {
         let mut stmt = conn.prepare(
-            "SELECT a.id, a.game_id, a.branch_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, a.package_id, a.proxy_state, b.name as branch_name
+            "SELECT a.id, a.game_id, a.branch_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, a.package_id, a.proxy_state, a.owner, b.name as branch_name
              FROM accounts a
              LEFT JOIN game_branches b ON a.branch_id = b.id
              WHERE a.game_id = ?1 ORDER BY a.created_at"
@@ -203,7 +205,8 @@ impl AccountService {
                     created_at: row.get(7).ok(),
                     package_id: row.get(8).ok(),
                     proxy_state: row.get(9).ok(),
-                    branch_name: row.get(10).ok(),
+                    owner: row.get(10).ok(),
+                    branch_name: row.get(11).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query accounts: {}", e))?;
@@ -222,7 +225,7 @@ impl AccountService {
     ) -> Result<Vec<CompletedAccount>, String> {
         let mut stmt = conn.prepare("
             SELECT a.id, a.branch_id, a.game_id, a.name, a.start_date, a.start_time,
-                   a.request_template, a.created_at, g.name, a.package_id, a.proxy_state
+                   a.request_template, a.created_at, g.name, a.package_id, a.proxy_state, a.owner
             FROM accounts a
             JOIN games g ON a.game_id = g.id
             WHERE a.branch_id IS NULL
@@ -256,6 +259,7 @@ impl AccountService {
                     game_name: row.get(8)?,
                     package_id: row.get(9).ok(),
                     proxy_state: row.get(10).ok(),
+                    owner: row.get(11).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query completed accounts: {}", e))?;
@@ -270,7 +274,7 @@ impl AccountService {
 
     pub fn get_account_by_id(&self, conn: &Connection, id: i64) -> Result<Option<Account>, String> {
         conn.query_row(
-            "SELECT a.id, a.game_id, a.branch_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, a.package_id, a.proxy_state, b.name as branch_name
+            "SELECT a.id, a.game_id, a.branch_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, a.package_id, a.proxy_state, a.owner, b.name as branch_name
              FROM accounts a
              LEFT JOIN game_branches b ON a.branch_id = b.id
              WHERE a.id = ?1",
@@ -287,7 +291,8 @@ impl AccountService {
                     created_at: row.get(7).ok(),
                     package_id: row.get(8).ok(),
                     proxy_state: row.get(9).ok(),
-                    branch_name: row.get(10).ok(),
+                    owner: row.get(10).ok(),
+                    branch_name: row.get(11).ok(),
                 })
             }
         )
@@ -297,7 +302,7 @@ impl AccountService {
 
     pub fn get_all_accounts(&self, conn: &Connection) -> Result<Vec<Account>, String> {
         let mut stmt = conn.prepare(
-            "SELECT a.id, a.game_id, a.branch_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, a.package_id, a.proxy_state, b.name as branch_name
+            "SELECT a.id, a.game_id, a.branch_id, a.name, a.start_date, a.start_time, a.request_template, a.created_at, a.package_id, a.proxy_state, a.owner, b.name as branch_name
              FROM accounts a
              LEFT JOIN game_branches b ON a.branch_id = b.id
              ORDER BY a.package_id"
@@ -317,7 +322,8 @@ impl AccountService {
                     created_at: row.get(7).ok(),
                     package_id: row.get(8).ok(),
                     proxy_state: row.get(9).ok(),
-                    branch_name: row.get(10).ok(),
+                    owner: row.get(10).ok(),
+                    branch_name: row.get(11).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query all accounts: {}", e))?;
@@ -361,6 +367,11 @@ impl AccountService {
         if let Some(proxy_state) = &request.proxy_state {
             updates.push("proxy_state = ?");
             values.push(proxy_state as &dyn rusqlite::ToSql);
+        }
+
+        if let Some(owner) = &request.owner {
+            updates.push("owner = ?");
+            values.push(owner as &dyn rusqlite::ToSql);
         }
 
         if let Some(request_template) = &request.request_template {

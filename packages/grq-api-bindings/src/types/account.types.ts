@@ -9,6 +9,7 @@ export interface Account {
   created_at?: string;
   package_id?: number;
   proxy_state?: string;
+  owner?: string;
   branch_name?: string | null;
 }
 
@@ -24,6 +25,7 @@ export interface CreateAccountRequest {
   start_time: string;
   request_template: string;
   proxy_state?: string;
+  owner?: string;
 }
 
 export interface UpdateAccountRequest {
@@ -34,6 +36,7 @@ export interface UpdateAccountRequest {
   start_time?: string;
   request_template?: string;
   proxy_state?: string;
+  owner?: string;
 }
 
 export interface AccountBranchTransferResult {

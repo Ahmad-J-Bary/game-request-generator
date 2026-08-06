@@ -1,6 +1,7 @@
 // src/pages/Dashboard.tsx
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useGames } from '@grq/core/hooks/useGames';
@@ -35,9 +36,11 @@ import { ExcelService } from '@grq/core/services/excel.service';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
 import { useTheme } from '@grq/ui/contexts/ThemeContext';
 import { cn } from '@grq/ui/lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@grq/ui/atoms/select';
+import type { Owner } from '@grq/api-bindings';
 
 export default function Dashboard() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { games } = useGames();
 
@@ -47,6 +50,8 @@ export default function Dashboard() {
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [completedAccounts, setCompletedAccounts] = useState<CompletedAccount[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
+  const [selectedOwner, setSelectedOwner] = useState('');
   const [loading, setLoading] = useState(true);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState<number | null>(null);
@@ -58,14 +63,16 @@ export default function Dashboard() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [accounts, completed, regionList] = await Promise.all([
+      const [accounts, completed, regionList, ownerList] = await Promise.all([
         TauriService.getAllAccounts(),
         TauriService.getCompletedAccounts(),
         TauriService.getRegions(),
+        TauriService.getOwners(),
       ]);
       setAllAccounts(accounts);
       setCompletedAccounts(completed);
       setRegions(regionList);
+      setOwners(ownerList || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -141,6 +148,14 @@ export default function Dashboard() {
     allAccountsRef.current = allAccounts;
   }, [allAccounts]);
 
+  // Keep the selected owner (by name) available to the stable loadStats callback
+  // so the daily-task KPIs are scoped to that owner without re-running the effect.
+  const selectedOwnerRef = useRef('');
+
+  useEffect(() => {
+    selectedOwnerRef.current = selectedOwner;
+  }, [selectedOwner]);
+
   // Load daily task stats immediately from the bulk DB stats command. No need
   // to visit Daily Tasks first.
   const loadStats = useCallback(async () => {
@@ -163,7 +178,16 @@ export default function Dashboard() {
     // Accounts Detail) instead of total - pending.
     let total = 0;
     let completed = 0;
-    dailyStats.forEach((s) => {
+    const accountsById: { [id: number]: Account } = {};
+    accounts.forEach((a) => { accountsById[a.id] = a; });
+
+    // Scope the daily KPIs to the selected owner (by name) when one is chosen.
+    const ownerFilter = selectedOwnerRef.current;
+    const stats = ownerFilter
+      ? dailyStats.filter((s) => accountsById[s.accountId]?.owner === ownerFilter)
+      : dailyStats;
+
+    stats.forEach((s) => {
       total += s.totalTasks ?? 0;
       completed += s.completedCards ?? 0;
     });
@@ -174,13 +198,11 @@ export default function Dashboard() {
     try {
       const completionRecords = (await asyncStorageService.get<{ [accountId: number]: AccountCompletionRecord }>('accountCompletionRecords')) || {};
       const persistedStartStates = (await asyncStorageService.get<{ [accountId: number]: AccountStartState }>('accountStartStates')) || {};
-      const accountsById: { [id: number]: Account } = {};
-      accounts.forEach((a) => { accountsById[a.id] = a; });
 
       // Fall back to the account's last DB completion when this device has no
       // local record (e.g. the account was completed via Accounts Detail or on
       // another run), so the first-pending-card anchor is accurate.
-      dailyStats.forEach((s) => {
+      stats.forEach((s) => {
         if (completionRecords[s.accountId]) return;
         if (s.lastCompletionTimeMs == null || s.lastCompletionTimeSpent == null) return;
         completionRecords[s.accountId] = {
@@ -193,7 +215,7 @@ export default function Dashboard() {
       });
 
       let ready = 0;
-      dailyStats.forEach((s) => {
+      stats.forEach((s) => {
         if (s.firstPendingCardTimeSpent == null) return;
         const account = accountsById[s.accountId];
         if (!account) return;
@@ -267,12 +289,28 @@ export default function Dashboard() {
     }
   }, [allAccounts, loadStats]);
 
+  // Re-scope the KPIs whenever the selected owner changes.
+  useEffect(() => {
+    loadStats();
+  }, [selectedOwner, loadStats]);
+
+  // Reset the selection if the chosen owner was deleted while this page is open.
+  useEffect(() => {
+    if (selectedOwner && owners.length > 0 && !owners.some((o) => o.name === selectedOwner)) {
+      setSelectedOwner('');
+    }
+  }, [owners, selectedOwner]);
+
   const subRegions = regions
     .filter((r) => r.parent_id != null)
     .sort((a, b) => a.sort_order - b.sort_order);
 
+  const filteredAccounts = selectedOwner
+    ? allAccounts.filter((a) => a.owner === selectedOwner)
+    : allAccounts;
+
   const usedStates = new Set(
-    allAccounts.map((a) => a.proxy_state || 'Unknown'),
+    filteredAccounts.map((a) => a.proxy_state || 'Unknown'),
   );
 
   const distributionTiles = [
@@ -291,6 +329,10 @@ export default function Dashboard() {
   const successRate = totalTasksToday > 0 
     ? Math.round((completedTodayCount / totalTasksToday) * 100) 
     : 0;
+
+  const filterCompletedAccounts = selectedOwner
+    ? completedAccounts.filter((a) => a.owner === selectedOwner)
+    : completedAccounts;
 
   return (
     <div className="space-y-5 pb-6 animate-in fade-in duration-700">
@@ -329,7 +371,7 @@ export default function Dashboard() {
       </div>
 
       {/* --- KPI STATS --- */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid gap-4 md:grid-cols-2 ${owners.length > 0 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
         {((): Array<{
           label: string;
           val: number;
@@ -338,9 +380,31 @@ export default function Dashboard() {
           desc?: string;
           percent?: number;
           progressNote?: string;
+          content?: ReactNode;
         }> => [
-          { label: t('dashboard.totalGames'), val: games.length, icon: Gamepad2, color: 'text-blue-500', desc: t('dashboard.managedTitles') },
-          { label: t('dashboard.totalAccounts'), val: allAccounts.length, icon: Users, color: 'text-purple-500', desc: t('dashboard.acrossAllGames') },
+          ...(owners.length > 0 ? [{
+            label: t('dashboard.owners'),
+            val: owners.length,
+            icon: Users,
+            color: 'text-sky-500',
+            content: (
+              <div className="relative z-10 mt-2">
+                <Select value={selectedOwner || 'none'} onValueChange={(val) => setSelectedOwner(val === 'none' ? '' : val)}>
+                  <SelectTrigger dir={i18n.dir()} className="h-8 w-full rounded-lg text-xs">
+                    <SelectValue placeholder={t('dashboard.selectOwner')} />
+                  </SelectTrigger>
+                  <SelectContent dir={i18n.dir()}>
+                    <SelectItem value="none">{t('dashboard.allOwners')}</SelectItem>
+                    {owners.map((o) => (
+                      <SelectItem key={o.id} value={o.name}>{o.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ),
+          }] : []),
+          { label: t('dashboard.totalGames'), val: selectedOwner ? new Set(filteredAccounts.map((a) => a.game_id)).size : games.length, icon: Gamepad2, color: 'text-blue-500', desc: t('dashboard.managedTitles') },
+          { label: t('dashboard.totalAccounts'), val: filteredAccounts.length, icon: Users, color: 'text-purple-500', desc: t('dashboard.acrossAllGames') },
           { label: t('dailyTasks.title'), val: totalTasksToday, icon: ClipboardList, color: 'text-orange-500', percent: successRate, progressNote: t('dashboard.completedOfTotal', { completed: completedTodayCount, total: totalTasksToday, percent: successRate }) },
           { label: t('dashboard.readyTasks'), val: readyTasksCount, icon: Zap, color: 'text-green-500', desc: t('dashboard.readyTasksDesc') },
         ])().map((stat, i) => (
@@ -366,9 +430,12 @@ export default function Dashboard() {
               ) : (
                 <>
                   <div className="text-2xl font-black">{stat.val}</div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 font-medium">
-                    {stat.desc}
-                  </p>
+                  {stat.content}
+                  {stat.desc && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5 font-medium">
+                      {stat.desc}
+                    </p>
+                  )}
                 </>
               )}
             </CardContent>
@@ -418,8 +485,8 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {distributionTiles.map((loc) => {
                   const progressClass = proxyStateProgressClass(loc.color || loc.key);
-                  const count = allAccounts.filter((a) => (a.proxy_state || 'Unknown') === loc.key).length;
-                  const percentage = allAccounts.length > 0 ? Math.round((count / allAccounts.length) * 100) : 0;
+                  const count = filteredAccounts.filter((a) => (a.proxy_state || 'Unknown') === loc.key).length;
+                  const percentage = filteredAccounts.length > 0 ? Math.round((count / filteredAccounts.length) * 100) : 0;
                   return (
                     <div
                       key={loc.key}
@@ -533,7 +600,7 @@ export default function Dashboard() {
                   {t('dashboard.callingArchives')}
                </div>
              </div>
-          ) : completedAccounts.length === 0 ? (
+          ) : filterCompletedAccounts.length === 0 ? (
               <div className="flex flex-col items-center justify-center text-center p-8 rounded-xl border-2 border-dashed bg-muted/20">
                 <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4 opacity-40">
                   <ShieldCheck className="h-8 w-8" />
@@ -545,7 +612,7 @@ export default function Dashboard() {
               </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {completedAccounts.map((account) => (
+              {filterCompletedAccounts.map((account) => (
                 <div 
                   key={account.id} 
                   className="group relative flex flex-col rounded-2xl border border-border/50 bg-card/60 backdrop-blur-sm p-5 shadow-sm hover:shadow-lg hover:border-green-500/50 hover:-translate-y-1 transition-all duration-300 overflow-hidden"

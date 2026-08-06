@@ -489,6 +489,7 @@ mod tests {
             created_at: None,
             package_id: None,
             proxy_state: None,
+            owner: None,
         }
     }
 

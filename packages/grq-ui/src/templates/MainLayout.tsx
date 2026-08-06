@@ -45,6 +45,7 @@ const settingsNavigation = [
   { name: 'storage',    href: '/settings/storage',    icon: Database,     labelKey: 'settings.storage.title'    },
   { name: 'telegram',   href: '/settings/telegram',   icon: MessageSquare,labelKey: 'settings.telegram.title'   },
   { name: 'regions',    href: '/settings/regions',    icon: MapPin,       labelKey: 'settings.regions.tab'      },
+  { name: 'owners',     href: '/settings/owners',     icon: Users,        labelKey: 'settings.owners.tab'       },
 ];
 
 export function MainLayout({ children }: MainLayoutProps) {

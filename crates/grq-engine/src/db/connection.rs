@@ -164,6 +164,7 @@ impl Database {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 package_id INTEGER,
                 proxy_state TEXT,
+                owner TEXT,
                 FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
                 FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE SET NULL
             );
@@ -269,6 +270,12 @@ impl Database {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (parent_id) REFERENCES regions(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS owners (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             ",
         )?;
 
@@ -334,6 +341,9 @@ impl Database {
         }
         if !column_exists("accounts", "proxy_state")? {
             tx.execute("ALTER TABLE accounts ADD COLUMN proxy_state TEXT", [])?;
+        }
+        if !column_exists("accounts", "owner")? {
+            tx.execute("ALTER TABLE accounts ADD COLUMN owner TEXT", [])?;
         }
         if !column_exists("accounts", "branch_id")? {
             tx.execute("ALTER TABLE accounts ADD COLUMN branch_id INTEGER", [])?;

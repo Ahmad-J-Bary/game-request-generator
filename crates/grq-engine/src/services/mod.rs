@@ -9,6 +9,7 @@ pub mod telegram_service;
 pub mod history_service;
 pub mod maintenance_log_service;
 pub mod region_service;
+pub mod owner_service;
 
 #[cfg(test)]
 pub mod account_service_tests;

@@ -203,6 +203,7 @@ mod tests {
                     start_time: "10:00:00".into(),
                     request_template: "template".into(),
                     proxy_state: None,
+                    owner: None,
                 },
             )
             .unwrap();
@@ -300,6 +301,7 @@ mod tests {
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
                     proxy_state: None,
+                    owner: None,
                 },
             )
             .unwrap();
@@ -358,6 +360,7 @@ mod tests {
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
                     proxy_state: None,
+                    owner: None,
                 },
             )
             .unwrap();
@@ -396,6 +399,7 @@ mod tests {
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
                     proxy_state: None,
+                    owner: None,
                 },
             )
             .unwrap();
@@ -427,6 +431,7 @@ mod tests {
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
                     proxy_state: None,
+                    owner: None,
                 },
             )
             .unwrap();
@@ -452,6 +457,7 @@ mod tests {
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
                     proxy_state: None,
+                    owner: None,
                 },
             )
             .unwrap();
@@ -500,6 +506,7 @@ mod tests {
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
                     proxy_state: None,
+                    owner: None,
                 },
             )
             .unwrap();
@@ -534,6 +541,7 @@ mod tests {
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
                     proxy_state: Some("FLORIDA".into()),
+                    owner: None,
                 },
             )
             .unwrap();

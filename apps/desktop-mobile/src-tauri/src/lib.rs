@@ -30,6 +30,7 @@ use grq_engine::models::purchase_event::{
 use grq_engine::models::region::{
     CreateRegionRequest, DeleteRegionRequest, Region, UpdateRegionRequest,
 };
+use grq_engine::models::owner::{CreateOwnerRequest, Owner, UpdateOwnerRequest};
 
 use grq_engine::services::account_service::{AccountService, CompletedAccount};
 use grq_engine::services::game_service::GameService;
@@ -39,6 +40,7 @@ use grq_engine::services::maintenance_log_service::MaintenanceLogService;
 use grq_engine::services::progress_service::ProgressService;
 use grq_engine::services::purchase_event_service::PurchaseEventService;
 use grq_engine::services::region_service::RegionService;
+use grq_engine::services::owner_service::OwnerService;
 
 use grq_engine::db::config::ConfigService;
 use grq_engine::db::key_value::KeyValueService;
@@ -965,6 +967,68 @@ fn reorder_regions(
     let conn = db_guard.get_connection();
     let service = RegionService::new();
     service.reorder(conn, parent_id, ordered_ids)
+}
+
+// ==================== أوامر المالكين ====================
+#[tauri::command]
+fn get_owners(state: tauri::State<AppState>) -> Result<Vec<Owner>, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = OwnerService::new();
+    service.list(conn)
+}
+
+#[tauri::command]
+fn add_owner(
+    state: tauri::State<AppState>,
+    request: CreateOwnerRequest,
+) -> Result<i64, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = OwnerService::new();
+    service.create(conn, request)
+}
+
+#[tauri::command]
+fn update_owner(
+    state: tauri::State<AppState>,
+    request: UpdateOwnerRequest,
+) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = OwnerService::new();
+    service.update(conn, request)
+}
+
+#[tauri::command]
+fn delete_owner(state: tauri::State<AppState>, id: i64) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = OwnerService::new();
+    service.delete(conn, id)
+}
+
+#[tauri::command]
+fn claim_all_accounts_to_owner(
+    state: tauri::State<AppState>,
+    owner_id: i64,
+) -> Result<usize, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = OwnerService::new();
+    service.claim_all_accounts(conn, owner_id)
+}
+
+#[tauri::command]
+fn transfer_accounts_to_owner(
+    state: tauri::State<AppState>,
+    owner_id: i64,
+    account_ids: Vec<i64>,
+) -> Result<usize, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = OwnerService::new();
+    service.transfer_accounts_to_owner(conn, owner_id, &account_ids)
 }
 
 // ==================== أوامر أحداث الشراء ====================
@@ -1901,6 +1965,12 @@ pub fn run() {
             delete_region,
             delete_region_with_redistribution,
             reorder_regions,
+            get_owners,
+            add_owner,
+            update_owner,
+            delete_owner,
+            claim_all_accounts_to_owner,
+            transfer_accounts_to_owner,
             get_config_version,
             run_legacy_config_cleanup_once,
             add_completed_task,

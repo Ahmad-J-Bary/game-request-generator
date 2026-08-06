@@ -40,6 +40,9 @@ import type {
   CreateRegionRequest,
   DeleteRegionRequest,
   UpdateRegionRequest,
+  Owner,
+  CreateOwnerRequest,
+  UpdateOwnerRequest,
 } from "@grq/api-bindings";
 
 export class TauriService {
@@ -160,6 +163,37 @@ export class TauriService {
     return await invoke<boolean>("reorder_regions", {
       parentId,
       orderedIds,
+    });
+  }
+
+  // ========== Owner Commands ==========
+  static async getOwners(): Promise<Owner[]> {
+    return await invoke<Owner[]>("get_owners");
+  }
+
+  static async addOwner(request: CreateOwnerRequest): Promise<number> {
+    return await invoke<number>("add_owner", { request });
+  }
+
+  static async updateOwner(request: UpdateOwnerRequest): Promise<boolean> {
+    return await invoke<boolean>("update_owner", { request });
+  }
+
+  static async deleteOwner(id: number): Promise<boolean> {
+    return await invoke<boolean>("delete_owner", { id });
+  }
+
+  static async claimAllAccountsToOwner(ownerId: number): Promise<number> {
+    return await invoke<number>("claim_all_accounts_to_owner", { ownerId });
+  }
+
+  static async transferAccountsToOwner(
+    ownerId: number,
+    accountIds: number[],
+  ): Promise<number> {
+    return await invoke<number>("transfer_accounts_to_owner", {
+      ownerId,
+      accountIds,
     });
   }
 

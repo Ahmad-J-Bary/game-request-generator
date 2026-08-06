@@ -12,7 +12,7 @@ import { Textarea } from '@grq/ui/atoms/textarea';
 import { Card, CardContent } from '@grq/ui/atoms/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 import { BackButton } from '@grq/ui/molecules/BackButton';
-import { CreateAccountRequest, UpdateAccountRequest, GameBranch, AccountBranchTransferResult, Region, Account } from '@grq/api-bindings';
+import { CreateAccountRequest, UpdateAccountRequest, GameBranch, AccountBranchTransferResult, Region, Account, Owner } from '@grq/api-bindings';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { toLocalDateIso } from '@grq/core/utils/date.utils';
 import { normalizeState } from '@grq/core/utils/proxy-state.utils';
@@ -356,7 +356,17 @@ export default function AccountFormPage() {
   );
   const [startTime, setStartTime] = useState(account?.start_time || (isEditMode ? '' : getDefaultStartTime()));
   const [requestTemplate, setRequestTemplate] = useState(account?.request_template || '');
+  const [owner, setOwner] = useState(account?.owner || '');
+  const [owners, setOwners] = useState<Owner[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    TauriService.getOwners()
+      .then((owned) => { if (active) setOwners(owned || []); })
+      .catch(console.error);
+    return () => { active = false; };
+  }, []);
 
   // Region selection (country = primary region, sub-region = the target state)
   const [regions, setRegions] = useState<Region[]>([]);
@@ -549,6 +559,7 @@ export default function AccountFormPage() {
       setStartDate(account.start_date ? new Date(account.start_date) : null);
       setStartTime(account.start_time);
       setRequestTemplate(account.request_template);
+      setOwner(account.owner || '');
     }
   }, [account]);
 
@@ -560,6 +571,7 @@ export default function AccountFormPage() {
         setStartDate(foundAccount.start_date ? new Date(foundAccount.start_date) : null);
         setStartTime(foundAccount.start_time);
         setRequestTemplate(foundAccount.request_template);
+        setOwner(foundAccount.owner || '');
       }
     }
   }, [accountId, account, accounts]);
@@ -584,6 +596,7 @@ export default function AccountFormPage() {
           start_time: startTime,
           request_template: requestTemplate,
           proxy_state: selectedSub || undefined,
+          owner: owner.trim() || undefined,
         };
         await updateAccount(request);
       } else {
@@ -595,6 +608,7 @@ export default function AccountFormPage() {
           start_time: startTime,
           request_template: requestTemplate,
           proxy_state: selectedSub || undefined,
+          owner: owner.trim() || undefined,
         };
         await addAccount(request);
       }
@@ -804,6 +818,25 @@ export default function AccountFormPage() {
                   </PopoverContent>
                 </Popover>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="owner">{t('accounts.owner', 'Owner')}</Label>
+              <Select value={owner} onValueChange={(val) => setOwner(val === 'none' ? '' : val)}>
+                <SelectTrigger id="owner" dir={i18n.dir()} className={isRtl ? "text-right [&>span]:text-right" : "text-left [&>span]:text-left"}>
+                  <SelectValue placeholder={t('accounts.selectOwner', 'Select owner (optional)')} />
+                </SelectTrigger>
+                <SelectContent dir={i18n.dir()}>
+                  <SelectItem value="none" className={isRtl ? "text-right" : "text-left"}>
+                    {t('accounts.noOwner', 'No owner')}
+                  </SelectItem>
+                  {owners.map((o) => (
+                    <SelectItem key={o.id} value={o.name} className={isRtl ? "text-right" : "text-left"}>
+                      {o.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

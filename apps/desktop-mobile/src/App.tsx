@@ -121,6 +121,10 @@ function AppContent() {
                         path="/settings/regions"
                         element={<SettingsPage section="regions" />}
                       />
+                      <Route
+                        path="/settings/owners"
+                        element={<SettingsPage section="owners" />}
+                      />
                     </Routes>
                   </MainLayout>
                 </BrowserRouter>

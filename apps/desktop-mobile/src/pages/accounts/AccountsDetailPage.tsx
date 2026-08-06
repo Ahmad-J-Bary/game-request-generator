@@ -294,6 +294,26 @@ function AccountsDetailContent({
     number | undefined
   >();
 
+  const [ownerFilter, setOwnerFilter] = useState("");
+  const ownerOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          accounts
+            .map((a) => a.owner?.trim())
+            .filter((o): o is string => !!o),
+        ),
+      ).sort(),
+    [accounts],
+  );
+  const filteredAccounts = useMemo(
+    () =>
+      ownerFilter
+        ? accounts.filter((a) => (a.owner?.trim() || "") === ownerFilter)
+        : accounts,
+    [accounts, ownerFilter],
+  );
+
   const [isEditMode, setIsEditMode] = useState(false);
   const [rangeFillMode, setRangeFillMode] = useState(false);
   const [completeAllChecked, setCompleteAllChecked] = useState(false);
@@ -1061,6 +1081,24 @@ function AccountsDetailContent({
         />
       </PageHeader>
 
+      {ownerOptions.length > 0 && (
+        <div className="flex items-center gap-2 w-full max-w-xs">
+          <Label className="text-muted-foreground whitespace-nowrap">
+            {t("accounts.owner", "Owner")}
+          </Label>
+          <select
+            value={ownerFilter}
+            onChange={(e) => setOwnerFilter(e.target.value)}
+            className="w-full rounded-xl bg-background border border-border/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          >
+            <option value="">{t("accounts.allOwners", "All owners")}</option>
+            {ownerOptions.map((o) => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="flex-1 space-y-12 pb-24">
         {branches.length === 0 ? (
           <Card className="border-dashed border-2 shadow-none">
@@ -1082,11 +1120,17 @@ function AccountsDetailContent({
             </CardContent>
           </Card>
         ) : (
-          branches.map((branch) => (
+          branches
+            .filter(
+              (branch) =>
+                !ownerFilter ||
+                filteredAccounts.some((a) => a.branch_id === branch.id),
+            )
+            .map((branch) => (
             <BranchSection
               key={branch.id}
               branch={branch}
-              accounts={accounts.filter((a) => a.branch_id === branch.id)}
+              accounts={filteredAccounts.filter((a) => a.branch_id === branch.id)}
               levelsProgress={levelsProgress}
               purchaseProgress={purchaseProgress}
               isEditMode={isEditMode}
@@ -1126,6 +1170,7 @@ function AccountsDetailContent({
         theme={theme}
         source="accounts-detail"
         mode={mode}
+        owner={ownerFilter || undefined}
         levelsProgress={levelsProgress}
         purchaseProgress={purchaseProgress}
       />

@@ -7,7 +7,7 @@ import type { Game, Account, Level, PurchaseEvent, CompletedDailyTask } from '@g
 import type { ExcelColorSettings as ColorSettings } from '../types/excel';
 
 // Import decomposed modules
-import { saveExcelFile } from './excel/excel-file-operations';
+import { saveExcelFile, sanitizeFilename } from './excel/excel-file-operations';
 import { parseExcelFile, type ImportData } from './excel/excel-parser';
 import { importFromExcel } from './excel/excel-import';
 import { getCellStyle } from './excel/excel-styling';
@@ -164,7 +164,8 @@ export class ExcelService {
     levelsProgress?: any,
     purchaseProgress?: any,
     mode: 'event-only' | 'all' = 'event-only',
-    taskHistory?: CompletedDailyTask[]
+    taskHistory?: CompletedDailyTask[],
+    owner?: string
   ): Promise<boolean> {
     try {
       const workbook = XLSX.utils.book_new();
@@ -223,28 +224,32 @@ export class ExcelService {
       XLSX.utils.book_append_sheet(workbook, worksheet, gameName.substring(0, 31));
 
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      return await this.saveFile(`${gameName}.xlsx`, buffer);
+      const suffix = owner ? ` - ${sanitizeFilename(owner)}` : '';
+      return await this.saveFile(`${gameName}${suffix}.xlsx`, buffer);
     } catch (error) {
       console.error('Export matrix error:', error);
       return false;
     }
   }
 
-  static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any, purchaseProgress?: any, branchId?: number, mode: 'event-only' | 'all' = 'event-only'): Promise<boolean> {
+  static async exportGameData(gameId: number, layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', columns?: any[], levelsProgress?: any, purchaseProgress?: any, branchId?: number, mode: 'event-only' | 'all' = 'event-only', owner?: string): Promise<boolean> {
     try {
       const game = await TauriService.getGameById(gameId);
       const gameName = game?.name || 'Game';
       const taskHistory = await TauriService.getTaskHistory();
+      const ownerMatches = (acc: Account) =>
+        !owner || (acc.owner?.trim() || '') === owner;
 
       if (branchId) {
         const [levels, purchaseEvents, accounts] = await Promise.all([
           TauriService.getGameLevels(branchId),
           TauriService.getGamePurchaseEvents(branchId),
-          TauriService.getAccounts(gameId).then(accs => accs.filter(a => a.branch_id === branchId))
+          TauriService.getAccounts(gameId).then(accs => accs.filter(a => a.branch_id === branchId && ownerMatches(a)))
         ]);
 
         const sortedAccounts = sortAccountsByDate(accounts);
-        return await this.exportToExcelMatrix(levels, purchaseEvents, sortedAccounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress, mode, taskHistory);
+        if (sortedAccounts.length === 0) return false;
+        return await this.exportToExcelMatrix(levels, purchaseEvents, sortedAccounts, gameName, layout, colorSettings, theme, columns, levelsProgress, purchaseProgress, mode, taskHistory, owner);
       }
 
       const branches = await TauriService.getGameBranches(gameId);
@@ -255,7 +260,8 @@ export class ExcelService {
       let masterMerges: any[] = [];
       let masterCols: any[] = [];
 
-      const allAccounts = await TauriService.getAccounts(gameId);
+      const allAccounts = (await TauriService.getAccounts(gameId)).filter(ownerMatches);
+      if (allAccounts.length === 0) return false;
       const branchesWithAccounts = branches.filter(b => allAccounts.some(a => a.branch_id === b.id));
       if (branchesWithAccounts.length === 0) return false;
       const showBranchTitles = branchesWithAccounts.length > 1;
@@ -330,27 +336,29 @@ export class ExcelService {
       XLSX.utils.book_append_sheet(workbook, worksheet, gameName.substring(0, 31));
 
       const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-      return await this.saveFile(`${gameName}.xlsx`, buffer);
+      const suffix = owner ? ` - ${sanitizeFilename(owner)}` : '';
+      return await this.saveFile(`${gameName}${suffix}.xlsx`, buffer);
     } catch (error) {
       console.error('Export game data error:', error);
       return false;
     }
   }
 
-   static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<boolean> {
+   static async exportAllGamesData(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', owner?: string): Promise<boolean> {
     try {
-      const buffer = await this.generateAllGamesBuffer(layout, colorSettings, theme, mode);
+      const buffer = await this.generateAllGamesBuffer(layout, colorSettings, theme, mode, owner);
       if (!buffer) return false;
-      return await this.saveFile('All_Games.xlsx', buffer);
+      const suffix = owner ? ` - ${sanitizeFilename(owner)}` : '';
+      return await this.saveFile(`All_Games${suffix}.xlsx`, buffer);
     } catch (error) {
       console.error('Export all games data error:', error);
       return false;
     }
   }
 
-  static async generateAllGamesBuffer(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<any> {
+  static async generateAllGamesBuffer(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', owner?: string): Promise<any> {
     try {
-      const workbook = await this.generateAllGamesWorkbook(layout, colorSettings, theme, mode);
+      const workbook = await this.generateAllGamesWorkbook(layout, colorSettings, theme, mode, owner);
       if (!workbook) return null;
       return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     } catch (error) {
@@ -359,10 +367,12 @@ export class ExcelService {
     }
   }
 
-  private static async generateAllGamesWorkbook(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only'): Promise<any> {
+  private static async generateAllGamesWorkbook(layout: 'horizontal' | 'vertical', colorSettings: ColorSettings, theme: 'light' | 'dark', mode: 'event-only' | 'all' = 'event-only', owner?: string): Promise<any> {
     try {
       const games = await TauriService.getGames();
       const workbook = XLSX.utils.book_new();
+      const ownerMatches = (acc: Account) =>
+        !owner || (acc.owner?.trim() || '') === owner;
 
       for (const game of games) {
         const branches = await TauriService.getGameBranches(game.id);
@@ -375,7 +385,7 @@ export class ExcelService {
 
         const sheetBaseName = game.name.substring(0, 27);
 
-        const allAccounts = await TauriService.getAccounts(game.id);
+        const allAccounts = (await TauriService.getAccounts(game.id)).filter(ownerMatches);
         const branchesWithAccounts = branches.filter(b => allAccounts.some(a => a.branch_id === b.id));
         if (branchesWithAccounts.length === 0) continue;
         const showBranchTitles = branchesWithAccounts.length > 1;

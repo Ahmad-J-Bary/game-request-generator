@@ -15,6 +15,7 @@ pub struct Account {
     pub created_at: Option<String>,
     pub package_id: Option<i32>,
     pub proxy_state: Option<String>,
+    pub owner: Option<String>,
 }
 
 pub const PROXY_STATES: &[&str] = &["FLORIDA", "CALIFORNIA", "TEXAS", "New York"];
@@ -28,6 +29,7 @@ pub struct CreateAccountRequest {
     pub start_time: String,
     pub request_template: String,
     pub proxy_state: Option<String>,
+    pub owner: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -39,6 +41,7 @@ pub struct UpdateAccountRequest {
     pub start_time: Option<String>,
     pub request_template: Option<String>,
     pub proxy_state: Option<String>,
+    pub owner: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
