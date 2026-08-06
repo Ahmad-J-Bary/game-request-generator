@@ -15,6 +15,7 @@ import { cn } from '@grq/ui/lib/utils';
 import { toast } from 'sonner';
 import { TauriService } from '@grq/core/services/tauri.service';
 import { proxyStateProgressClass } from '@grq/ui/lib/proxy-state-styles';
+import { normalizeState } from '@grq/core/utils/proxy-state.utils';
 import type { Account, Region } from '@grq/api-bindings';
 import { REGION_PALETTE } from '@grq/api-bindings';
 
@@ -110,7 +111,7 @@ export function RegionsSettingsPanel() {
   const primaries = regions.filter((r) => r.is_primary);
   const childrenOf = (pid: number) => regions.filter((r) => r.parent_id === pid);
   const accountCount = (name: string) =>
-    accounts.filter((a) => a.proxy_state === name).length;
+    accounts.filter((a) => normalizeState(a.proxy_state) === normalizeState(name)).length;
   const usedColors = (excludeId?: number) =>
     regions.flatMap((r) =>
       r.color && r.id !== excludeId ? [r.color] : [],

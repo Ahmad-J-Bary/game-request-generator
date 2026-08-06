@@ -11,6 +11,7 @@ import { ScrollArea } from '@grq/ui/atoms/scroll-area';
 import { cn } from '@grq/ui/lib/utils';
 import type { CompletedDailyTask } from '@grq/api-bindings/types/daily-tasks.types';
 import { TauriService } from '@grq/core/services/tauri.service';
+import { toLocalDateIso } from '@grq/core/utils/date.utils';
 
 interface CompletedTasksSidebarProps {
     isOpen: boolean;
@@ -67,7 +68,7 @@ export function CompletedTasksSidebar({ isOpen, onClose }: CompletedTasksSidebar
 
     const loadCompletedTasks = async () => {
         try {
-            const today = new Date().toISOString().split('T')[0];
+            const today = toLocalDateIso();
             const history = await TauriService.getTaskHistory(100);
             
             // Filter for tasks completed today

@@ -12,6 +12,7 @@ import { parseExcelFile, type ImportData } from './excel/excel-parser';
 import { importFromExcel } from './excel/excel-import';
 import { getCellStyle } from './excel/excel-styling';
 import { formatTimeAMPM, sortAccountsByDate } from './excel/excel-date-utils';
+import { todayLocalIso } from '../utils/date.utils.ts';
 import { buildModeColumns } from './excel/excel-column-builder';
 import { generateGameMatrixData, buildGameDetailSheetData, buildAccountDetailSheetData } from './excel/excel-export-sheet-builder';
 
@@ -94,7 +95,7 @@ export class ExcelService {
       const account = await TauriService.getAccountById(accountId);
       if (!account) return false;
 
-      const filename = `${account.name}_Data_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const filename = `${account.name}_Data_${todayLocalIso()}.xlsx`;
 
       return await this.exportToExcel({
         accounts: [account]

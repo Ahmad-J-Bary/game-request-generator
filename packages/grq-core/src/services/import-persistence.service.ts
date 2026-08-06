@@ -1134,7 +1134,7 @@ async function restoreCompletedToday(
 ): Promise<void> {
   if (!Array.isArray(todayRecords) || todayRecords.length === 0) return;
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayIsoDate();
   const completedKey = `dailyTasks_completed_${today}`;
   const existingCompleted = await asyncStorageService.get<any[]>(completedKey);
   let completedList: any[] = existingCompleted || [];

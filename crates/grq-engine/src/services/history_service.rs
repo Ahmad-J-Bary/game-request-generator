@@ -25,7 +25,7 @@ fn base_token_of(token: &str) -> String {
 fn parse_account_start_date(s: &str) -> Option<chrono::NaiveDate> {
     let cleaned = s.split('T').next().unwrap_or(s).trim();
     if cleaned.contains('-') && cleaned.len() <= 6 {
-        let year = chrono::Utc::now().year();
+        let year = chrono::Local::now().year();
         chrono::NaiveDate::parse_from_str(&format!("{}-{}", year, cleaned), "%Y-%d-%b").ok()
     } else {
         chrono::NaiveDate::parse_from_str(cleaned, "%Y-%m-%d").ok()

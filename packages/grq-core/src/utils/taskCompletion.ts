@@ -1,5 +1,6 @@
 import { ApiService } from "@grq/core/services/api.service";
 import { TauriService } from "@grq/core/services/tauri.service";
+import { todayLocalIso } from "@grq/core/utils/date.utils";
 import type { ApiResponse } from "@grq/core/services/api.service";
 import type {
   DailyTask,
@@ -78,7 +79,7 @@ export async function recordTaskCompletion(params: {
     eventToken: cleanEventToken,
     timeSpent: Math.max(1, params.durationMs),
     completionTime: Date.now(),
-    completionDate: new Date().toISOString().split('T')[0],
+    completionDate: todayLocalIso(),
     levelId: params.isPurchase ? undefined : params.levelId,
     levelName: formatTaskLevelName(params.levelName, params.isPurchase),
     requestType: params.requestType,
@@ -564,7 +565,7 @@ export class TaskCompletionHandler {
           level_id: targetLevelId,
           time_spent: updateTimeSpentMs,
           is_completed: true,
-          target_date: new Date().toISOString().split("T")[0],
+          target_date: todayLocalIso(),
           bypass_cooldown: true,
         };
 

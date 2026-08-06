@@ -26,7 +26,7 @@ describe('buildRegionProcessingOrder', () => {
       'FLORIDA',
       'TEXAS',
     ]);
-    assert.deepStrictEqual(order, ['FLORIDA', 'TEXAS', 'New York']);
+    assert.deepStrictEqual(order, ['FLORIDA', 'TEXAS', 'NEW YORK']);
   });
 
   it('appends leftover keys (not mapped to a region) at the end', () => {
@@ -38,7 +38,7 @@ describe('buildRegionProcessingOrder', () => {
       'FLORIDA',
       'Unknown',
     ]);
-    assert.deepStrictEqual(order, ['FLORIDA', 'Unknown']);
+    assert.deepStrictEqual(order, ['FLORIDA', 'UNKNOWN']);
   });
 
   it('sorts by sort_order regardless of input array order', () => {

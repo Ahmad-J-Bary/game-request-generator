@@ -54,7 +54,9 @@ import { useLevels } from "@grq/core/hooks/useLevels";
 import { usePurchaseEvents } from "@grq/core/hooks/usePurchaseEvents";
 import { useSettings } from "@grq/ui/contexts/SettingsContext";
 import { useTheme } from "@grq/ui/contexts/ThemeContext";
-import { TauriService } from "@grq/core/services/tauri.service";
+import { TauriService } from 
+"@grq/core/services/tauri.service";
+import { asyncStorageService } from "@grq/core/services/storage.service";
 import { Level, PurchaseEvent, GameBranch } from "@grq/api-bindings";
 import { useEffect } from "react";
 import {
@@ -268,16 +270,13 @@ export default function GameDetailPage({
         await sanitizeBranchData(branch.id);
       }
 
-      // ── Sync frozen accountCompletionRecords in localStorage ──────────────
+      // ── Sync frozen accountCompletionRecords ─────────────────────────────
       // When a level or purchase event is edited, the completion records that
       // were frozen at task-completion time (timeSpent, eventToken) must be
       // updated so the cooldown timer uses the correct new values.
       try {
-        const savedCompletions = localStorage.getItem(
-          "accountCompletionRecords",
-        );
-        if (savedCompletions) {
-          const records = JSON.parse(savedCompletions) as Record<
+        const records = await asyncStorageService.get<
+          Record<
             string,
             {
               accountId: number;
@@ -286,7 +285,9 @@ export default function GameDetailPage({
               levelId?: number;
               eventToken?: string;
             }
-          >;
+          >
+        >("accountCompletionRecords");
+        if (records) {
 
           let changed = false;
 
@@ -332,9 +333,9 @@ export default function GameDetailPage({
           }
 
           if (changed) {
-            localStorage.setItem(
+            await asyncStorageService.set(
               "accountCompletionRecords",
-              JSON.stringify(records),
+              records,
             );
           }
         }

@@ -1,4 +1,5 @@
 import type { DailyTask, GameBatch } from "@grq/api-bindings";
+import { normalizeState } from "./proxy-state.utils.ts";
 
 /**
  * The three display levels a Daily Tasks card is grouped into, based on its
@@ -56,7 +57,7 @@ export const buildLevelBatches = (
   const stateOrder: string[] = [];
   const tasksByState: { [state: string]: DailyTask[] } = {};
   for (const task of tasks) {
-    const state = task.account.proxy_state || "Unknown";
+    const state = normalizeState(task.account.proxy_state) || "Unknown";
     if (!tasksByState[state]) {
       tasksByState[state] = [];
       stateOrder.push(state);

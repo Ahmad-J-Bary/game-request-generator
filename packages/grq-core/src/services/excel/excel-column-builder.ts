@@ -1,5 +1,6 @@
 // ===== Excel Column Builder Utilities =====
 
+import { toLocalDateIso } from '../../utils/date.utils.ts';
 import type { Level, PurchaseEvent } from '@grq/api-bindings';
 import {
   getRealTimelineLevels,
@@ -205,7 +206,7 @@ export function createDateMatrix(
     return columns.map((c) => {
       if (c.kind === 'level' && start && c.daysOffset != null) {
         const offset = typeof c.daysOffset === 'number' ? c.daysOffset : 0;
-        return formatDateShort(addDays(start, offset).toISOString().split('T')[0]);
+        return formatDateShort(toLocalDateIso(addDays(start, offset)));
       }
       return '-';
     });

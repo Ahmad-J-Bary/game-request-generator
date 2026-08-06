@@ -2,6 +2,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { TauriService } from './tauri.service.ts';
 import { applySessionCompletionPerAccount } from './import-persistence.service.ts';
+import { toLocalDateIso } from '../utils/date.utils.ts';
 
 // ===== TauriService mocking =====
 let createLevelProgressCalls: any[];
@@ -118,7 +119,7 @@ function updateFor(levelId: number): any | undefined {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().split('T')[0];
+  return toLocalDateIso();
 }
 
 beforeEach(() => {

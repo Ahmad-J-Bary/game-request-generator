@@ -145,12 +145,12 @@ fn card_completed_lenient(input: &PlanInput, card: &Card) -> bool {
 }
 
 /// Whether a `completed_at` timestamp falls on the target date (YYYY-MM-DD,
-/// UTC, matching how the app resolves "today"). A None timestamp (legacy rows
-/// without the column populated) counts as completed.
+/// local timezone, matching how the app resolves "today"). A None timestamp
+/// (legacy rows without the column populated) counts as completed.
 fn completed_on_date(completed_at: &Option<String>, target_date: &str) -> bool {
     match completed_at {
         Some(stamp) => chrono::DateTime::parse_from_rfc3339(stamp)
-            .map(|dt| dt.date_naive().to_string() == target_date)
+            .map(|dt| dt.with_timezone(&chrono::Local).date_naive().to_string() == target_date)
             .unwrap_or(false),
         None => true,
     }

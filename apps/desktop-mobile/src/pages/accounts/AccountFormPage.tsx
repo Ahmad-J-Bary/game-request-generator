@@ -14,6 +14,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 import { BackButton } from '@grq/ui/molecules/BackButton';
 import { CreateAccountRequest, UpdateAccountRequest, GameBranch, AccountBranchTransferResult, Region, Account } from '@grq/api-bindings';
 import { NotificationService } from '@grq/core/utils/notifications';
+import { toLocalDateIso } from '@grq/core/utils/date.utils';
+import { normalizeState } from '@grq/core/utils/proxy-state.utils';
 import { TauriService } from '@grq/core/services/tauri.service';
 import { useGames } from '@grq/core/hooks/useGames';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@grq/ui/atoms/select';
@@ -367,22 +369,22 @@ export default function AccountFormPage() {
   // selector can show the rotating region for the next account of a game.
   const computeSuggestedSubRegion = (gameId: number): string => {
     const frozenNames = new Set(
-      regions.filter((r) => r.parent_id != null && r.frozen).map((r) => r.name),
+      regions.filter((r) => r.parent_id != null && r.frozen).map((r) => normalizeState(r.name)),
     );
     const subRegionNames = [...regions]
       .filter((r) => r.parent_id != null && !r.frozen)
       .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
-      .map((r) => r.name);
+      .map((r) => normalizeState(r.name));
     const subRegions = subRegionNames.length > 0
       ? subRegionNames
-      : ['FLORIDA', 'CALIFORNIA', 'TEXAS', 'New York'];
+      : ['FLORIDA', 'CALIFORNIA', 'TEXAS', 'NEW YORK'];
 
     // 1. Reuse a package that doesn't have this game yet (batch completion).
     const gamePackages = new Set(
       allAccounts.filter((a) => a.game_id === gameId).map((a) => a.package_id)
     );
     const availablePackage = allAccounts
-      .filter((a) => a.package_id != null && !gamePackages.has(a.package_id) && a.proxy_state !== 'UK' && !frozenNames.has(a.proxy_state ?? ''))
+      .filter((a) => a.package_id != null && !gamePackages.has(a.package_id) && normalizeState(a.proxy_state) !== 'UK' && !frozenNames.has(normalizeState(a.proxy_state)))
       .sort((a, b) => (a.package_id ?? 0) - (b.package_id ?? 0))[0];
     if (availablePackage?.proxy_state) {
       return availablePackage.proxy_state;
@@ -394,11 +396,11 @@ export default function AccountFormPage() {
       0
     );
     const nextId = maxPackageId + 1;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateIso();
     const usedToday = new Set(
       allAccounts
         .filter((a) => a.game_id === gameId && a.created_at?.slice(0, 10) === today)
-        .map((a) => a.proxy_state)
+        .map((a) => normalizeState(a.proxy_state))
         .filter(Boolean)
     );
     let chosen = subRegions[(nextId - 1) % subRegions.length];
@@ -420,7 +422,7 @@ export default function AccountFormPage() {
           .filter((r) => r.is_primary)
           .sort((a, b) => a.sort_order - b.sort_order);
         const match = account?.proxy_state
-          ? (regs || []).find((r) => r.name === account.proxy_state && r.parent_id != null)
+          ? (regs || []).find((r) => r.parent_id != null && normalizeState(r.name) === normalizeState(account.proxy_state))
           : undefined;
         const defaultPrimary = match
           ? prims.find((p) => p.id === match.parent_id)
@@ -450,7 +452,7 @@ export default function AccountFormPage() {
   // Keep the region selection in sync when editing by id (account loads async)
   useEffect(() => {
     if (!account || regions.length === 0) return;
-    const match = regions.find((r) => r.name === account.proxy_state && r.parent_id != null);
+    const match = regions.find((r) => r.parent_id != null && normalizeState(r.name) === normalizeState(account.proxy_state));
     if (match) {
       setSelectedPrimaryId(match.parent_id);
       setSelectedSub(match.name);

@@ -24,6 +24,7 @@ import {
 import { TauriService } from '@grq/core/services/tauri.service';
 import { asyncStorageService } from '@grq/core/services/storage.service';
 import { calculateTimerState } from '@grq/core/utils/timer.utils';
+import { toLocalDateIso } from '@grq/core/utils/date.utils';
 import { parseAccountStartDate } from '@grq/core/utils/daily-tasks.utils';
 import type { CompletedAccount, Account, DailyAccountStat, DailyRecentCompletion, DailyTask, AccountCompletionRecord, AccountStartState, Region } from '@grq/api-bindings';
 import { invoke } from '@tauri-apps/api/core';
@@ -114,7 +115,7 @@ export default function Dashboard() {
       }
 
       const uint8Array = new Uint8Array(buffer);
-      const filename = `Full_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const filename = `Full_Report_${toLocalDateIso()}.xlsx`;
 
       await invoke('send_excel_to_telegram', { 
         bytes: Array.from(uint8Array), 
@@ -143,7 +144,7 @@ export default function Dashboard() {
   // Load daily task stats immediately from the bulk DB stats command. No need
   // to visit Daily Tasks first.
   const loadStats = useCallback(async () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateIso();
     const currentTime = Date.now();
     const accounts = allAccountsRef.current;
 

@@ -30,12 +30,6 @@
                 },
                 {
                     "path": "$DOCUMENT/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator"
                 }
             ]
         },
@@ -53,12 +47,6 @@
                 },
                 {
                     "path": "$DOCUMENT/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator"
                 }
             ]
         },
@@ -79,12 +67,6 @@
                 },
                 {
                     "path": "$DOCUMENT/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator"
                 }
             ]
         },
@@ -105,12 +87,6 @@
                 },
                 {
                     "path": "$DOCUMENT/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator"
                 }
             ]
         },
@@ -131,12 +107,6 @@
                 },
                 {
                     "path": "$DOCUMENT/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator"
                 }
             ]
         },
@@ -157,12 +127,6 @@
                 },
                 {
                     "path": "$DOCUMENT/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator/**"
-                },
-                {
-                    "path": "/home/dell/GameRequestGenerator"
                 }
             ]
         }

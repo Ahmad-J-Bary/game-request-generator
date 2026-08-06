@@ -4,10 +4,24 @@ import { writeFile, mkdir, BaseDirectory, readFile } from '@tauri-apps/plugin-fs
 import { save } from '@tauri-apps/plugin-dialog';
 
 /**
+ * Replaces characters that are invalid in file names on common filesystems
+ * (Linux forbids `/`; Windows also forbids `<>:"/\|?*` and control chars) and
+ * trims trailing dots/spaces that Windows rejects. Guards against empty names.
+ */
+export function sanitizeFilename(name: string): string {
+  const sanitized = name
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .trim()
+    .replace(/[. ]+$/g, '');
+  return sanitized || 'unnamed';
+}
+
+/**
  * Helper to save file with filesystem attempt and browser fallback
  */
 export async function saveExcelFile(filename: string, buffer: any): Promise<boolean> {
   const uint8Array = new Uint8Array(buffer);
+  filename = sanitizeFilename(filename);
 
   try {
     // 1. Try using the Dialog plugin to let the user choose the save location

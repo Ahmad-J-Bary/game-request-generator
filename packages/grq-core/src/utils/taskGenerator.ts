@@ -4,8 +4,10 @@ import {
   parseAccountStartDate,
 } from "./daily-tasks.utils.ts";
 import { calculateTimerState } from "./timer.utils.ts";
+import { todayLocalIso } from "./date.utils.ts";
 import { buildRequestGroups } from "./request-groups.utils.ts";
 import { buildRegionProcessingOrder } from "./region-order.utils.ts";
+import { normalizeState } from "./proxy-state.utils.ts";
 import type {
   Account,
   DailyRequestsResponse,
@@ -52,7 +54,7 @@ export class TaskGenerator {
     deferredTasks: DailyTask[];
     accountScheduledTime: { [accountId: number]: number[] };
   }> {
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayLocalIso();
 
     // 1. Get all accounts and group them by state
     const [allAccounts, regions] = await Promise.all([
@@ -62,7 +64,7 @@ export class TaskGenerator {
     const stateGroups: { [state: string]: Account[] } = {};
 
     for (const acc of allAccounts) {
-      const state = acc.proxy_state || "Unknown";
+      const state = normalizeState(acc.proxy_state) || "Unknown";
       if (!stateGroups[state]) {
         stateGroups[state] = [];
       }

@@ -311,7 +311,9 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
     const processedContent = eventToken && timeSpent !== undefined
       ? RequestProcessor.processRequestContent(content, eventToken, timeSpent)
       : content;
-    navigator.clipboard.writeText(processedContent);
+    // WebKitGTK can reject clipboard writes outside a user gesture or without
+    // focus; swallow the rejection so the flow never logs an unhandled error.
+    navigator.clipboard.writeText(processedContent).catch(() => {});
     NotificationService.success(t('dailyTasks.requestCopied'));
   }, [t]);
 

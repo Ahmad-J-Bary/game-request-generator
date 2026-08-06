@@ -93,17 +93,21 @@ const DEFAULT_STYLES: ColorStyle = {
 };
 
 // Map legacy state names to color keys so existing callers (passing
-// account.proxy_state directly) keep their established colors.
+// account.proxy_state directly) keep their established colors. Keys are stored
+// normalized (uppercase) so any casing of the state name matches.
 const LEGACY_STATE_COLOR: Record<string, string> = {
   FLORIDA: 'pink',
   CALIFORNIA: 'green',
   TEXAS: 'blue',
-  'New York': 'yellow',
+  'NEW YORK': 'yellow',
 };
+
+const normalizeState = (value?: string): string => (value ?? '').trim().toUpperCase();
 
 const resolveColorKey = (value?: string): string => {
   if (!value) return '';
-  if (LEGACY_STATE_COLOR[value]) return LEGACY_STATE_COLOR[value];
+  const key = normalizeState(value);
+  if (LEGACY_STATE_COLOR[key]) return LEGACY_STATE_COLOR[key];
   if (COLOR_STYLES[value]) return value;
   return '';
 };

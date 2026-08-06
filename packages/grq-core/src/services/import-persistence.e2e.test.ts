@@ -2,6 +2,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { TauriService } from './tauri.service.ts';
 import { ImportPersistenceService } from './import-persistence.service.ts';
+import { toLocalDateIso } from '../utils/date.utils.ts';
 import type { ImportData } from './excel/excel-parser.ts';
 
 interface FakeLevel {
@@ -220,7 +221,7 @@ describe('ImportPersistenceService.persistAll — end-to-end import of Level Eve
     assert.strictEqual(lp(acc1.id, levelId('lvl_day10'))?.is_completed, true, 'Session Only day10 completed for Acc1 (before last completed event day15)');
     assert.strictEqual(
       lp(acc1.id, levelId('lvl_day10'))?.target_date,
-      new Date().toISOString().split('T')[0],
+      toLocalDateIso(),
       'Session Only day10 stamped with target_date = today so the planner skips it',
     );
     assert.strictEqual(lp(acc2.id, levelId('lvl_day10'))?.is_completed, undefined, 'Acc2 Session Only day10 NOT completed (day10 is after last completed event day5)');
