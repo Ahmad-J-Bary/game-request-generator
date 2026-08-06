@@ -52,8 +52,21 @@ impl AccountService {
         let sub_regions = RegionService::new().sub_region_names(conn)?;
 
         // 1. Find a package_id that doesn't have this game_id yet. Legacy
-        // 'UK' packages (from before the region was removed) are never reused.
-        let proxy_state_condition = "AND proxy_state != 'UK'";
+        // 'UK' packages (from before the region was removed) are never reused,
+        // and neither are frozen sub-regions (they must not receive new accounts).
+        let frozen_names = RegionService::new().frozen_names(conn)?;
+        let mut proxy_state_condition = "AND proxy_state != 'UK'".to_string();
+        if !frozen_names.is_empty() {
+            let placeholders = frozen_names
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(", ");
+            proxy_state_condition.push_str(&format!(
+                " AND proxy_state NOT IN ({})",
+                placeholders
+            ));
+        }
 
         let query = format!(
             "SELECT DISTINCT package_id, proxy_state FROM accounts 
@@ -63,14 +76,22 @@ impl AccountService {
             proxy_state_condition
         );
 
-        let package_info: Option<(i32, String)> = conn
-            .query_row(
+        let package_info: Option<(i32, String)> = {
+            let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            values.push(Box::new(request.game_id));
+            for name in &frozen_names {
+                values.push(Box::new(name.as_str()));
+            }
+            let ref_values: Vec<&dyn rusqlite::ToSql> =
+                values.iter().map(|b| b.as_ref()).collect();
+            conn.query_row(
                 &query,
-                params![request.game_id],
+                ref_values.as_slice(),
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
-            .map_err(|e| format!("Failed to find available package: {}", e))?;
+            .map_err(|e| format!("Failed to find available package: {}", e))?
+        };
 
         let (package_id, mut proxy_state) = match package_info {
             Some((pid, state)) => (pid, state),
@@ -101,6 +122,11 @@ impl AccountService {
                     .map_err(|e| format!("Failed to collect used states: {}", e))?;
 
                 // Find a sub-region that hasn't been used today for this game if possible
+                if sub_regions.is_empty() {
+                    return Err(
+                        "Unable to assign a sub-region: all sub-regions are frozen".to_string(),
+                    );
+                }
                 let mut chosen =
                     sub_regions[(next_id - 1) as usize % sub_regions.len()].clone();
 

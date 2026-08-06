@@ -11,6 +11,7 @@ pub struct Region {
     pub sort_order: i64,
     pub emoji: Option<String>,
     pub color: Option<String>,
+    pub frozen: bool,
     pub created_at: Option<String>,
 }
 
@@ -37,4 +38,5 @@ pub struct UpdateRegionRequest {
     pub emoji: Option<String>,
     pub color: Option<String>,
     pub sort_order: Option<i64>,
+    pub frozen: Option<bool>,
 }

@@ -184,8 +184,11 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
   // Mirror the backend create_account auto-assignment so the sub-region
   // selector can show the rotating region for the next account of a game.
   const computeSuggestedSubRegion = (gameId: number): string => {
+    const frozenNames = new Set(
+      regions.filter((r) => r.parent_id != null && r.frozen).map((r) => r.name),
+    );
     const subRegionNames = [...regions]
-      .filter((r) => r.parent_id != null)
+      .filter((r) => r.parent_id != null && !r.frozen)
       .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
       .map((r) => r.name);
     const subRegions = subRegionNames.length > 0
@@ -197,7 +200,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
       allAccounts.filter((a) => a.game_id === gameId).map((a) => a.package_id)
     );
     const availablePackage = allAccounts
-      .filter((a) => a.package_id != null && !gamePackages.has(a.package_id) && a.proxy_state !== 'UK')
+      .filter((a) => a.package_id != null && !gamePackages.has(a.package_id) && a.proxy_state !== 'UK' && !frozenNames.has(a.proxy_state ?? ''))
       .sort((a, b) => (a.package_id ?? 0) - (b.package_id ?? 0))[0];
     if (availablePackage?.proxy_state) {
       return availablePackage.proxy_state;
@@ -396,7 +399,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
     .sort((a, b) => a.sort_order - b.sort_order);
   const selectedPrimary = primaries.find((p) => p.id === selectedPrimaryId) || primaries[0] || null;
   const subRegions = [...regions]
-    .filter((r) => r.parent_id === selectedPrimary?.id)
+    .filter((r) => r.parent_id === selectedPrimary?.id && !r.frozen)
     .sort((a, b) => a.sort_order - b.sort_order);
 
   return (
@@ -695,7 +698,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                                 <RefreshCw className="h-3 w-3" /> {t('accounts.autoRegion', 'Auto')}
                               </span>
                             </SelectItem>
-                            {suggestedSub && !subRegions.some((s) => s.name === suggestedSub) && (
+                            {suggestedSub && !subRegions.some((s) => s.name === suggestedSub) && !regions.some((r) => r.name === suggestedSub && r.frozen) && (
                               <SelectItem value={suggestedSub}>
                                 {suggestedSub}
                               </SelectItem>

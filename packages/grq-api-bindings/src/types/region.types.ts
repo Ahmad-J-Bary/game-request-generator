@@ -6,6 +6,7 @@ export interface Region {
   sort_order: number;
   emoji?: string | null;
   color?: string | null;
+  frozen?: boolean;
   created_at?: string;
 }
 
@@ -23,6 +24,7 @@ export interface UpdateRegionRequest {
   emoji?: string | null;
   color?: string | null;
   sort_order?: number;
+  frozen?: boolean;
 }
 
 export const REGION_PALETTE = [

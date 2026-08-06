@@ -258,6 +258,7 @@ impl Database {
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 emoji TEXT,
                 color TEXT,
+                frozen INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (parent_id) REFERENCES regions(id) ON DELETE CASCADE
             );
@@ -357,6 +358,12 @@ impl Database {
         if !column_exists("completed_daily_tasks", "completed_at")? {
             tx.execute(
                 "ALTER TABLE completed_daily_tasks ADD COLUMN completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                [],
+            )?;
+        }
+        if !column_exists("regions", "frozen")? {
+            tx.execute(
+                "ALTER TABLE regions ADD COLUMN frozen INTEGER NOT NULL DEFAULT 0",
                 [],
             )?;
         }
@@ -574,7 +581,7 @@ impl Database {
             use crate::models::account::PROXY_STATES;
             let mut sub_regions: Vec<String> = {
                 let mut stmt = tx.prepare(
-                    "SELECT name FROM regions WHERE parent_id IS NOT NULL ORDER BY sort_order, id",
+                    "SELECT name FROM regions WHERE parent_id IS NOT NULL AND frozen = 0 ORDER BY sort_order, id",
                 )?;
                 let rows = stmt.query_map([], |row| row.get(0))?;
                 let mut names = Vec::new();

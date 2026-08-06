@@ -38,7 +38,7 @@ impl RegionService {
     pub fn list(&self, conn: &Connection) -> Result<Vec<Region>, String> {
         let mut stmt = conn
             .prepare(
-                "SELECT id, name, parent_id, is_primary, sort_order, emoji, color, created_at
+                "SELECT id, name, parent_id, is_primary, sort_order, emoji, color, frozen, created_at
                  FROM regions ORDER BY sort_order, id",
             )
             .map_err(|e| format!("Failed to prepare regions query: {}", e))?;
@@ -53,7 +53,8 @@ impl RegionService {
                     sort_order: row.get(4)?,
                     emoji: row.get(5).ok().flatten(),
                     color: row.get(6).ok().flatten(),
-                    created_at: row.get(7).ok().flatten(),
+                    frozen: row.get::<_, i32>(7)? != 0,
+                    created_at: row.get(8).ok().flatten(),
                 })
             })
             .map_err(|e| format!("Failed to query regions: {}", e))?;
@@ -239,6 +240,11 @@ impl RegionService {
             values.push(Box::new(sort_order));
         }
 
+        if let Some(frozen) = request.frozen {
+            updates.push("frozen = ?".to_string());
+            values.push(Box::new(if frozen { 1 } else { 0 }));
+        }
+
         if let Some(parent_id) = request.parent_id {
             if parent_id == request.id {
                 return Err("A region cannot be its own parent".to_string());
@@ -394,21 +400,48 @@ impl RegionService {
     pub fn sub_region_names(&self, conn: &Connection) -> Result<Vec<String>, String> {
         let mut stmt = conn
             .prepare(
-                "SELECT name FROM regions WHERE parent_id IS NOT NULL ORDER BY sort_order, id",
+                "SELECT name, frozen FROM regions WHERE parent_id IS NOT NULL ORDER BY sort_order, id",
             )
             .map_err(|e| format!("Failed to prepare sub-region query: {}", e))?;
 
         let rows = stmt
-            .query_map([], |row| row.get::<_, String>(0))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)? != 0))
+            })
             .map_err(|e| format!("Failed to query sub-regions: {}", e))?;
+
+        let mut all: Vec<(String, bool)> = Vec::new();
+        for row in rows {
+            all.push(row.map_err(|e| format!("Failed to map sub-region: {}", e))?);
+        }
+
+        if all.is_empty() {
+            return Ok(PROXY_STATES.iter().map(|s| s.to_string()).collect());
+        }
+
+        Ok(all
+            .into_iter()
+            .filter(|(_, frozen)| !frozen)
+            .map(|(name, _)| name)
+            .collect())
+    }
+
+    /// Names of configured sub-regions currently frozen (excluded from rotation
+    /// and from receiving new accounts). Empty when none are frozen.
+    pub fn frozen_names(&self, conn: &Connection) -> Result<Vec<String>, String> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT name FROM regions WHERE parent_id IS NOT NULL AND frozen = 1",
+            )
+            .map_err(|e| format!("Failed to prepare frozen-region query: {}", e))?;
+
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Failed to query frozen regions: {}", e))?;
 
         let mut names = Vec::new();
         for row in rows {
-            names.push(row.map_err(|e| format!("Failed to map sub-region: {}", e))?);
-        }
-
-        if names.is_empty() {
-            names = PROXY_STATES.iter().map(|s| s.to_string()).collect();
+            names.push(row.map_err(|e| format!("Failed to map frozen region: {}", e))?);
         }
         Ok(names)
     }

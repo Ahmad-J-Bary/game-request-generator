@@ -17,8 +17,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@grq/ui/atoms/card';
 import { Button } from '@grq/ui/atoms/button';
 import { 
-  Gamepad2, Users, CheckCircle, ClipboardList, Clock, 
-  Trash2, ShieldCheck, MapPin,
+  Gamepad2, Users, CheckCircle, ClipboardList, Rocket, 
+  Trash2, ShieldCheck, MapPin, Snowflake,
   LayoutDashboard, Zap, Send, Settings2
 } from 'lucide-react';
 import { TauriService } from '@grq/core/services/tauri.service';
@@ -28,7 +28,6 @@ import { parseAccountStartDate } from '@grq/core/utils/daily-tasks.utils';
 import type { CompletedAccount, Account, DailyAccountStat, DailyRecentCompletion, DailyTask, AccountCompletionRecord, AccountStartState, Region } from '@grq/api-bindings';
 import { invoke } from '@tauri-apps/api/core';
 import { NotificationService } from '@grq/core/utils/notifications';
-import { Badge } from '@grq/ui/atoms/badge';
 import { Progress } from '@grq/ui/atoms/progress';
 import { proxyStateProgressClass } from '@grq/ui/lib/proxy-state-styles';
 import { ExcelService } from '@grq/core/services/excel.service';
@@ -281,10 +280,11 @@ export default function Dashboard() {
       name: r.name,
       color: r.color || undefined,
       emoji: r.emoji || undefined,
+      frozen: r.frozen,
     })),
     ...[...usedStates]
       .filter((s) => !subRegions.some((r) => r.name === s))
-      .map((s) => ({ key: s, name: s, color: undefined, emoji: undefined })),
+      .map((s) => ({ key: s, name: s, color: undefined, emoji: undefined, frozen: undefined })),
   ];
 
   const successRate = totalTasksToday > 0 
@@ -292,47 +292,43 @@ export default function Dashboard() {
     : 0;
 
   return (
-    <div className="space-y-8 pb-10 animate-in fade-in duration-700">
+    <div className="space-y-5 pb-6 animate-in fade-in duration-700">
       {/* --- HERO HEADER --- */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/10 via-background to-background border p-8 shadow-sm">
-        <div className="absolute top-0 right-0 p-8 text-primary/5 opacity-20 pointer-events-none">
-          <LayoutDashboard size={160} />
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-background to-background border border-border/50 p-4 sm:p-5 shadow-sm">
+        <div className="absolute top-0 right-0 p-6 text-primary/5 opacity-20 pointer-events-none">
+          <LayoutDashboard size={110} />
         </div>
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight flex items-center gap-4 italic font-outfit">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl overflow-hidden bg-background shadow-lg border-2 border-primary/20 animate-in zoom-in duration-500">
-                <img src="/icon.png" alt="Logo" className="h-full w-full object-cover" />
-              </div>
-              {t('dashboard.title')}
-            </h2>
-            <p className="text-muted-foreground text-lg max-w-lg">
-              {t('dashboard.welcome')}
-            </p>
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl overflow-hidden bg-background shadow-md border border-primary/20">
+              <img src="/icon.png" alt="Logo" className="h-full w-full object-cover" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-2xl font-extrabold tracking-tight leading-tight font-outfit">
+                {t('dashboard.title')}
+              </h2>
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                {t('dashboard.welcome')}
+              </p>
+            </div>
           </div>
-             <Button 
-               size="lg" 
-               variant="outline"
-               className="rounded-full shadow-lg hover:scale-105 transition-transform font-bold border-primary/20 bg-background/50"
-               onClick={handleSendExcelReport}
-               disabled={isReporting}
-             >
-               <Send className={`mr-2 h-5 w-5 ${isReporting ? 'animate-pulse' : ''}`} />
-               {isReporting ? t('common.loading') : t('settings.sendReport', 'Send Excel Report')}
-             </Button>
-             <Button 
-               size="lg" 
-               className="rounded-full shadow-lg hover:scale-105 transition-transform font-bold"
-               onClick={() => navigate('/daily-tasks')}
-             >
-               <Clock className="mr-2 h-5 w-5" />
-               {t('dashboard.startWorking', 'Start Today\'s Session')}
-             </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="group/btn shrink-0 rounded-full border-primary/20 bg-background/50 px-3.5 text-xs font-bold shadow-sm backdrop-blur-sm transition-all hover:scale-105 hover:border-primary hover:bg-primary hover:text-primary-foreground hover:shadow-lg"
+              onClick={handleSendExcelReport}
+              disabled={isReporting}
+            >
+              <Send className={`h-3.5 w-3.5 ltr:mr-1.5 rtl:ml-1.5 transition-transform group-hover/btn:-rotate-12 ${isReporting ? 'animate-pulse' : ''}`} />
+              {isReporting ? t('common.loading') : t('settings.sendReport', 'Send Excel Report')}
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* --- KPI STATS --- */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {((): Array<{
           label: string;
           val: number;
@@ -347,27 +343,32 @@ export default function Dashboard() {
           { label: t('dailyTasks.title'), val: totalTasksToday, icon: ClipboardList, color: 'text-orange-500', percent: successRate, progressNote: t('dashboard.completedOfTotal', { completed: completedTodayCount, total: totalTasksToday, percent: successRate }) },
           { label: t('dashboard.readyTasks'), val: readyTasksCount, icon: Zap, color: 'text-green-500', desc: t('dashboard.readyTasksDesc') },
         ])().map((stat, i) => (
-          <Card key={i} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card/60 backdrop-blur-sm shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg">
+          <Card key={i} className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/60 backdrop-blur-sm shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg">
             <div className={`absolute top-0 left-0 w-1 h-full bg-gradient-to-b ${stat.color.replace('text', 'from').replace('-500', '-600')} to-transparent opacity-50`} />
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 px-4 pt-3.5">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 {stat.label}
               </CardTitle>
-              <stat.icon className={`h-5 w-5 ${stat.color} group-hover:scale-110 transition-transform`} />
+              <stat.icon className={`h-4.5 w-4.5 ${stat.color} group-hover:scale-110 transition-transform`} />
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-black">{stat.val}</div>
+            <CardContent className="px-4 pb-4">
               {typeof stat.percent === 'number' ? (
                 <>
-                  <Progress value={stat.percent} className="h-2 mt-2" indicatorClassName="bg-orange-500" />
-                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1 font-medium">
-                    {stat.progressNote}
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-2xl font-black">{stat.val}</div>
+                    <p className="text-[11px] text-muted-foreground font-medium text-right">
+                      {stat.progressNote}
+                    </p>
+                  </div>
+                  <Progress value={stat.percent} className="h-1.5 mt-1.5" indicatorClassName="bg-orange-500" />
                 </>
               ) : (
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1 font-medium">
-                  {stat.desc}
-                </p>
+                <>
+                  <div className="text-2xl font-black">{stat.val}</div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 font-medium">
+                    {stat.desc}
+                  </p>
+                </>
               )}
             </CardContent>
           </Card>
@@ -375,44 +376,45 @@ export default function Dashboard() {
       </div>
 
       {/* --- REGIONAL DISTRIBUTION --- */}
-      <Card className="group/regions relative overflow-hidden rounded-3xl bg-card/50 backdrop-blur-md border border-border/10 shadow-sm">
-        <MapPin className="absolute -bottom-8 -right-8 h-44 w-44 text-primary/5 pointer-events-none transition-transform duration-700 group-hover/regions:scale-125 rotate-12" />
-        <CardHeader className="relative z-10 px-6 pt-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex items-start gap-4">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-primary text-white shadow-lg shadow-primary/20 shrink-0">
-                  <MapPin className="h-5 w-5" />
+      <Card className="group/regions relative overflow-hidden rounded-2xl bg-card/50 backdrop-blur-sm border border-border/50 shadow-sm">
+        <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-violet-600 to-transparent opacity-50" />
+        <MapPin className="absolute -bottom-6 -right-6 h-40 w-40 text-violet-500/10 pointer-events-none transition-transform duration-700 group-hover/regions:scale-110 rotate-12" />
+        <CardHeader className="relative z-10 px-5 pt-4 pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-primary text-white shadow-md shadow-primary/20 shrink-0">
+                  <MapPin className="h-4.5 w-4.5" />
                 </div>
-                <div className="space-y-1">
-                  <CardTitle className="text-2xl font-black italic leading-none">
+                <div className="space-y-0.5">
+                  <CardTitle className="text-lg font-extrabold leading-none">
                     {t('dashboard.regionalDist')}
                   </CardTitle>
-                  <CardDescription className="font-medium">{t('dashboard.regionalDistDesc')}</CardDescription>
+                  <CardDescription className="text-xs font-medium">{t('dashboard.regionalDistDesc')}</CardDescription>
                 </div>
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                className="group/btn shrink-0 rounded-full border-primary/20 bg-background/50 px-4 font-bold shadow-sm backdrop-blur-sm transition-all hover:scale-105 hover:border-primary hover:bg-primary hover:text-primary-foreground hover:shadow-lg"
+                className="group/btn shrink-0 rounded-full border-primary/20 bg-background/50 px-3.5 text-xs font-bold shadow-sm backdrop-blur-sm transition-all hover:scale-105 hover:border-primary hover:bg-primary hover:text-primary-foreground hover:shadow-lg"
                 onClick={() => navigate('/settings/regions')}
               >
-                <Settings2 className="h-4 w-4 ltr:mr-1.5 rtl:ml-1.5 transition-transform group-hover/btn:rotate-12" />
+                <Settings2 className="h-3.5 w-3.5 ltr:mr-1.5 rtl:ml-1.5 transition-transform group-hover/btn:rotate-12" />
                 {t('dashboard.manageRegions')}
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="relative z-10 px-6 pt-4">
+          <CardContent className="relative z-10 px-5 pt-2">
             {distributionTiles.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center p-10 rounded-2xl border-2 border-dashed bg-muted/20">
-                <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-4 opacity-40">
-                  <MapPin className="h-7 w-7" />
+              <div className="flex flex-col items-center justify-center text-center p-8 rounded-xl border-2 border-dashed bg-muted/20">
+                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3 opacity-40">
+                  <MapPin className="h-6 w-6" />
                 </div>
                 <p className="text-sm font-bold text-muted-foreground max-w-xs leading-relaxed">
                   {t('dashboard.regionalDistEmpty')}
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {distributionTiles.map((loc) => {
                   const progressClass = proxyStateProgressClass(loc.color || loc.key);
                   const count = allAccounts.filter((a) => (a.proxy_state || 'Unknown') === loc.key).length;
@@ -421,30 +423,69 @@ export default function Dashboard() {
                     <div
                       key={loc.key}
                       className={cn(
-                        'group/tile relative overflow-hidden rounded-2xl border p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl',
-                        progressClass.card,
+                        'group/tile relative overflow-hidden rounded-2xl border p-3 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl',
+                        loc.frozen
+                          ? 'bg-gradient-to-br from-sky-500/15 via-sky-500/5 to-cyan-500/10 border-sky-300/40 backdrop-blur-sm saturate-[0.85] dark:border-sky-500/30 hover:shadow-sky-500/20'
+                          : progressClass.card,
                       )}
                     >
-                      <div className={cn('absolute top-0 left-0 right-0 h-1', progressClass.color)} />
-                      <div className="flex items-center justify-between mb-3">
-                        <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', progressClass.light)}>
-                          {loc.emoji ? (
-                            <span className="text-base leading-none">{loc.emoji}</span>
-                          ) : (
-                            <MapPin className={cn('h-4 w-4', progressClass.iconColor)} />
-                          )}
+                      <div
+                        className={cn(
+                          'absolute top-0 left-0 right-0 h-1',
+                          loc.frozen
+                            ? 'bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500'
+                            : progressClass.color,
+                        )}
+                      />
+                      {loc.frozen && (
+                        <Snowflake className="absolute -bottom-6 -right-6 h-24 w-24 text-sky-500/10 rotate-12 transition-transform duration-500 group-hover/tile:rotate-45" />
+                      )}
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div
+                            className={cn(
+                              'relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+                              loc.frozen
+                                ? 'bg-gradient-to-br from-sky-400/20 to-cyan-400/20'
+                                : progressClass.light,
+                            )}
+                          >
+                            {loc.frozen ? (
+                              <Snowflake className="h-3.5 w-3.5 text-sky-500" />
+                            ) : loc.emoji ? (
+                              <span className="text-sm leading-none">{loc.emoji}</span>
+                            ) : (
+                              <MapPin className={cn('h-3.5 w-3.5', progressClass.iconColor)} />
+                            )}
+                            {loc.frozen && !loc.emoji && (
+                              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                <span className="absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75 animate-ping" />
+                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-sky-500" />
+                              </span>
+                            )}
+                          </div>
+                          <div className="truncate text-[11px] font-black uppercase tracking-wide text-muted-foreground">
+                            {loc.name}
+                          </div>
                         </div>
-                        <span className="text-2xl font-black leading-none">{count}</span>
+                        <span className={cn('shrink-0 text-2xl font-black leading-none', loc.frozen && 'text-sky-700 dark:text-sky-200')}>
+                          {count}
+                        </span>
                       </div>
-                      <div className="mb-2 truncate text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                        {loc.name}
-                      </div>
-                      <Progress value={percentage} className="h-1.5 rounded-full bg-border/40" indicatorClassName={progressClass.color} />
-                      <div className="mt-2 flex items-center justify-between">
+                      <Progress
+                        value={percentage}
+                        className="h-1.5 rounded-full bg-border/40"
+                        indicatorClassName={loc.frozen
+                          ? 'bg-gradient-to-r from-cyan-400 to-sky-500'
+                          : progressClass.color}
+                      />
+                      <div className="mt-1.5 flex items-center justify-between">
                         <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
                           {t('dashboard.percentageOfTotal')}
                         </span>
-                        <span className={cn('text-xs font-black', progressClass.iconColor)}>{percentage}%</span>
+                        <span className={cn('text-xs font-black', loc.frozen ? 'text-sky-600 dark:text-sky-300' : progressClass.iconColor)}>
+                          {percentage}%
+                        </span>
                       </div>
                     </div>
                   );
@@ -455,51 +496,58 @@ export default function Dashboard() {
         </Card>
 
       {/* --- HALL OF FAME --- */}
-      <Card className="group/fame relative overflow-hidden rounded-3xl bg-card/50 backdrop-blur-md border border-border/10 shadow-sm">
-        <ShieldCheck className="absolute -bottom-8 -right-8 h-44 w-44 text-green-500/5 pointer-events-none transition-transform duration-700 group-hover/fame:scale-125 rotate-12" />
-        <CardHeader className="relative z-10 px-6 pt-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/20 shrink-0">
-                <ShieldCheck className="h-5 w-5" />
+      <Card className="group/fame relative overflow-hidden rounded-2xl bg-card/50 backdrop-blur-sm border border-border/50 shadow-sm">
+        <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-green-600 to-transparent opacity-50" />
+        <ShieldCheck className="absolute -bottom-6 -right-6 h-40 w-40 text-green-500/10 pointer-events-none transition-transform duration-700 group-hover/fame:scale-110 rotate-12" />
+        <CardHeader className="relative z-10 px-5 pt-4 pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 text-white shadow-md shadow-green-500/20 shrink-0">
+                <ShieldCheck className="h-4.5 w-4.5" />
               </div>
-              <div className="space-y-1">
-                <CardTitle className="text-2xl font-black italic leading-none">
+              <div className="space-y-0.5">
+                <CardTitle className="text-lg font-extrabold leading-none">
                   {t('dashboard.hallOfFame')}
                 </CardTitle>
-                <CardDescription className="font-medium">{t('dashboard.hallOfFameDesc')}</CardDescription>
+                <CardDescription className="text-xs font-medium">{t('dashboard.hallOfFameDesc')}</CardDescription>
               </div>
             </div>
-            <Badge variant="secondary" className="px-4 py-1.5 text-sm font-black bg-green-500 text-white rounded-full shadow-md shadow-green-500/30">
-              {completedAccounts.length} {t('dashboard.legends')}
-            </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              className="group/btn shrink-0 rounded-full border-primary/20 bg-background/50 px-3.5 text-xs font-bold shadow-sm backdrop-blur-sm transition-all hover:scale-105 hover:border-primary hover:bg-primary hover:text-primary-foreground hover:shadow-lg"
+              onClick={() => navigate('/daily-tasks')}
+            >
+              <Rocket className="h-3.5 w-3.5 ltr:mr-1.5 rtl:ml-1.5 transition-transform group-hover/btn:-rotate-12" />
+              {t('dashboard.completeRequests')}
+            </Button>
           </div>
         </CardHeader>
-        <CardContent className="relative z-10 px-6 pt-4">
+        <CardContent className="relative z-10 px-5 pt-2">
         <div>
           {loading ? (
-             <div className="flex items-center justify-center p-20 text-muted-foreground italic">
+             <div className="flex items-center justify-center p-16 text-muted-foreground italic">
                <div className="animate-pulse flex items-center gap-3">
                   <Zap className="h-6 w-6 text-primary animate-bounce" />
                   {t('dashboard.callingArchives')}
                </div>
              </div>
           ) : completedAccounts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center p-12 rounded-2xl border-2 border-dashed bg-muted/20">
-                <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center mb-6 opacity-40">
-                  <ShieldCheck className="h-10 w-10" />
+              <div className="flex flex-col items-center justify-center text-center p-8 rounded-xl border-2 border-dashed bg-muted/20">
+                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4 opacity-40">
+                  <ShieldCheck className="h-8 w-8" />
                 </div>
-                <h3 className="text-xl font-black text-muted-foreground uppercase tracking-widest leading-none mb-2">{t('dashboard.emptyGallery')}</h3>
+                <h3 className="text-lg font-black text-muted-foreground uppercase tracking-widest leading-none mb-1.5">{t('dashboard.emptyGallery')}</h3>
                 <p className="text-sm text-muted-foreground max-w-sm font-medium">
                   {t('dashboard.emptyGalleryDesc')}
                 </p>
               </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {completedAccounts.map((account) => (
                 <div 
                   key={account.id} 
-                  className="group relative flex flex-col rounded-2xl border border-border/60 bg-card/60 backdrop-blur-sm p-6 shadow-sm hover:shadow-xl hover:border-green-500/50 hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+                  className="group relative flex flex-col rounded-2xl border border-border/50 bg-card/60 backdrop-blur-sm p-5 shadow-sm hover:shadow-lg hover:border-green-500/50 hover:-translate-y-1 transition-all duration-300 overflow-hidden"
                 >
                   <div className="absolute top-0 right-0 p-4 flex gap-2 translate-x-4 -translate-y-4 group-hover:translate-x-0 group-hover:translate-y-0 transition-all opacity-0 group-hover:opacity-100 z-20">
                     <Button
@@ -525,23 +573,23 @@ export default function Dashboard() {
                     <ShieldCheck size={120} />
                   </div>
                   
-                  <div className="flex items-center gap-4 mb-6 relative z-10">
-                    <div className="h-12 w-12 rounded-2xl bg-green-500 text-white flex items-center justify-center shadow-lg shadow-green-500/30">
-                      <Gamepad2 className="h-6 w-6" />
+                  <div className="flex items-center gap-3 mb-4 relative z-10">
+                    <div className="h-11 w-11 rounded-xl bg-green-500 text-white flex items-center justify-center shadow-md shadow-green-500/30">
+                      <Gamepad2 className="h-5.5 w-5.5" />
                     </div>
                     <div className="min-w-0">
-                      <h4 className="font-black text-lg truncate leading-tight" title={account.name}>{account.name}</h4>
-                      <p className="text-xs text-muted-foreground font-bold tracking-tight truncate opacity-80" title={account.game_name}>{account.game_name}</p>
+                      <h4 className="font-black text-base truncate leading-tight" title={account.name}>{account.name}</h4>
+                      <p className="text-[11px] text-muted-foreground font-bold tracking-tight truncate opacity-80" title={account.game_name}>{account.game_name}</p>
                     </div>
                   </div>
                   
-                  <div className="mt-auto flex items-end justify-between border-t pt-4 relative z-10">
+                  <div className="mt-auto flex items-end justify-between border-t pt-3 relative z-10">
                     <div className="flex flex-col">
-                      <span className="text-muted-foreground font-black uppercase tracking-widest text-[9px] mb-1">{t('dashboard.enlistedOn')}</span>
+                      <span className="text-muted-foreground font-black uppercase tracking-widest text-[9px] mb-0.5">{t('dashboard.enlistedOn')}</span>
                       <span className="font-bold text-sm">{account.start_date}</span>
                     </div>
                     <div className="flex flex-col text-right">
-                      <span className="text-muted-foreground font-black uppercase tracking-widest text-[9px] mb-1">{t('dashboard.legacy')}</span>
+                      <span className="text-muted-foreground font-black uppercase tracking-widest text-[9px] mb-0.5">{t('dashboard.legacy')}</span>
                       <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-black text-sm italic">
                         {t('dailyTasks.completed')}
                         <CheckCircle className="h-4 w-4" />

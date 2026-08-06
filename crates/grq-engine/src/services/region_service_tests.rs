@@ -158,6 +158,7 @@ mod tests {
             emoji: None,
             color: None,
             sort_order: None,
+            frozen: None,
         }).unwrap();
 
         let state: String = conn
@@ -190,6 +191,7 @@ mod tests {
             emoji: Some("🌴".into()),
             color: Some("blue".into()),
             sort_order: None,
+            frozen: None,
         }).unwrap();
 
         let (name, emoji, color): (String, Option<String>, Option<String>) = conn
@@ -276,6 +278,7 @@ mod tests {
             emoji: None,
             color: Some("orange".into()),
             sort_order: None,
+            frozen: None,
         }).unwrap_err();
         assert!(err.contains("already used"), "unexpected error: {}", err);
     }

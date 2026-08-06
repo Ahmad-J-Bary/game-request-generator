@@ -344,10 +344,10 @@
     "recentActivity": "النشاط الأخير",
     "quickActions": "إجراءات سريعة",
     "viewAll": "عرض الكل",
-    "startWorking": "بدء جلسة اليوم",
+    "completeRequests": "إكمال الطلبات",
     "successRate": "نسبة النجاح",
     "regionalDist": "التوزيع الإقليمي",
-    "regionalDistDesc": "توزيع الحسابات حسب المناطق في أمريكا",
+    "regionalDistDesc": "توزيع الحسابات حسب المناطق",
     "regionalDistEmpty": "لا توجد مناطق بعد — أضفها من الإعدادات لترى توزيع الحسابات هنا.",
     "manageRegions": "إدارة المناطق",
     "recommended": "موصى به",
@@ -376,7 +376,8 @@
     "completedOfTotal": "{{completed}} / {{total}} مكتملة • {{percent}}%",
     "readyTasks": "المهام الجاهزة",
     "readyTasksDesc": "مهام جاهزة للتنفيذ الآن",
-    "percentageOfTotal": "من الإجمالي"
+    "percentageOfTotal": "من الإجمالي",
+    "frozenNotice": "لا يستقبل حسابات جديدة"
   },
   "branches": {
     "branch": "الفرع",
@@ -534,7 +535,7 @@
       "acceptFailed": "فشل قبول النسخة الحالية كآخر نسخة"
     },
     "reset": "إعادة تعيين إلى الافتراضي",
-    "sendReport": "إرسال تقرير إكسل للتيليجرام",
+    "sendReport": "إرسال تقرير",
     "reportSent": "تم إرسال التقرير بنجاح!",
     "generatingReport": "جاري إنشاء التقرير...",
     "colors": {
@@ -645,7 +646,10 @@
       "editTitle": "تعديل المنطقة",
       "deleteConfirm": "حذف {{name}}؟ لا يمكن التراجع عن هذا الإجراء.",
       "hint": "الترتيب هنا يتحكم بترتيب العرض في صفحة المهام اليومية. يتم التنقل بين المناطق الفرعية عند إنشاء حسابات جديدة.",
-      "colorUsed": "مُستخدم بالفعل من منطقة أخرى"
+      "colorUsed": "مُستخدم بالفعل من منطقة أخرى",
+      "freeze": "تجميد المنطقة",
+      "unfreeze": "إلغاء التجميد",
+      "frozen": "مجمّدة"
     }
   },
   "theme": {

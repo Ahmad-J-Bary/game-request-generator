@@ -344,10 +344,10 @@
     "recentActivity": "Recent Activity",
     "quickActions": "Quick Actions",
     "viewAll": "View All",
-    "startWorking": "Start Today's Session",
+    "completeRequests": "Complete Requests",
     "successRate": "Success Rate",
     "regionalDist": "Regional Distribution",
-    "regionalDistDesc": "Account spread across US regions",
+    "regionalDistDesc": "Account spread across regions",
     "regionalDistEmpty": "No regions yet — add them from Settings to see the account spread here.",
     "manageRegions": "Manage regions",
     "recommended": "Recommended",
@@ -376,7 +376,8 @@
     "completedOfTotal": "{{completed}} / {{total}} completed • {{percent}}%",
     "readyTasks": "Ready Tasks",
     "readyTasksDesc": "Tasks ready to run now",
-    "percentageOfTotal": "of total"
+    "percentageOfTotal": "of total",
+    "frozenNotice": "Not accepting new accounts"
   },
   "branches": {
     "branch": "Branch",
@@ -534,7 +535,7 @@
       "acceptFailed": "Failed to accept current as latest"
     },
     "reset": "Reset to Default",
-    "sendReport": "Send Excel Report to Telegram",
+    "sendReport": "Send Report",
     "reportSent": "Excel report sent successfully!",
     "generatingReport": "Generating report...",
     "colors": {
@@ -644,7 +645,10 @@
       "editTitle": "Edit region",
       "deleteConfirm": "Delete {{name}}? This cannot be undone.",
       "hint": "Ordering here controls the display order on the Daily Tasks page. Sub-regions are cycled when creating new accounts.",
-      "colorUsed": "Already used by another region"
+      "colorUsed": "Already used by another region",
+      "freeze": "Freeze region",
+      "unfreeze": "Unfreeze region",
+      "frozen": "Frozen"
     }
   },
   "theme": {

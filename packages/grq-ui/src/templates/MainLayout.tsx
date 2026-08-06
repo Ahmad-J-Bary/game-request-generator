@@ -525,7 +525,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         }}
       >
         <div
-          className="w-full xl:max-w-[1920px] mx-auto py-2 lg:py-4 flex-1"
+          className="w-full xl:max-w-[1920px] mx-auto py-1 lg:py-2 flex-1"
           style={{
             paddingLeft:  'env(safe-area-inset-left)',
             paddingRight: 'env(safe-area-inset-right)',

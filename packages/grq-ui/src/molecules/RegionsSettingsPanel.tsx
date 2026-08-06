@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MapPin, Plus, Pencil, Trash2, ChevronUp, ChevronDown, Globe,
-  Loader2, X, Users, ArrowUpDown,
+  Loader2, X, Users, ArrowUpDown, Snowflake,
 } from 'lucide-react';
 import { Button } from '@grq/ui/atoms/button';
 import { Input } from '@grq/ui/atoms/input';
@@ -183,6 +183,20 @@ export function RegionsSettingsPanel() {
       await load();
     } catch (error: unknown) {
       console.error('Edit region failed:', error);
+      toast.error(String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleToggleFreeze = async (region: Region) => {
+    setBusy(true);
+    try {
+      await TauriService.updateRegion({ id: region.id, frozen: !region.frozen });
+      toast.success(t('common.success'));
+      await load();
+    } catch (error: unknown) {
+      console.error('Toggle freeze region failed:', error);
       toast.error(String(error));
     } finally {
       setBusy(false);
@@ -405,11 +419,28 @@ export function RegionsSettingsPanel() {
                     childrenOf(primary.id).map((sub) => (
                       <div
                         key={sub.id}
-                        className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-background/40 border border-border/40 hover:border-violet-500/30 transition-all group"
+                        className={cn(
+                          'flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-background/40 border',
+                          sub.frozen
+                            ? 'border-sky-500/40 bg-sky-500/5'
+                            : 'border-border/40 hover:border-violet-500/30',
+                          'transition-all group',
+                        )}
                       >
                         {regionDot(sub)}
                         <div className="min-w-0 flex-1">
-                          <div className="text-xs font-semibold truncate">{sub.name}</div>
+                          <div className={cn('text-xs font-semibold truncate', sub.frozen && 'text-muted-foreground line-through')}>
+                            {sub.name}
+                          </div>
+                          {sub.frozen && (
+                            <Badge
+                              variant="outline"
+                              className="mt-0.5 text-[8px] rounded-full px-1.5 gap-1 text-sky-600 border-sky-500/40"
+                            >
+                              <Snowflake className="h-2.5 w-2.5" />
+                              {t('settings.regions.frozen')}
+                            </Badge>
+                          )}
                         </div>
                         <Badge
                           variant="secondary"
@@ -418,6 +449,16 @@ export function RegionsSettingsPanel() {
                           <Users className="h-3 w-3" />
                           {accountCount(sub.name)}
                         </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title={sub.frozen ? t('settings.regions.unfreeze') : t('settings.regions.freeze')}
+                          disabled={busy}
+                          onClick={() => handleToggleFreeze(sub)}
+                        >
+                          <Snowflake className={cn('h-4 w-4', sub.frozen ? 'text-sky-500' : 'text-muted-foreground')} />
+                        </Button>
                         {actionButtons(sub, childrenOf(primary.id).length > 1)}
                       </div>
                     ))
