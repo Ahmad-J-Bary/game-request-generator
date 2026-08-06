@@ -172,11 +172,15 @@ fn import_database(
     }
 
     // Close existing DB connections before replacing the file
-    let _guard = state.db.lock().unwrap();
+    let db_guard = state.db.lock().unwrap();
 
     // Copy source file over the internal DB path
     std::fs::copy(&source_path, &internal_db_path)
         .map_err(|e| format!("Failed to import database: {}", e))?;
+
+    // The imported file may carry an older schema — re-run migrations so the
+    // open connection matches the current code (e.g. the `frozen` column).
+    db_guard.ensure_schema()?;
 
     Ok(())
 }
@@ -219,10 +223,14 @@ fn import_database_from_bytes(
     };
 
     // Close existing DB connections before replacing the file
-    let _guard = state.db.lock().unwrap();
+    let db_guard = state.db.lock().unwrap();
 
     std::fs::write(&internal_db_path, bytes)
         .map_err(|e| format!("Failed to write imported database: {}", e))?;
+
+    // The imported file may carry an older schema — re-run migrations so the
+    // open connection matches the current code (e.g. the `frozen` column).
+    db_guard.ensure_schema()?;
 
     Ok(())
 }
@@ -543,7 +551,7 @@ fn import_database_with_pointer(
     let mut config = ConfigService::load(&app);
 
     // Lock DB to prevent any operations during copy
-    let _guard = state.db.lock().unwrap();
+    let db_guard = state.db.lock().unwrap();
 
     // If no pointer exists, the current DB is the "live" original â€” auto-backup it first
     if config.db_pointer_path.is_none() && config.db_auto_backup_path.is_none() {
@@ -558,6 +566,10 @@ fn import_database_with_pointer(
     // Copy the selected source file over the internal DB
     std::fs::copy(&source_path, &internal_db_path)
         .map_err(|e| format!("Failed to import database from {}: {}", source_path, e))?;
+
+    // The imported file may carry an older schema — re-run migrations so the
+    // open connection matches the current code (e.g. the `frozen` column).
+    db_guard.ensure_schema()?;
 
     // Set pointer to the imported source file
     config.db_pointer_path = Some(source_path);
@@ -586,9 +598,11 @@ fn restore_from_auto_backup(
         ));
     }
 
-    let _guard = state.db.lock().unwrap();
+    let db_guard = state.db.lock().unwrap();
     std::fs::copy(source, &internal_db_path)
         .map_err(|e| format!("Failed to restore from auto-backup: {}", e))?;
+
+    let _ = db_guard.ensure_schema(); // never block a restore on migration failure
 
     // Clear pointer after restore (DB is back to its pre-import state)
     let mut updated = config.clone();

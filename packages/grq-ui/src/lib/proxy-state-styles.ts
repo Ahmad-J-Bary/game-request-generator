@@ -12,40 +12,12 @@ type ColorStyle = {
 };
 
 const COLOR_STYLES: Record<string, ColorStyle> = {
-  orange: {
-    badge: 'border-orange-500/50 text-orange-600 bg-orange-50 dark:bg-orange-900/20 dark:text-orange-400',
-    card: 'bg-orange-500/10 border-orange-400/40 dark:bg-orange-500/15 dark:border-orange-400/50',
-    color: 'bg-orange-500',
-    iconColor: 'text-orange-500',
-    light: 'bg-orange-500/10',
-  },
-  blue: {
-    badge: 'border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400',
-    card: 'bg-blue-500/10 border-blue-400/40 dark:bg-blue-500/15 dark:border-blue-400/50',
-    color: 'bg-blue-500',
-    iconColor: 'text-blue-500',
-    light: 'bg-blue-500/10',
-  },
-  red: {
-    badge: 'border-red-500/50 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400',
-    card: 'bg-red-500/10 border-red-400/40 dark:bg-red-500/15 dark:border-red-400/50',
-    color: 'bg-red-500',
-    iconColor: 'text-red-500',
-    light: 'bg-red-500/10',
-  },
-  purple: {
-    badge: 'border-purple-500/50 text-purple-600 bg-purple-50 dark:bg-purple-900/20 dark:text-purple-400',
-    card: 'bg-purple-500/10 border-purple-400/40 dark:bg-purple-500/15 dark:border-purple-400/50',
-    color: 'bg-purple-800',
-    iconColor: 'text-purple-800',
-    light: 'bg-purple-800/10',
-  },
-  teal: {
-    badge: 'border-teal-500/50 text-teal-600 bg-teal-50 dark:bg-teal-900/20 dark:text-teal-400',
-    card: 'bg-teal-500/10 border-teal-400/40 dark:bg-teal-500/15 dark:border-teal-400/50',
-    color: 'bg-teal-500',
-    iconColor: 'text-teal-500',
-    light: 'bg-teal-500/10',
+  pink: {
+    badge: 'border-pink-500/50 text-pink-600 bg-pink-50 dark:bg-pink-900/20 dark:text-pink-400',
+    card: 'bg-pink-500/10 border-pink-400/40 dark:bg-pink-500/15 dark:border-pink-400/50',
+    color: 'bg-pink-500',
+    iconColor: 'text-pink-500',
+    light: 'bg-pink-500/10',
   },
   green: {
     badge: 'border-green-500/50 text-green-600 bg-green-50 dark:bg-green-900/20 dark:text-green-400',
@@ -54,12 +26,12 @@ const COLOR_STYLES: Record<string, ColorStyle> = {
     iconColor: 'text-green-500',
     light: 'bg-green-500/10',
   },
-  pink: {
-    badge: 'border-pink-500/50 text-pink-600 bg-pink-50 dark:bg-pink-900/20 dark:text-pink-400',
-    card: 'bg-pink-500/10 border-pink-400/40 dark:bg-pink-500/15 dark:border-pink-400/50',
-    color: 'bg-pink-500',
-    iconColor: 'text-pink-500',
-    light: 'bg-pink-500/10',
+  blue: {
+    badge: 'border-blue-500/50 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400',
+    card: 'bg-blue-500/10 border-blue-400/40 dark:bg-blue-500/15 dark:border-blue-400/50',
+    color: 'bg-blue-500',
+    iconColor: 'text-blue-500',
+    light: 'bg-blue-500/10',
   },
   yellow: {
     badge: 'border-yellow-500/50 text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20 dark:text-yellow-400',
@@ -67,6 +39,34 @@ const COLOR_STYLES: Record<string, ColorStyle> = {
     color: 'bg-yellow-500',
     iconColor: 'text-yellow-600',
     light: 'bg-yellow-500/10',
+  },
+  teal: {
+    badge: 'border-teal-500/50 text-teal-600 bg-teal-50 dark:bg-teal-900/20 dark:text-teal-400',
+    card: 'bg-teal-500/10 border-teal-400/40 dark:bg-teal-500/15 dark:border-teal-400/50',
+    color: 'bg-teal-500',
+    iconColor: 'text-teal-500',
+    light: 'bg-teal-500/10',
+  },
+  orange: {
+    badge: 'border-orange-500/50 text-orange-600 bg-orange-50 dark:bg-orange-900/20 dark:text-orange-400',
+    card: 'bg-orange-500/10 border-orange-400/40 dark:bg-orange-500/15 dark:border-orange-400/50',
+    color: 'bg-orange-500',
+    iconColor: 'text-orange-500',
+    light: 'bg-orange-500/10',
+  },
+  purple: {
+    badge: 'border-purple-500/50 text-purple-600 bg-purple-50 dark:bg-purple-900/20 dark:text-purple-400',
+    card: 'bg-purple-500/10 border-purple-400/40 dark:bg-purple-500/15 dark:border-purple-400/50',
+    color: 'bg-purple-800',
+    iconColor: 'text-purple-800',
+    light: 'bg-purple-800/10',
+  },
+  red: {
+    badge: 'border-red-500/50 text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400',
+    card: 'bg-red-500/10 border-red-400/40 dark:bg-red-500/15 dark:border-red-400/50',
+    color: 'bg-red-500',
+    iconColor: 'text-red-500',
+    light: 'bg-red-500/10',
   },
   indigo: {
     badge: 'border-indigo-500/50 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-400',
@@ -95,10 +95,10 @@ const DEFAULT_STYLES: ColorStyle = {
 // Map legacy state names to color keys so existing callers (passing
 // account.proxy_state directly) keep their established colors.
 const LEGACY_STATE_COLOR: Record<string, string> = {
-  FLORIDA: 'orange',
-  CALIFORNIA: 'blue',
-  TEXAS: 'red',
-  'New York': 'purple',
+  FLORIDA: 'pink',
+  CALIFORNIA: 'green',
+  TEXAS: 'blue',
+  'New York': 'yellow',
 };
 
 const resolveColorKey = (value?: string): string => {

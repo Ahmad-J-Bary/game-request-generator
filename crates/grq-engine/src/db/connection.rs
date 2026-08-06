@@ -72,6 +72,13 @@ impl Database {
         Ok(())
     }
 
+    /// Run schema creation + incremental migrations only (no VACUUM).
+    /// Idempotent — safe to call after the DB file is replaced at runtime.
+    pub fn ensure_schema(&self) -> Result<(), String> {
+        self.create_tables()
+            .map_err(|e| format!("Failed to ensure schema: {}", e))
+    }
+
     /// المرجع غير المتغير للاتصال
     pub fn get_connection(&self) -> &Connection {
         &self.connection
@@ -506,10 +513,10 @@ impl Database {
             let us_id = tx.last_insert_rowid();
 
             let us_children: [(&str, &str); 4] = [
-                ("FLORIDA", "orange"),
-                ("CALIFORNIA", "blue"),
-                ("TEXAS", "red"),
-                ("New York", "purple"),
+                ("FLORIDA", "pink"),
+                ("CALIFORNIA", "green"),
+                ("TEXAS", "blue"),
+                ("New York", "yellow"),
             ];
             for (i, (name, color)) in us_children.iter().enumerate() {
                 tx.execute(
@@ -852,7 +859,7 @@ fn cleanup_session_levels_filtered(
 
 #[cfg(test)]
 mod tests {
-    use super::{cleanup_branch_session_levels, cleanup_session_levels};
+    use super::{cleanup_branch_session_levels, cleanup_session_levels, Database};
     use rusqlite::{params, Connection};
 
     fn setup_db() -> Connection {
@@ -1117,5 +1124,56 @@ mod tests {
             vec!["session_deleted".to_string()],
             "only the targeted branch deletion is logged"
         );
+    }
+
+    #[test]
+    fn ensure_schema_migrates_legacy_regions_table() {
+        // Regression: a DB replaced at runtime (import/restore) may carry an old
+        // `regions` schema without the `frozen` column. ensure_schema() must add
+        // it so queries like RegionService::list() keep working.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE regions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                parent_id INTEGER,
+                is_primary INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                emoji TEXT,
+                color TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            ",
+        )
+        .unwrap();
+
+        let db = Database { connection: conn };
+
+        // Idempotent: runs once and is safe to run again.
+        db.ensure_schema().unwrap();
+        db.ensure_schema().unwrap();
+
+        let has_frozen: bool = {
+            let mut stmt = db
+                .connection
+                .prepare("PRAGMA table_info(regions)")
+                .unwrap();
+            let cols: Vec<String> = stmt
+                .query_map([], |row| row.get::<_, String>(1))
+                .unwrap()
+                .filter_map(Result::ok)
+                .collect();
+            cols.iter().any(|c| c == "frozen")
+        };
+        assert!(has_frozen, "frozen column must be added by ensure_schema");
+
+        // The exact RegionService::list query must now prepare cleanly.
+        db.connection
+            .prepare(
+                "SELECT id, name, parent_id, is_primary, sort_order, emoji, color, frozen, created_at
+                 FROM regions ORDER BY sort_order, id",
+            )
+            .unwrap();
     }
 }

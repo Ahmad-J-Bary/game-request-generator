@@ -19,7 +19,7 @@ pub struct Region {
 /// each key to concrete Tailwind classes; new regions auto-assign from here in
 /// sort order so user-created regions stay styled.
 pub const REGION_PALETTE: &[&str] = &[
-    "orange", "blue", "red", "purple", "teal", "green", "pink", "yellow", "indigo", "cyan",
+    "pink", "green", "blue", "yellow", "orange", "indigo", "red", "purple", "teal", "cyan",
 ];
 
 #[derive(Debug, Deserialize)]

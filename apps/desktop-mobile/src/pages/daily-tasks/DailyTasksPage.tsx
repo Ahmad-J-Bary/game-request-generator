@@ -1,16 +1,39 @@
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock } from "lucide-react";
+import { PlayCircle, Layers, Flag } from "lucide-react";
 
 import { EmptyState } from "@grq/ui/organisms/daily-tasks/EmptyState";
 import { BatchDisplay } from "@grq/ui/organisms/daily-tasks/BatchDisplay";
-import { TaskItem } from "@grq/ui/organisms/daily-tasks/TaskItem";
 import { useDailyTasks } from "@grq/core/hooks/useDailyTasks";
+import {
+  TASK_LEVEL_ORDER,
+  taskLevel,
+  buildLevelBatches,
+  type TaskLevel,
+} from "@grq/core/utils/task-level.utils";
 import type {
   GameBatch,
   DailyTask,
 } from "@grq/api-bindings/types/daily-tasks.types";
+
+const LEVEL_META: Record<TaskLevel, { icon: typeof PlayCircle; titleKey: string; iconClass: string }> = {
+  first: {
+    icon: PlayCircle,
+    titleKey: "dailyTasks.level1Title",
+    iconClass: "text-emerald-600 dark:text-emerald-400",
+  },
+  middle: {
+    icon: Layers,
+    titleKey: "dailyTasks.level2Title",
+    iconClass: "text-sky-600 dark:text-sky-400",
+  },
+  last: {
+    icon: Flag,
+    titleKey: "dailyTasks.level3Title",
+    iconClass: "text-slate-600 dark:text-slate-400",
+  },
+};
 
 export default function DailyTasksPage() {
   const { t } = useTranslation();
@@ -31,23 +54,42 @@ export default function DailyTasksPage() {
     regionColorMap,
   } = useDailyTasks();
 
-  const { readyBatches, pageDeferredTasks } = useMemo(() => {
-    const rBatches: GameBatch[] = [];
-    const pDeferred: { task: DailyTask; batchIndex: number }[] = [];
+  const { levelSections, hasTasks } = useMemo(() => {
+    const sections: Record<TaskLevel, GameBatch[]> = {
+      first: [],
+      middle: [],
+      last: [],
+    };
 
-    // KEEP ALL ACTIVE BATCHES IN THE READY SECTION
-    // This allows the user to see their progress as tasks stay in place after completion.
-    // The "Deferred" section will be strictly for tasks that were not generated as part of today's initial batches.
+    // Partition ALL displayed tasks (ready + deferred) by level, preserving the
+    // generator's ordering (ready batches first, then the deferred list).
+    const tasksByLevel: Record<TaskLevel, DailyTask[]> = {
+      first: [],
+      middle: [],
+      last: [],
+    };
     batches.forEach((batch) => {
-      rBatches.push(batch);
+      batch.tasks.forEach((task) => {
+        tasksByLevel[taskLevel(task)].push(task);
+      });
     });
-
-    // Also add tasks that were originally deferred by the generator
     hookDeferredTasks.forEach((task) => {
-      pDeferred.push({ task, batchIndex: -1 });
+      tasksByLevel[taskLevel(task)].push(task);
     });
 
-    return { readyBatches: rBatches, pageDeferredTasks: pDeferred };
+    // Rebuild the batch system WITHIN each level using the generator's exact
+    // mechanism (group by region, then by game, one task per game per batch).
+    // Batch numbering continues across levels (global sequential counter), so
+    // the numbering stays continuous as it was in the original batch system.
+    let batchCounter = 0;
+    TASK_LEVEL_ORDER.forEach((level) => {
+      sections[level] = buildLevelBatches(tasksByLevel[level], batchCounter);
+      batchCounter += sections[level].length;
+    });
+
+    const hasTasks = TASK_LEVEL_ORDER.some((level) => sections[level].length > 0);
+
+    return { levelSections: sections, hasTasks };
   }, [batches, hookDeferredTasks]);
 
   // Generate today's tasks on mount and when games change
@@ -89,78 +131,56 @@ export default function DailyTasksPage() {
         </div>
       </div>
 
-      {batches.length === 0 && !loading && !isGenerating && <EmptyState />}
+      {!hasTasks && !loading && !isGenerating && <EmptyState />}
 
       <div className="w-full min-h-[400px]">
         <div className="space-y-12">
-          {/* Ready Batches */}
-          <div className="space-y-6">
-            <AnimatePresence mode="popLayout" initial={false}>
-              {readyBatches.map((batch) => (
-                <motion.div
-                  key={`ready-batch-${batch.batchIndex}-${batch.tasks[0]?.account?.id || "unknown"}`}
-                  layout
-                  transition={{ layout: { duration: 0.2, ease: "easeOut" } }}
-                >
-                  <BatchDisplay
-                    key={`display-batch-${batch.batchIndex}`}
-                    batch={batch}
-                    allBatches={batches}
-                    accountCompletionRecords={accountCompletionRecords}
-                    accountTaskAssignments={accountTaskAssignments}
-                    accountStartStates={accountStartStates}
-                    onCompleteTask={completeTask}
-                    onCopyRequest={copyToClipboard}
-                    completedTasks={completedTasks}
-                    deferredTasks={hookDeferredTasks}
-                    regionColorMap={regionColorMap}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+          {/* Three task levels: Level 1 (n=1) on top, middle (1<n<N), last (n=N) at the bottom */}
+          {TASK_LEVEL_ORDER.map((level) => {
+            const levelBatches = levelSections[level];
+            if (levelBatches.length === 0) {
+              return null;
+            }
 
-          {/* Deferred Tasks Section */}
-          <AnimatePresence mode="popLayout">
-            {pageDeferredTasks.length > 0 && (
-              <motion.div
-                layout
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="space-y-6 pt-8 border-t"
-              >
+            const meta = LEVEL_META[level];
+            const LevelIcon = meta.icon;
+
+            return (
+              <div key={level} className="space-y-6">
                 <div className="flex items-center gap-2 border-b pb-2">
-                  <Clock className="h-5 w-5 text-amber-500" />
-                  <h2 className="text-xl font-semibold">
-                    {t("dailyTasks.deferredTasksTitle", "Deferred Tasks")}
+                  <LevelIcon className={`h-5 w-5 ${meta.iconClass}`} />
+                  <h2 className="text-xl font-semibold leading-tight">
+                    {t(meta.titleKey)}
                   </h2>
                 </div>
 
                 <div className="space-y-6">
-                  {pageDeferredTasks.map(({ task, batchIndex }, idx) => (
-                    <motion.div
-                      key={`deferred-${task.account?.id || "no-acc"}-${task.targetDate}-${batchIndex}-${idx}`}
-                      layout
-                    >
-                      <TaskItem
-                        task={task}
-                        batchIndex={batchIndex}
-                        allBatches={batches}
-                        accountCompletionRecords={accountCompletionRecords}
-                        accountStartStates={accountStartStates}
-                        accountTaskAssignments={accountTaskAssignments}
-                        onCompleteTask={completeTask}
-                        onCopyRequest={copyToClipboard}
-                        completedTasks={completedTasks}
-                        deferredTasks={hookDeferredTasks}
-                        regionColorMap={regionColorMap}
-                      />
-                    </motion.div>
-                  ))}
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    {levelBatches.map((batch) => (
+                      <motion.div
+                        key={`${level}-batch-${batch.batchIndex}`}
+                        layout
+                        transition={{ layout: { duration: 0.2, ease: "easeOut" } }}
+                      >
+                        <BatchDisplay
+                          batch={batch}
+                          allBatches={batches}
+                          accountCompletionRecords={accountCompletionRecords}
+                          accountTaskAssignments={accountTaskAssignments}
+                          accountStartStates={accountStartStates}
+                          onCompleteTask={completeTask}
+                          onCopyRequest={copyToClipboard}
+                          completedTasks={completedTasks}
+                          deferredTasks={hookDeferredTasks}
+                          regionColorMap={regionColorMap}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

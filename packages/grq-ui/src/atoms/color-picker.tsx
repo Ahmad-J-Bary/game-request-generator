@@ -17,12 +17,12 @@ interface ColorPickerProps {
 }
 
 const LIGHT_PRESET_COLORS = [
-  { name: 'Light Blue', value: 'rgb(219, 234, 254)' },
+  { name: 'Light Pink', value: 'rgb(252, 231, 243)' },
   { name: 'Light Green', value: 'rgb(220, 252, 231)' },
+  { name: 'Light Blue', value: 'rgb(219, 234, 254)' },
   { name: 'Light Yellow', value: 'rgb(254, 249, 195)' },
   { name: 'Light Red', value: 'rgb(254, 226, 226)' },
   { name: 'Light Purple', value: 'rgb(243, 232, 255)' },
-  { name: 'Light Pink', value: 'rgb(252, 231, 243)' },
   { name: 'Light Orange', value: 'rgb(255, 237, 213)' },
   { name: 'Light Gray', value: 'rgb(243, 244, 246)' },
   { name: 'White', value: 'rgb(255, 255, 255)' },

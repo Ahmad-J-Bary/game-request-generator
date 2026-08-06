@@ -10,6 +10,7 @@ import { TaskItemProps } from '@grq/api-bindings/types/daily-tasks.types';
 import { useTimer } from '@grq/core/hooks/useTimer';
 import { cn } from '@grq/ui/lib/utils';
 import { proxyStateBadgeClass, proxyStateCardClass } from '@grq/ui/lib/proxy-state-styles';
+import { taskLevelOf } from '@grq/core/utils/task-level.utils';
 
 interface TaskRequestListProps {
   task: TaskItemProps['task'];
@@ -166,12 +167,13 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
   // account's region color. Applied to the card that wraps the requests.
   const taskPosition = task.requests[0]?.day_index ?? accountTaskMeta.accountTaskIndex;
   const taskTotal = task.dayTotalTasks ?? accountTaskMeta.accountTaskTotal;
+  const taskLevel = taskLevelOf(taskPosition, taskTotal);
 
   const containerCardClass = () => {
-    if (taskPosition === 1) {
+    if (taskLevel === 'first') {
       return "bg-white/70 dark:bg-white/10 border-white/40 dark:border-white/15 shadow-[0_0_24px_rgba(255,255,255,0.12)]";
     }
-    if (taskPosition === taskTotal && taskTotal > 1) {
+    if (taskLevel === 'last') {
       return "bg-black/15 dark:bg-white/5 border-black/25 dark:border-white/10";
     }
     return proxyStateCardClass(effectiveRegionColor);
