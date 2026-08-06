@@ -28,7 +28,7 @@ use grq_engine::models::purchase_event::{
     CreatePurchaseEventRequest, PurchaseEvent, UpdatePurchaseEventRequest,
 };
 use grq_engine::models::region::{
-    CreateRegionRequest, Region, UpdateRegionRequest,
+    CreateRegionRequest, DeleteRegionRequest, Region, UpdateRegionRequest,
 };
 
 use grq_engine::services::account_service::{AccountService, CompletedAccount};
@@ -928,6 +928,17 @@ fn delete_region(state: tauri::State<AppState>, id: i64) -> Result<bool, String>
     let conn = db_guard.get_connection();
     let service = RegionService::new();
     service.delete(conn, id)
+}
+
+#[tauri::command]
+fn delete_region_with_redistribution(
+    state: tauri::State<AppState>,
+    request: DeleteRegionRequest,
+) -> Result<bool, String> {
+    let db_guard = state.db.lock().unwrap();
+    let conn = db_guard.get_connection();
+    let service = RegionService::new();
+    service.delete_with_redistribution(conn, request)
 }
 
 #[tauri::command]
@@ -1874,6 +1885,7 @@ pub fn run() {
             add_region,
             update_region,
             delete_region,
+            delete_region_with_redistribution,
             reorder_regions,
             get_config_version,
             run_legacy_config_cleanup_once,

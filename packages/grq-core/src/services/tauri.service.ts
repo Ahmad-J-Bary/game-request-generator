@@ -38,6 +38,7 @@ import type {
     GetAllDailyStatsResponse,
   Region,
   CreateRegionRequest,
+  DeleteRegionRequest,
   UpdateRegionRequest,
 } from "@grq/api-bindings";
 
@@ -144,6 +145,12 @@ export class TauriService {
 
   static async deleteRegion(id: number): Promise<boolean> {
     return await invoke<boolean>("delete_region", { id });
+  }
+
+  static async deleteRegionWithRedistribution(
+    request: DeleteRegionRequest,
+  ): Promise<boolean> {
+    return await invoke<boolean>("delete_region_with_redistribution", { request });
   }
 
   static async reorderRegions(

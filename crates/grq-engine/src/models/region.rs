@@ -40,3 +40,12 @@ pub struct UpdateRegionRequest {
     pub sort_order: Option<i64>,
     pub frozen: Option<bool>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteRegionRequest {
+    pub id: i64,
+    /// "single" moves every affected account to `target_id`; "rotate"
+    /// redistributes them round-robin across the remaining sub-regions.
+    pub mode: String,
+    pub target_id: Option<i64>,
+}

@@ -27,6 +27,12 @@ export interface UpdateRegionRequest {
   frozen?: boolean;
 }
 
+export interface DeleteRegionRequest {
+  id: number;
+  mode: 'single' | 'rotate';
+  target_id?: number | null;
+}
+
 export const REGION_PALETTE = [
   'orange',
   'blue',

@@ -649,7 +649,18 @@
       "colorUsed": "مُستخدم بالفعل من منطقة أخرى",
       "freeze": "تجميد المنطقة",
       "unfreeze": "إلغاء التجميد",
-      "frozen": "مجمّدة"
+      "frozen": "مجمّدة",
+      "deleteHasAccounts": "تحتوي {{name}} على {{count}} حساب. اختر طريقة إعادة توزيعها قبل الحذف.",
+      "deleteRedistributeTitle": "حذف {{name}}",
+      "redistributeSingle": "نقل جميع الحسابات إلى منطقة واحدة",
+      "redistributeSingleHint": "اختر منطقة فرعية واحدة لاستلام جميع الحسابات.",
+      "redistributeRotate": "توزيع دوراني",
+      "redistributeRotateHint": "يتم توزيع الحسابات بالتناوب على المناطق الفرعية المتبقية حسب كل باتش.",
+      "redistributeTarget": "المنطقة المستهدفة",
+      "redistributeTargetPlaceholder": "اختر منطقة فرعية",
+      "redistributeConfirm": "حذف وإعادة توزيع",
+      "deleteTargetRequired": "يرجى اختيار منطقة مستهدفة.",
+      "deleteNoTargets": "لا توجد مناطق فرعية مؤهلة لنقل الحسابات إليها."
     }
   },
   "theme": {

@@ -138,5 +138,9 @@ export interface TaskItemProps {
     completedTasks: CompletedDailyTask[];
     deferredTasks?: DailyTask[];
     disableAnimation?: boolean;
+    /** Region name -> color, so the badge/card color matches the region's
+     * configured color. Falls back to the legacy/palette resolver when a
+     * region is absent. */
+    regionColorMap?: Record<string, string>;
 }
 

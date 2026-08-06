@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TauriService } from '@grq/core/services/tauri.service';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { TaskGenerator } from '@grq/core/utils/taskGenerator';
 import { TaskCompletionHandler } from '@grq/core/utils/taskCompletion';
 import { RequestProcessor } from '@grq/core/services/tauri.service';
-import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment } from '@grq/api-bindings';
+import type { GameBatch, DailyTask, AccountCompletionRecord, AccountStartState, AccountTaskAssignment, Region } from '@grq/api-bindings';
 
 import { asyncStorageService } from '@grq/core/services/storage.service';
 
@@ -28,6 +28,10 @@ export interface UseDailyTasksReturn {
   completeTask: (accountId: number, requestIndex: number, batchIndex: number, task: DailyTask) => Promise<void>;
   copyToClipboard: (content: string, eventToken?: string, timeSpent?: number) => void;
 
+  // Region name -> color map, so Daily Tasks badges/cards match the region
+  // color configured in Settings -> Regions (default + custom regions).
+  regionColorMap: Record<string, string>;
+
   // Utilities
   refreshGames: () => Promise<void>;
 }
@@ -45,7 +49,20 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
   const [accountTaskAssignments, setAccountTaskAssignments] = useState<{ [accountId: number]: AccountTaskAssignment[] }>({});
   const [accountStartStates, setAccountStartStates] = useState<{ [accountId: number]: AccountStartState }>({});
   const [completedTasks, setCompletedTasks] = useState<any[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
   const [regenerationTrigger, setRegenerationTrigger] = useState(0);
+
+  // Region name -> color for badge/card styling. Sub-regions carry a color;
+  // a missing entry falls back to the legacy/palette resolver at render time.
+  const regionColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    regions.forEach((r) => {
+      if (r.color && r.parent_id != null) {
+        map[r.name] = r.color;
+      }
+    });
+    return map;
+  }, [regions]);
 
   // Listen for completed tasks event to refresh
   useEffect(() => {
@@ -146,6 +163,13 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
       const history = await TauriService.getTaskHistory(100); // Load last 100 tasks for the daily view
       if (mounted) {
         setCompletedTasks(history);
+      }
+      
+      // Load regions so Daily Tasks badges/cards use the configured region
+      // color (default + custom regions), not a hard-coded fallback.
+      const regionList = await TauriService.getRegions();
+      if (mounted) {
+        setRegions(regionList);
       }
       
       // We no longer load batches from storage to ensure fresh random numbers on every entry.
@@ -312,5 +336,8 @@ export const useDailyTasks = (): UseDailyTasksReturn => {
 
     // Utilities
     refreshGames,
+
+    // Region name -> color map for badge/card styling
+    regionColorMap,
   };
 };

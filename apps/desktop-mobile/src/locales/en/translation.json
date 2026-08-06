@@ -648,7 +648,18 @@
       "colorUsed": "Already used by another region",
       "freeze": "Freeze region",
       "unfreeze": "Unfreeze region",
-      "frozen": "Frozen"
+      "frozen": "Frozen",
+      "deleteHasAccounts": "{{name}} has {{count}} account(s). Choose how to redistribute them before deleting.",
+      "deleteRedistributeTitle": "Delete {{name}}",
+      "redistributeSingle": "Move all accounts to one region",
+      "redistributeSingleHint": "Choose a single target sub-region to receive all the accounts.",
+      "redistributeRotate": "Distribute rotationally",
+      "redistributeRotateHint": "Accounts are spread round-robin across remaining sub-regions by batch.",
+      "redistributeTarget": "Target region",
+      "redistributeTargetPlaceholder": "Select a target sub-region",
+      "redistributeConfirm": "Delete & redistribute",
+      "deleteTargetRequired": "Please select a target region.",
+      "deleteNoTargets": "No eligible sub-regions to move accounts to."
     }
   },
   "theme": {

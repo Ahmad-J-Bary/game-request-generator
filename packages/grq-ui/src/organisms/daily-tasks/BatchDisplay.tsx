@@ -14,6 +14,7 @@ interface BatchDisplayProps {
   completedTasks?: any[];
   deferredTasks?: DailyTask[];
   enableVirtualization?: boolean;
+  regionColorMap?: Record<string, string>;
 }
 
 export const BatchDisplay = React.memo(({
@@ -27,6 +28,7 @@ export const BatchDisplay = React.memo(({
   completedTasks = [],
   deferredTasks = [],
   enableVirtualization = false,
+  regionColorMap = {},
 }: BatchDisplayProps) => {
   return (
     <div key={`ready-batch-${batch.batchIndex}`}>
@@ -49,6 +51,7 @@ export const BatchDisplay = React.memo(({
         completedTasks={completedTasks}
         deferredTasks={deferredTasks}
         enableVirtualization={enableVirtualization}
+        regionColorMap={regionColorMap}
       />
     </div>
   );

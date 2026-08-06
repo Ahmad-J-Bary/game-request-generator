@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MapPin, Plus, Pencil, Trash2, ChevronUp, ChevronDown, Globe,
-  Loader2, X, Users, ArrowUpDown, Snowflake,
+  Loader2, X, Users, ArrowUpDown, Snowflake, Shuffle, MoveRight,
 } from 'lucide-react';
 import { Button } from '@grq/ui/atoms/button';
 import { Input } from '@grq/ui/atoms/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@grq/ui/atoms/card';
 import { Badge } from '@grq/ui/atoms/badge';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@grq/ui/atoms/select';
 import { cn } from '@grq/ui/lib/utils';
 import { toast } from 'sonner';
 import { TauriService } from '@grq/core/services/tauri.service';
@@ -76,6 +79,13 @@ export function RegionsSettingsPanel() {
   const [editName, setEditName] = useState('');
   const [editEmoji, setEditEmoji] = useState('');
   const [editColor, setEditColor] = useState<string | null>(null);
+
+  // Delete with redistribution flow
+  const [deleting, setDeleting] = useState<{
+    region: Region;
+    mode: 'single' | 'rotate';
+    targetId: number | null;
+  } | null>(null);
 
   useEffect(() => {
     load();
@@ -170,14 +180,26 @@ export function RegionsSettingsPanel() {
       toast.error(t('settings.regions.nameRequired'));
       return;
     }
+    // Only send the fields that actually changed, so a plain rename never
+    // touches emoji/color and never re-validates an unchanged color.
+    const payload: {
+      id: number;
+      name?: string;
+      emoji?: string | null;
+      color?: string | null;
+    } = { id: editing.id };
+    if (name !== editing.name) payload.name = name;
+    const emoji = editEmoji.trim() || null;
+    if (emoji !== (editing.emoji || null)) payload.emoji = emoji;
+    if (!editing.is_primary) {
+      const color = editColor;
+      if (color !== (editing.color || null)) payload.color = color;
+    }
+    if (Object.keys(payload).length <= 1) return; // nothing changed
+
     setBusy(true);
     try {
-      await TauriService.updateRegion({
-        id: editing.id,
-        name,
-        emoji: editEmoji.trim() || null,
-        color: editing.is_primary ? null : editColor,
-      });
+      await TauriService.updateRegion(payload);
       toast.success(t('common.success'));
       setEditing(null);
       await load();
@@ -203,15 +225,55 @@ export function RegionsSettingsPanel() {
     }
   };
 
-  const handleDelete = async (region: Region) => {
-    if (!window.confirm(t('settings.regions.deleteConfirm', { name: region.name }))) return;
+  const handleDelete = (region: Region) => {
+    const count = accountCount(region.name);
+    if (count === 0) {
+      if (!window.confirm(t('settings.regions.deleteConfirm', { name: region.name }))) return;
+      setBusy(true);
+      TauriService.deleteRegion(region.id)
+        .then(() => {
+          toast.success(t('common.success'));
+          return load();
+        })
+        .catch((error: unknown) => {
+          console.error('Delete region failed:', error);
+          toast.error(String(error));
+        })
+        .finally(() => setBusy(false));
+      return;
+    }
+    setDeleting({ region, mode: 'single', targetId: null });
+  };
+
+  const eligibleTargets = (region: Region) =>
+    region.parent_id == null
+      ? []
+      : regions.filter(
+          (r) =>
+            r.parent_id === region.parent_id &&
+            r.id !== region.id &&
+            !r.frozen,
+        );
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    const { region, mode, targetId } = deleting;
+    if (mode === 'single' && !targetId) {
+      toast.error(t('settings.regions.deleteTargetRequired'));
+      return;
+    }
     setBusy(true);
     try {
-      await TauriService.deleteRegion(region.id);
+      await TauriService.deleteRegionWithRedistribution({
+        id: region.id,
+        mode,
+        target_id: mode === 'single' ? targetId : null,
+      });
       toast.success(t('common.success'));
+      setDeleting(null);
       await load();
     } catch (error: unknown) {
-      console.error('Delete region failed:', error);
+      console.error('Delete region with redistribution failed:', error);
       toast.error(String(error));
     } finally {
       setBusy(false);
@@ -509,7 +571,7 @@ export function RegionsSettingsPanel() {
                 />
               </div>
               {!editing.is_primary && (
-                <Swatches selected={editColor} onSelect={setEditColor} disabled={usedColors(editing?.id)} />
+                <Swatches selected={editColor} onSelect={setEditColor} disabled={usedColors(editing.id)} />
               )}
               <div className="flex gap-2 pt-1">
                 <Button className="flex-1 rounded-xl font-bold" onClick={handleSaveEdit} disabled={busy}>
@@ -520,6 +582,125 @@ export function RegionsSettingsPanel() {
                   {t('common.cancel')}
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete with redistribution dialog */}
+      {deleting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-background border shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-destructive" />
+                <h3 className="font-bold text-sm">
+                  {t('settings.regions.deleteRedistributeTitle', {
+                    name: deleting.region.name,
+                  })}
+                </h3>
+              </div>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleting(null)} disabled={busy}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="text-xs text-muted-foreground">
+              {t('settings.regions.deleteHasAccounts', {
+                name: deleting.region.name,
+                count: accountCount(deleting.region.name),
+              })}
+            </div>
+
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleting({ ...deleting, mode: 'single' })}
+                className={cn(
+                  'flex items-start gap-2 rounded-xl border p-3 text-left transition-all',
+                  deleting.mode === 'single'
+                    ? 'border-violet-500/60 bg-violet-500/10'
+                    : 'border-border/60 hover:border-violet-500/30',
+                )}
+              >
+                <MoveRight className="h-4 w-4 text-violet-500 mt-0.5 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-xs font-bold">
+                    {t('settings.regions.redistributeSingle')}
+                  </span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {t('settings.regions.redistributeSingleHint')}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleting({ ...deleting, mode: 'rotate' })}
+                className={cn(
+                  'flex items-start gap-2 rounded-xl border p-3 text-left transition-all',
+                  deleting.mode === 'rotate'
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border/40 hover:border-primary/30',
+                )}
+              >
+                <Shuffle className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-xs font-bold">
+                    {t('settings.regions.redistributeRotate')}
+                  </span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {t('settings.regions.redistributeRotateHint')}
+                  </span>
+                </span>
+              </button>
+            </div>
+
+            {deleting.mode === 'single' && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  {t('settings.regions.redistributeTarget')}
+                </label>
+                <Select
+                  value={deleting.targetId == null ? undefined : String(deleting.targetId)}
+                  onValueChange={(v) =>
+                    setDeleting({ ...deleting, targetId: Number(v) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('settings.regions.redistributeTargetPlaceholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eligibleTargets(deleting.region).map((target) => (
+                      <SelectItem key={target.id} value={String(target.id)}>
+                        <span className="flex items-center gap-2">
+                          {regionDot(target)}
+                          {target.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {eligibleTargets(deleting.region).length === 0 && (
+                  <p className="text-[11px] text-destructive">
+                    {t('settings.regions.deleteNoTargets')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                variant="destructive"
+                className="flex-1 rounded-xl font-bold"
+                onClick={confirmDelete}
+                disabled={busy || (deleting.mode === 'single' && !deleting.targetId)}
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin ltr:mr-2 rtl:ml-2" /> : <Trash2 className="h-4 w-4 ltr:mr-2 rtl:ml-2" />}
+                {t('common.delete')}
+              </Button>
+              <Button variant="outline" className="rounded-xl" onClick={() => setDeleting(null)} disabled={busy}>
+                {t('common.cancel')}
+              </Button>
             </div>
           </div>
         </div>

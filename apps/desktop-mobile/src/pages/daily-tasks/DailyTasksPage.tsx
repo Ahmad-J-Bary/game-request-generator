@@ -28,6 +28,7 @@ export default function DailyTasksPage() {
     completeTask,
     copyToClipboard,
     completedTasks,
+    regionColorMap,
   } = useDailyTasks();
 
   const { readyBatches, pageDeferredTasks } = useMemo(() => {
@@ -112,6 +113,7 @@ export default function DailyTasksPage() {
                     onCopyRequest={copyToClipboard}
                     completedTasks={completedTasks}
                     deferredTasks={hookDeferredTasks}
+                    regionColorMap={regionColorMap}
                   />
                 </motion.div>
               ))}
@@ -151,6 +153,7 @@ export default function DailyTasksPage() {
                         onCopyRequest={copyToClipboard}
                         completedTasks={completedTasks}
                         deferredTasks={hookDeferredTasks}
+                        regionColorMap={regionColorMap}
                       />
                     </motion.div>
                   ))}

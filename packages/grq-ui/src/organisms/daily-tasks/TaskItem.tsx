@@ -51,12 +51,17 @@ const TaskRequestList = React.memo(({
   );
 });
 
-export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks, deferredTasks = [], disableAnimation = false }: TaskItemProps) => {
+export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accountCompletionRecords, accountTaskAssignments: _accountTaskAssignments, accountStartStates, batchIndex, allBatches, completedTasks, deferredTasks = [], disableAnimation = false, regionColorMap = {} }: TaskItemProps) => {
   const { t } = useTranslation();
   const currentTime = useTimer(1000);
 
   const accountId = task.account.id;
   const completionRecord = accountCompletionRecords[accountId];
+
+  // Resolve the effective region color for badge/card styling: prefer the
+  // region configured color (matching Settings -> Regions), else fall back to
+  // the account's proxy_state so legacy/palette lookups still apply.
+  const effectiveRegionColor = regionColorMap[task.account.proxy_state ?? ''] ?? task.account.proxy_state;
 
   // Task family derived from request types: 'purchase' | 'session' | 'level'.
   const taskType = useMemo(() => {
@@ -169,7 +174,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
     if (taskPosition === taskTotal && taskTotal > 1) {
       return "bg-black/15 dark:bg-white/5 border-black/25 dark:border-white/10";
     }
-    return proxyStateCardClass(task.account.proxy_state);
+    return proxyStateCardClass(effectiveRegionColor);
   };
 
   const card = (
@@ -209,7 +214,7 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
                   {task.account.proxy_state && (
                     <Badge variant="outline" className={cn(
                       "text-[10px] font-bold uppercase tracking-wider px-2 py-0 border-2",
-                      proxyStateBadgeClass(task.account.proxy_state),
+                      proxyStateBadgeClass(effectiveRegionColor),
                     )}>
                       {task.account.proxy_state}
                     </Badge>

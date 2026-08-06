@@ -15,6 +15,7 @@ interface BatchTasksProps {
   completedTasks: any[];
   deferredTasks?: DailyTask[];
   enableVirtualization?: boolean;
+  regionColorMap?: Record<string, string>;
 }
 
 const TaskItemWrapper = React.memo(({ task, batchIndex, ...rest }: {
@@ -28,6 +29,7 @@ const TaskItemWrapper = React.memo(({ task, batchIndex, ...rest }: {
   allBatches: BatchTasksProps['allBatches'];
   completedTasks: BatchTasksProps['completedTasks'];
   deferredTasks: BatchTasksProps['deferredTasks'];
+  regionColorMap: BatchTasksProps['regionColorMap'];
 }) => (
   <TaskItem
     task={task}
@@ -40,6 +42,7 @@ const TaskItemWrapper = React.memo(({ task, batchIndex, ...rest }: {
     allBatches={rest.allBatches}
     completedTasks={rest.completedTasks}
     deferredTasks={rest.deferredTasks}
+    regionColorMap={rest.regionColorMap}
     disableAnimation
   />
 ));
@@ -55,6 +58,7 @@ export const BatchTasks = React.memo(({
   completedTasks,
   deferredTasks = [],
   enableVirtualization = false,
+  regionColorMap = {},
 }: BatchTasksProps) => {
   const itemProps = {
     onCompleteTask,
@@ -65,6 +69,7 @@ export const BatchTasks = React.memo(({
     allBatches,
     completedTasks,
     deferredTasks,
+    regionColorMap,
   };
 
   return (
