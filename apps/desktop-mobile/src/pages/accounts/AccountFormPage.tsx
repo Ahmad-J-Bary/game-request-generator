@@ -368,6 +368,13 @@ export default function AccountFormPage() {
     return () => { active = false; };
   }, []);
 
+  // Auto-select the sole owner (or clear) when there are fewer than 2 owners so
+  // the Owner field can stay hidden.
+  useEffect(() => {
+    if (owners.length === 1) setOwner(owners[0].name);
+    else if (owners.length === 0) setOwner('');
+  }, [owners]);
+
   // Region selection (country = primary region, sub-region = the target state)
   const [regions, setRegions] = useState<Region[]>([]);
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
@@ -820,24 +827,23 @@ export default function AccountFormPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="owner">{t('accounts.owner', 'Owner')}</Label>
-              <Select value={owner} onValueChange={(val) => setOwner(val === 'none' ? '' : val)}>
-                <SelectTrigger id="owner" dir={i18n.dir()} className={isRtl ? "text-right [&>span]:text-right" : "text-left [&>span]:text-left"}>
-                  <SelectValue placeholder={t('accounts.selectOwner', 'Select owner (optional)')} />
-                </SelectTrigger>
-                <SelectContent dir={i18n.dir()}>
-                  <SelectItem value="none" className={isRtl ? "text-right" : "text-left"}>
-                    {t('accounts.noOwner', 'No owner')}
-                  </SelectItem>
-                  {owners.map((o) => (
-                    <SelectItem key={o.id} value={o.name} className={isRtl ? "text-right" : "text-left"}>
-                      {o.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {owners.length >= 2 && (
+              <div className="space-y-2">
+                <Label htmlFor="owner">{t('accounts.owner', 'Owner')}</Label>
+                <Select value={owner} onValueChange={setOwner}>
+                  <SelectTrigger id="owner" dir={i18n.dir()} className={isRtl ? "text-right [&>span]:text-right" : "text-left [&>span]:text-left"}>
+                    <SelectValue placeholder={t('accounts.selectOwner', 'Select owner (optional)')} />
+                  </SelectTrigger>
+                  <SelectContent dir={i18n.dir()}>
+                    {owners.map((o) => (
+                      <SelectItem key={o.id} value={o.name} className={isRtl ? "text-right" : "text-left"}>
+                        {o.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="template">{t('accounts.requestTemplate')}</Label>

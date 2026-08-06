@@ -371,7 +371,7 @@ export default function Dashboard() {
       </div>
 
       {/* --- KPI STATS --- */}
-      <div className={`grid gap-4 md:grid-cols-2 ${owners.length > 0 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
+      <div className={`grid gap-4 md:grid-cols-2 ${owners.length > 1 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
         {((): Array<{
           label: string;
           val: number;
@@ -381,26 +381,40 @@ export default function Dashboard() {
           percent?: number;
           progressNote?: string;
           content?: ReactNode;
+          custom?: ReactNode;
         }> => [
-          ...(owners.length > 0 ? [{
+          ...(owners.length > 1 ? [{
             label: t('dashboard.owners'),
             val: owners.length,
             icon: Users,
             color: 'text-sky-500',
-            content: (
-              <div className="relative z-10 mt-2">
-                <Select value={selectedOwner || 'none'} onValueChange={(val) => setSelectedOwner(val === 'none' ? '' : val)}>
-                  <SelectTrigger dir={i18n.dir()} className="h-8 w-full rounded-lg text-xs">
-                    <SelectValue placeholder={t('dashboard.selectOwner')} />
-                  </SelectTrigger>
-                  <SelectContent dir={i18n.dir()}>
-                    <SelectItem value="none">{t('dashboard.allOwners')}</SelectItem>
-                    {owners.map((o) => (
-                      <SelectItem key={o.id} value={o.name}>{o.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            custom: (
+              <>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 px-4 pt-3.5">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-lg font-black">{owners.length}</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      {t('dashboard.owners')}
+                    </span>
+                  </div>
+                  <Users className="h-4.5 w-4.5 text-sky-500 group-hover:scale-110 transition-transform" />
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  <div className="relative z-10 mt-1">
+                    <Select value={selectedOwner || 'none'} onValueChange={(val) => setSelectedOwner(val === 'none' ? '' : val)}>
+                      <SelectTrigger dir={i18n.dir()} className="h-8 w-full rounded-lg text-xs">
+                        <SelectValue placeholder={t('dashboard.selectOwner')} />
+                      </SelectTrigger>
+                      <SelectContent dir={i18n.dir()}>
+                        <SelectItem value="none">{t('dashboard.allOwners')}</SelectItem>
+                        {owners.map((o) => (
+                          <SelectItem key={o.id} value={o.name}>{o.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </>
             ),
           }] : []),
           { label: t('dashboard.totalGames'), val: selectedOwner ? new Set(filteredAccounts.map((a) => a.game_id)).size : games.length, icon: Gamepad2, color: 'text-blue-500', desc: t('dashboard.managedTitles') },
@@ -410,35 +424,39 @@ export default function Dashboard() {
         ])().map((stat, i) => (
           <Card key={i} className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/60 backdrop-blur-sm shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg">
             <div className={`absolute top-0 left-0 w-1 h-full bg-gradient-to-b ${stat.color.replace('text', 'from').replace('-500', '-600')} to-transparent opacity-50`} />
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 px-4 pt-3.5">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                {stat.label}
-              </CardTitle>
-              <stat.icon className={`h-4.5 w-4.5 ${stat.color} group-hover:scale-110 transition-transform`} />
-            </CardHeader>
-            <CardContent className="px-4 pb-4">
-              {typeof stat.percent === 'number' ? (
-                <>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-2xl font-black">{stat.val}</div>
-                    <p className="text-[11px] text-muted-foreground font-medium text-right">
-                      {stat.progressNote}
-                    </p>
-                  </div>
-                  <Progress value={stat.percent} className="h-1.5 mt-1.5" indicatorClassName="bg-orange-500" />
-                </>
-              ) : (
-                <>
-                  <div className="text-2xl font-black">{stat.val}</div>
-                  {stat.content}
-                  {stat.desc && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5 font-medium">
-                      {stat.desc}
-                    </p>
+            {stat.custom ?? (
+              <>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 px-4 pt-3.5">
+                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    {stat.label}
+                  </CardTitle>
+                  <stat.icon className={`h-4.5 w-4.5 ${stat.color} group-hover:scale-110 transition-transform`} />
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  {typeof stat.percent === 'number' ? (
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-2xl font-black">{stat.val}</div>
+                        <p className="text-[11px] text-muted-foreground font-medium text-right">
+                          {stat.progressNote}
+                        </p>
+                      </div>
+                      <Progress value={stat.percent} className="h-1.5 mt-1.5" indicatorClassName="bg-orange-500" />
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-2xl font-black">{stat.val}</div>
+                      {stat.content}
+                      {stat.desc && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5 font-medium">
+                          {stat.desc}
+                        </p>
+                      )}
+                    </>
                   )}
-                </>
-              )}
-            </CardContent>
+                </CardContent>
+              </>
+            )}
           </Card>
         ))}
       </div>

@@ -68,6 +68,13 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
   const [owner, setOwner] = useState('');
   const [owners, setOwners] = useState<Owner[]>([]);
 
+  // Auto-select the sole owner (or clear) when there are fewer than 2 owners so
+  // the Owner field can stay hidden.
+  useEffect(() => {
+    if (owners.length === 1) setOwner(owners[0].name);
+    else if (owners.length === 0) setOwner('');
+  }, [owners]);
+
   const isTelegramReady = (config: TelegramConfig) => {
     return Boolean(config.enabled && config.bot_token?.trim() && config.chat_id?.trim());
   };
@@ -661,29 +668,28 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                   </div>
 
                   {/* Owner */}
-                  <div className="space-y-2.5">
-                    <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
-                      <User className="h-3.5 w-3.5" /> {t('accounts.owner', 'Owner')}
-                    </label>
-                    <Select
-                      value={owner}
-                      onValueChange={(val) => setOwner(val === 'none' ? '' : val)}
-                    >
-                      <SelectTrigger className="rounded-xl bg-background border-border/40">
-                        <SelectValue placeholder={t('accounts.selectOwner', 'Select owner (optional)')} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">
-                          {t('accounts.noOwner', 'No owner')}
-                        </SelectItem>
-                        {owners.map((o) => (
-                          <SelectItem key={o.id} value={o.name}>
-                            {o.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {owners.length >= 2 && (
+                    <div className="space-y-2.5">
+                      <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5" /> {t('accounts.owner', 'Owner')}
+                      </label>
+                      <Select
+                        value={owner}
+                        onValueChange={setOwner}
+                      >
+                        <SelectTrigger className="rounded-xl bg-background border-border/40">
+                          <SelectValue placeholder={t('accounts.selectOwner', 'Select owner (optional)')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {owners.map((o) => (
+                            <SelectItem key={o.id} value={o.name}>
+                              {o.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   {/* Region Selection */}
                   {primaries.length > 0 && (
