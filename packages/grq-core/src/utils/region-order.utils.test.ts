@@ -20,16 +20,13 @@ describe('buildRegionProcessingOrder', () => {
       region({ id: 3, name: 'CALIFORNIA', parent_id: 1, sort_order: 2 }),
       region({ id: 4, name: 'TEXAS', parent_id: 1, sort_order: 3 }),
       region({ id: 5, name: 'New York', parent_id: 1, sort_order: 4 }),
-      region({ id: 6, name: 'UNITED KINGDOM (UK)', sort_order: 5 }),
-      region({ id: 7, name: 'UK', parent_id: 6, sort_order: 6 }),
     ];
     const order = buildRegionProcessingOrder(regions, [
       'New York',
       'FLORIDA',
-      'UK',
       'TEXAS',
     ]);
-    assert.deepStrictEqual(order, ['FLORIDA', 'TEXAS', 'New York', 'UK']);
+    assert.deepStrictEqual(order, ['FLORIDA', 'TEXAS', 'New York']);
   });
 
   it('appends leftover keys (not mapped to a region) at the end', () => {

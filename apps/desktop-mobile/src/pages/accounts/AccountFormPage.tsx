@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Calendar, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Clock, RefreshCw } from 'lucide-react';
 import { useAccounts } from '@grq/core/hooks/useAccounts';
 import { Button } from '@grq/ui/atoms/button';
 import { Input } from '@grq/ui/atoms/input';
@@ -12,8 +12,9 @@ import { Textarea } from '@grq/ui/atoms/textarea';
 import { Card, CardContent } from '@grq/ui/atoms/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 import { BackButton } from '@grq/ui/molecules/BackButton';
-import { CreateAccountRequest, UpdateAccountRequest, GameBranch, AccountBranchTransferResult } from '@grq/api-bindings';
+import { CreateAccountRequest, UpdateAccountRequest, GameBranch, AccountBranchTransferResult, Region, Account } from '@grq/api-bindings';
 import { NotificationService } from '@grq/core/utils/notifications';
+import { TauriService } from '@grq/core/services/tauri.service';
 import { useGames } from '@grq/core/hooks/useGames';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@grq/ui/atoms/select';
 import { BranchTransferDialog } from '@grq/ui/organisms/BranchTransferDialog';
@@ -354,6 +355,112 @@ export default function AccountFormPage() {
   const [startTime, setStartTime] = useState(account?.start_time || (isEditMode ? '' : getDefaultStartTime()));
   const [requestTemplate, setRequestTemplate] = useState(account?.request_template || '');
   const [loading, setLoading] = useState(false);
+
+  // Region selection (country = primary region, sub-region = the target state)
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
+  const [selectedPrimaryId, setSelectedPrimaryId] = useState<number | null>(null);
+  const [suggestedSub, setSuggestedSub] = useState('');
+  const [selectedSub, setSelectedSub] = useState('');
+
+  // Mirror the backend create_account auto-assignment so the sub-region
+  // selector can show the rotating region for the next account of a game.
+  const computeSuggestedSubRegion = (gameId: number): string => {
+    const subRegionNames = [...regions]
+      .filter((r) => r.parent_id != null)
+      .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+      .map((r) => r.name);
+    const subRegions = subRegionNames.length > 0
+      ? subRegionNames
+      : ['FLORIDA', 'CALIFORNIA', 'TEXAS', 'New York'];
+
+    // 1. Reuse a package that doesn't have this game yet (batch completion).
+    const gamePackages = new Set(
+      allAccounts.filter((a) => a.game_id === gameId).map((a) => a.package_id)
+    );
+    const availablePackage = allAccounts
+      .filter((a) => a.package_id != null && !gamePackages.has(a.package_id) && a.proxy_state !== 'UK')
+      .sort((a, b) => (a.package_id ?? 0) - (b.package_id ?? 0))[0];
+    if (availablePackage?.proxy_state) {
+      return availablePackage.proxy_state;
+    }
+
+    // 2. New package round-robin, skipping states used today for this game.
+    const maxPackageId = allAccounts.reduce(
+      (max, a) => Math.max(max, a.package_id ?? 0),
+      0
+    );
+    const nextId = maxPackageId + 1;
+    const today = new Date().toISOString().slice(0, 10);
+    const usedToday = new Set(
+      allAccounts
+        .filter((a) => a.game_id === gameId && a.created_at?.slice(0, 10) === today)
+        .map((a) => a.proxy_state)
+        .filter(Boolean)
+    );
+    let chosen = subRegions[(nextId - 1) % subRegions.length];
+    if (usedToday.has(chosen)) {
+      const firstUnused = subRegions.find((s) => !usedToday.has(s));
+      if (firstUnused) chosen = firstUnused;
+    }
+    return chosen;
+  };
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([TauriService.getRegions(), TauriService.getAllAccounts()])
+      .then(([regs, accs]) => {
+        if (!active) return;
+        setRegions(regs || []);
+        setAllAccounts(accs || []);
+        const prims = [...(regs || [])]
+          .filter((r) => r.is_primary)
+          .sort((a, b) => a.sort_order - b.sort_order);
+        const match = account?.proxy_state
+          ? (regs || []).find((r) => r.name === account.proxy_state && r.parent_id != null)
+          : undefined;
+        const defaultPrimary = match
+          ? prims.find((p) => p.id === match.parent_id)
+          : prims[0];
+        setSelectedPrimaryId(defaultPrimary?.id ?? prims[0]?.id ?? null);
+        // In edit mode the account's own state wins; otherwise the sub-region
+        // is left as Auto so the backend rotates the region on create.
+        setSelectedSub(match?.name || '');
+      })
+      .catch((err) => console.error('Failed to load regions:', err));
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const currentGameId = account ? account.game_id : gameId;
+
+  // Recompute the rotating sub-region suggestion when the game or data changes.
+  useEffect(() => {
+    if (currentGameId) {
+      setSuggestedSub(computeSuggestedSubRegion(currentGameId));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentGameId, allAccounts, regions]);
+
+  // Keep the region selection in sync when editing by id (account loads async)
+  useEffect(() => {
+    if (!account || regions.length === 0) return;
+    const match = regions.find((r) => r.name === account.proxy_state && r.parent_id != null);
+    if (match) {
+      setSelectedPrimaryId(match.parent_id);
+      setSelectedSub(match.name);
+    }
+  }, [account, regions]);
+
+  const primaries = [...regions]
+    .filter((r) => r.is_primary)
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const selectedPrimary = primaries.find((p) => p.id === selectedPrimaryId) || primaries[0] || null;
+  const subRegions = [...regions]
+    .filter((r) => r.parent_id === selectedPrimary?.id)
+    .sort((a, b) => a.sort_order - b.sort_order);
   
   const { fetchBranches } = useGames();
   const [branches, setBranches] = useState<GameBranch[]>([]);
@@ -368,8 +475,6 @@ export default function AccountFormPage() {
       originalBranchIdRef.current = account.branch_id ?? null;
     }
   }, [account]);
-
-  const currentGameId = account ? account.game_id : gameId;
 
   // Fetch branches when game changed
   useEffect(() => {
@@ -473,6 +578,7 @@ export default function AccountFormPage() {
           start_date: formatDateForAPI(startDate),
           start_time: startTime,
           request_template: requestTemplate,
+          proxy_state: selectedSub || undefined,
         };
         await updateAccount(request);
       } else {
@@ -483,6 +589,7 @@ export default function AccountFormPage() {
           start_date: formatDateForAPI(startDate),
           start_time: startTime,
           request_template: requestTemplate,
+          proxy_state: selectedSub || undefined,
         };
         await addAccount(request);
       }
@@ -562,6 +669,91 @@ export default function AccountFormPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {primaries.length > 0 && (
+              <div className="grid gap-4 md:grid-cols-2">
+                {primaries.length > 1 && (
+                  <div className="space-y-2">
+                    <Label>{t('accounts.country', 'Country')}</Label>
+                    <Select
+                      value={selectedPrimary?.id?.toString() ?? ''}
+                      onValueChange={(val) => {
+                        const pid = parseInt(val, 10);
+                        setSelectedPrimaryId(pid);
+                        // Reset to Auto so the backend rotates the region
+                        // for the next account of this game.
+                        setSelectedSub('');
+                      }}
+                    >
+                      <SelectTrigger
+                        dir={i18n.dir()}
+                        className={isRtl ? "text-right [&>span]:text-right" : "text-left [&>span]:text-left"}
+                      >
+                        <SelectValue placeholder={t('accounts.selectCountry', 'Select country')} />
+                      </SelectTrigger>
+                      <SelectContent dir={i18n.dir()}>
+                        {primaries.map((p) => (
+                          <SelectItem
+                            key={p.id}
+                            value={p.id.toString()}
+                            className={isRtl ? "text-right" : "text-left"}
+                          >
+                            {p.emoji ? `${p.emoji} ` : ''}{p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className={`space-y-2 ${primaries.length > 1 ? '' : 'md:col-span-2'}`}>
+                  <Label>{t('accounts.subRegion', 'Sub-region')}</Label>
+                  <Select
+                    value={selectedSub || suggestedSub}
+                    onValueChange={(val) => {
+                      if (val === 'auto') {
+                        setSelectedSub('');
+                      } else {
+                        setSelectedSub(val);
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      dir={i18n.dir()}
+                      className={isRtl ? "text-right [&>span]:text-right" : "text-left [&>span]:text-left"}
+                    >
+                      <SelectValue placeholder={t('accounts.selectSubRegion', 'Select sub-region')} />
+                    </SelectTrigger>
+                    <SelectContent dir={i18n.dir()}>
+                      <SelectItem
+                        value="auto"
+                        className={isRtl ? "text-right" : "text-left"}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <RefreshCw className="h-3 w-3" /> {t('accounts.autoRegion', 'Auto')}
+                        </span>
+                      </SelectItem>
+                      {suggestedSub && !subRegions.some((s) => s.name === suggestedSub) && (
+                        <SelectItem
+                          value={suggestedSub}
+                          className={isRtl ? "text-right" : "text-left"}
+                        >
+                          {suggestedSub}
+                        </SelectItem>
+                      )}
+                      {subRegions.map((s) => (
+                        <SelectItem
+                          key={s.id}
+                          value={s.name}
+                          className={isRtl ? "text-right" : "text-left"}
+                        >
+                          {s.emoji ? `${s.emoji} ` : ''}{s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">

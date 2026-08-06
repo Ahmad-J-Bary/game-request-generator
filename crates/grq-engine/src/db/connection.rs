@@ -513,10 +513,12 @@ impl Database {
             }
         }
 
-        // 5c. Data Migration: remove the legacy UNITED STATES/UNITED KINGDOM (UK)
-        // primary and its 'UK' sub-region (ON DELETE CASCADE removes the child).
+        // 5c. Data Migration: remove any legacy UK region and its children
+        // (ON DELETE CASCADE removes child sub-regions). Covers the old primary
+        // 'UNITED STATES (UK)'/'UNITED KINGDOM', a plain 'UK' sub-region, and a
+        // leftover region named exactly 'UK'.
         tx.execute(
-            "DELETE FROM regions WHERE name IN ('UNITED STATES (UK)', 'UNITED KINGDOM (UK)')",
+            "DELETE FROM regions WHERE name IN ('UK', 'UNITED STATES (UK)', 'UNITED KINGDOM (UK)', 'UNITED KINGDOM')",
             [],
         )?;
 

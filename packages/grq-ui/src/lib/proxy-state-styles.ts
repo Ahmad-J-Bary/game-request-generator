@@ -99,7 +99,6 @@ const LEGACY_STATE_COLOR: Record<string, string> = {
   CALIFORNIA: 'blue',
   TEXAS: 'red',
   'New York': 'purple',
-  UK: 'teal',
 };
 
 const resolveColorKey = (value?: string): string => {

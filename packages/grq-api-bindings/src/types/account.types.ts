@@ -23,6 +23,7 @@ export interface CreateAccountRequest {
   start_date: string;
   start_time: string;
   request_template: string;
+  proxy_state?: string;
 }
 
 export interface UpdateAccountRequest {

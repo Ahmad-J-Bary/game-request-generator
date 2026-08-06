@@ -14,7 +14,8 @@ import {
   Loader2,
   ArrowRight,
   ArrowLeft,
-  Check
+  Check,
+  MapPin
 } from 'lucide-react';
 import { 
   Dialog, 
@@ -30,7 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@grq/ui/atoms/scroll-area';
 import { toast } from 'sonner';
 import { TauriService } from '@grq/core/services/tauri.service';
-import { TelegramImportPreview, Game, GameBranch, TelegramConfig } from '@grq/api-bindings';
+import { TelegramImportPreview, Game, GameBranch, TelegramConfig, Region, Account } from '@grq/api-bindings';
 import { cn } from '@grq/ui/lib/utils';
 import { asyncStorageService } from '@grq/core/services/storage.service';
 import { applySessionCompletionForGame } from '@grq/core/services/excel/excel-session-processor';
@@ -54,6 +55,13 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
   const [dismissedUpdates, setDismissedUpdates] = useState<number[]>([]);
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [telegramStatus, setTelegramStatus] = useState<'loading' | 'ready' | 'disabled' | 'incomplete' | 'error'>('loading');
+
+  // Region selection (country = primary region, sub-region = the target state)
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
+  const [selectedPrimaryId, setSelectedPrimaryId] = useState<number | null>(null);
+  const [suggestedSub, setSuggestedSub] = useState('');
+  const [selectedSub, setSelectedSub] = useState('');
 
   const isTelegramReady = (config: TelegramConfig) => {
     return Boolean(config.enabled && config.bot_token?.trim() && config.chat_id?.trim());
@@ -151,6 +159,71 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
     }
   };
 
+  const fetchRegions = async () => {
+    try {
+      const regs = await TauriService.getRegions();
+      setRegions(regs || []);
+      const prims = [...(regs || [])]
+        .filter((r) => r.is_primary)
+        .sort((a, b) => a.sort_order - b.sort_order);
+      setSelectedPrimaryId(prims[0]?.id ?? null);
+    } catch (error) {
+      console.error('Failed to load regions:', error);
+    }
+  };
+
+  const fetchAllAccounts = async () => {
+    try {
+      const accounts = await TauriService.getAllAccounts();
+      setAllAccounts(accounts || []);
+    } catch (error) {
+      console.error('Failed to load accounts:', error);
+    }
+  };
+
+  // Mirror the backend create_account auto-assignment so the sub-region
+  // selector can show the rotating region for the next account of a game.
+  const computeSuggestedSubRegion = (gameId: number): string => {
+    const subRegionNames = [...regions]
+      .filter((r) => r.parent_id != null)
+      .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+      .map((r) => r.name);
+    const subRegions = subRegionNames.length > 0
+      ? subRegionNames
+      : ['FLORIDA', 'CALIFORNIA', 'TEXAS', 'New York'];
+
+    // 1. Reuse a package that doesn't have this game yet (batch completion).
+    const gamePackages = new Set(
+      allAccounts.filter((a) => a.game_id === gameId).map((a) => a.package_id)
+    );
+    const availablePackage = allAccounts
+      .filter((a) => a.package_id != null && !gamePackages.has(a.package_id) && a.proxy_state !== 'UK')
+      .sort((a, b) => (a.package_id ?? 0) - (b.package_id ?? 0))[0];
+    if (availablePackage?.proxy_state) {
+      return availablePackage.proxy_state;
+    }
+
+    // 2. New package round-robin, skipping states used today for this game.
+    const maxPackageId = allAccounts.reduce(
+      (max, a) => Math.max(max, a.package_id ?? 0),
+      0
+    );
+    const nextId = maxPackageId + 1;
+    const today = new Date().toISOString().slice(0, 10);
+    const usedToday = new Set(
+      allAccounts
+        .filter((a) => a.game_id === gameId && a.created_at?.slice(0, 10) === today)
+        .map((a) => a.proxy_state)
+        .filter(Boolean)
+    );
+    let chosen = subRegions[(nextId - 1) % subRegions.length];
+    if (usedToday.has(chosen)) {
+      const firstUnused = subRegions.find((s) => !usedToday.has(s));
+      if (firstUnused) chosen = firstUnused;
+    }
+    return chosen;
+  };
+
   useEffect(() => {
     if (open) {
       setTelegramStatus('loading');
@@ -159,6 +232,8 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
       });
       fetchUpdates(false);
       fetchGames();
+      fetchRegions();
+      fetchAllAccounts();
     }
   }, [open]);
 
@@ -183,6 +258,17 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
       loadBranches();
     }
   }, [selectedGameId]);
+
+  // Recompute the rotating sub-region suggestion when the game or data changes.
+  useEffect(() => {
+    if (selectedGameId) {
+      const gameId = parseInt(selectedGameId);
+      if (gameId > 0) {
+        setSuggestedSub(computeSuggestedSubRegion(gameId));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGameId, allAccounts, regions]);
 
   // Auto-select game based on filename keywords when an import is selected
   useEffect(() => {
@@ -262,9 +348,12 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         start_date: selectedImport.date.split(' ')[0],
         start_time: selectedTime ? `${selectedTime}:00` : (selectedImport.date.split(' ')[1] || '00:00:00'),
         request_template: content,
+        proxy_state: selectedSub ? selectedSub : undefined,
       });
 
       applySessionCompletionForGame(parseInt(selectedGameId)).catch(() => {});
+      // Refetch accounts so the suggested rotating sub-region advances for the next import.
+      fetchAllAccounts();
 
       // 3. Update offset to mark as processed
       await TauriService.updateTelegramOffset(selectedImport.update_id);
@@ -301,6 +390,14 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
   };
 
   const visibleImports = imports.filter(item => !dismissedUpdates.includes(item.update_id));
+
+  const primaries = [...regions]
+    .filter((r) => r.is_primary)
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const selectedPrimary = primaries.find((p) => p.id === selectedPrimaryId) || primaries[0] || null;
+  const subRegions = [...regions]
+    .filter((r) => r.parent_id === selectedPrimary?.id)
+    .sort((a, b) => a.sort_order - b.sort_order);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -544,20 +641,75 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                     </p>
                   </div>
 
-                  {/* Country Selection */}
-                  <div className="space-y-2.5">
-                    <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
-                      🌍 {t('accounts.country', 'Country')}
-                    </label>
-                    <Select value="UNITED STATES (US)">
-                      <SelectTrigger className="rounded-xl bg-background border-border/40">
-                        <SelectValue>🇺🇸 UNITED STATES (US)</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="UNITED STATES (US)">🇺🇸 UNITED STATES (US)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Region Selection */}
+                  {primaries.length > 0 && (
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      {primaries.length > 1 && (
+                        <div className="space-y-2.5">
+                          <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                            🌍 {t('accounts.country', 'Country')}
+                          </label>
+                          <Select
+                            value={selectedPrimary?.id?.toString() ?? ''}
+                            onValueChange={(val) => {
+                              const pid = parseInt(val, 10);
+                              setSelectedPrimaryId(pid);
+                              // Reset to Auto so the backend rotates the region
+                              // for the next account of this game.
+                              setSelectedSub('');
+                            }}
+                          >
+                            <SelectTrigger className="rounded-xl bg-background border-border/40">
+                              <SelectValue placeholder={t('accounts.selectCountry', 'Select country')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {primaries.map((p) => (
+                                <SelectItem key={p.id} value={p.id.toString()}>
+                                  {p.emoji ? `${p.emoji} ` : ''}{p.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div className={`space-y-2.5 ${primaries.length > 1 ? '' : 'sm:col-span-2'}`}>
+                        <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                          <MapPin className="h-3.5 w-3.5" /> {t('accounts.subRegion', 'Sub-region')}
+                        </label>
+                        <Select
+                          value={selectedSub || suggestedSub}
+                          onValueChange={(val) => {
+                            if (val === 'auto') {
+                              setSelectedSub('');
+                            } else {
+                              setSelectedSub(val);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="rounded-xl bg-background border-border/40">
+                            <SelectValue placeholder={t('accounts.selectSubRegion', 'Select sub-region')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">
+                              <span className="flex items-center gap-1.5">
+                                <RefreshCw className="h-3 w-3" /> {t('accounts.autoRegion', 'Auto')}
+                              </span>
+                            </SelectItem>
+                            {suggestedSub && !subRegions.some((s) => s.name === suggestedSub) && (
+                              <SelectItem value={suggestedSub}>
+                                {suggestedSub}
+                              </SelectItem>
+                            )}
+                            {subRegions.map((s) => (
+                              <SelectItem key={s.id} value={s.name}>
+                                {s.emoji ? `${s.emoji} ` : ''}{s.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
 
 
                   <Card className="bg-background/50 border-primary/10 overflow-hidden">

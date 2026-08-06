@@ -31,6 +31,8 @@ mod tests {
                 start_date TEXT NOT NULL,
                 start_time TEXT NOT NULL,
                 request_template TEXT NOT NULL,
+                package_id INTEGER,
+                proxy_state TEXT,
                 FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
                 FOREIGN KEY (branch_id) REFERENCES game_branches(id) ON DELETE SET NULL
             );
@@ -200,6 +202,7 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "template".into(),
+                    proxy_state: None,
                 },
             )
             .unwrap();
@@ -296,6 +299,7 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
+                    proxy_state: None,
                 },
             )
             .unwrap();
@@ -353,6 +357,7 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
+                    proxy_state: None,
                 },
             )
             .unwrap();
@@ -390,6 +395,7 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
+                    proxy_state: None,
                 },
             )
             .unwrap();
@@ -420,6 +426,7 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
+                    proxy_state: None,
                 },
             )
             .unwrap();
@@ -444,6 +451,7 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
+                    proxy_state: None,
                 },
             )
             .unwrap();
@@ -491,6 +499,7 @@ mod tests {
                     start_date: "2024-01-01".into(),
                     start_time: "10:00:00".into(),
                     request_template: "t".into(),
+                    proxy_state: None,
                 },
             )
             .unwrap();
@@ -507,5 +516,35 @@ mod tests {
         assert_eq!(preview.total_target_levels, 2);
         assert_eq!(preview.total_source_purchase_events, 1);
         assert_eq!(preview.total_target_purchase_events, 0);
+    }
+
+    #[test]
+    fn create_account_honors_provided_proxy_state() {
+        let conn = setup_db();
+        let svc = AccountService::new();
+
+        let id = svc
+            .create_account(
+                &conn,
+                CreateAccountRequest {
+                    game_id: 1,
+                    branch_id: Some(1),
+                    name: "Regionful".into(),
+                    start_date: "2024-02-02".into(),
+                    start_time: "10:00:00".into(),
+                    request_template: "t".into(),
+                    proxy_state: Some("FLORIDA".into()),
+                },
+            )
+            .unwrap();
+
+        let proxy_state: Option<String> = conn
+            .query_row(
+                "SELECT proxy_state FROM accounts WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(proxy_state.as_deref(), Some("FLORIDA"));
     }
 }

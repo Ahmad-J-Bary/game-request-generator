@@ -72,7 +72,7 @@ impl AccountService {
             .optional()
             .map_err(|e| format!("Failed to find available package: {}", e))?;
 
-        let (package_id, proxy_state) = match package_info {
+        let (package_id, mut proxy_state) = match package_info {
             Some((pid, state)) => (pid, state),
             None => {
                 // If no package is available, create a new one
@@ -116,6 +116,14 @@ impl AccountService {
                 (next_id, chosen)
             }
         };
+
+        // Respect an explicitly chosen sub-region (from the UI region selector)
+        // over the automatic round-robin assignment.
+        if let Some(picked) = request.proxy_state.as_deref().map(str::trim) {
+            if !picked.is_empty() {
+                proxy_state = picked.to_string();
+            }
+        }
 
         conn.execute(
             "INSERT INTO accounts (game_id, branch_id, name, start_date, start_time, request_template, package_id, proxy_state)
