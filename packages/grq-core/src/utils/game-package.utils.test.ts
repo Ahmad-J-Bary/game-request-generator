@@ -4,6 +4,7 @@ import {
   extractPackageName,
   analyzeAccountGame,
   predictGameByAccountName,
+  predictGameByAccountOrPackage,
   isValidPackageValue,
 } from './game-package.utils.ts';
 import type { Game } from '@grq/api-bindings';
@@ -58,6 +59,50 @@ describe('predictGameByAccountName', () => {
 
   it('returns null when nothing matches', () => {
     assert.equal(predictGameByAccountName('unrelated name', games), null);
+  });
+});
+
+describe('predictGameByAccountOrPackage', () => {
+  it('prefers the name prediction over the package', () => {
+    const game = predictGameByAccountOrPackage(
+      'Club Vegas',
+      'package_name=com.eastwealth.festive.spins',
+      games,
+    );
+    assert.equal(game?.id, 1);
+  });
+
+  it('falls back to the package when the name gives no hint', () => {
+    const game = predictGameByAccountOrPackage(
+      'unrelated name',
+      'package_name=com.eastwealth.festive.spins',
+      games,
+    );
+    assert.equal(game?.id, 2);
+  });
+
+  it('matches package case-insensitively', () => {
+    const game = predictGameByAccountOrPackage(
+      'unrelated name',
+      'package_name=COM.BAGELCODE.SLOTS1',
+      games,
+    );
+    assert.equal(game?.id, 1);
+  });
+
+  it('returns null when the package matches no game', () => {
+    const game = predictGameByAccountOrPackage(
+      'unrelated name',
+      'package_name=com.unknown.xyz',
+      games,
+    );
+    assert.equal(game, null);
+  });
+
+  it('returns null when no name hint and the package is absent or invalid', () => {
+    assert.equal(predictGameByAccountOrPackage('unrelated name', 'event_token=abc', games), null);
+    assert.equal(predictGameByAccountOrPackage('unrelated name', null, games), null);
+    assert.equal(predictGameByAccountOrPackage('unrelated name', 'package_name=com.x/y', games), null);
   });
 });
 

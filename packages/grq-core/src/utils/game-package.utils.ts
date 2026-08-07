@@ -69,6 +69,33 @@ export function predictGameByAccountName(
   return bestGame && maxMatches > 0 ? bestGame : null;
 }
 
+/**
+ * Selects the game an account belongs to for auto-filling the game selector.
+ *
+ * Prefers a name-based prediction; when the account name / filename gives no
+ * hint at all, falls back to matching the template's `package_name` against a
+ * game's stored package so the correct game is still picked automatically.
+ * Returns `null` when neither approach yields a confident game.
+ */
+export function predictGameByAccountOrPackage(
+  accountName: string,
+  template: string | null | undefined,
+  games: Game[],
+): Game | null {
+  const byName = predictGameByAccountName(accountName, games);
+  if (byName) return byName;
+
+  const rawPackage = extractPackageName(template);
+  const accountPackage = isValidPackageValue(rawPackage) ? rawPackage : null;
+  if (!accountPackage) return null;
+
+  return (
+    games.find(
+      (g) => (g.package_name || "").trim().toLowerCase() === accountPackage.toLowerCase(),
+    ) ?? null
+  );
+}
+
 export type AccountGameAnalysis =
   | {
       status: "missing-package";

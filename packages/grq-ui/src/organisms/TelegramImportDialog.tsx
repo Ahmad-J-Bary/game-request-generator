@@ -38,7 +38,7 @@ import { TelegramImportPreview, Game, GameBranch, TelegramConfig, Region, Accoun
 import { cn } from '@grq/ui/lib/utils';
 import { asyncStorageService } from '@grq/core/services/storage.service';
 import { applySessionCompletionForGame } from '@grq/core/services/excel/excel-session-processor';
-import { analyzeAccountGame } from '@grq/core/utils/game-package.utils';
+import { analyzeAccountGame, predictGameByAccountOrPackage } from '@grq/core/utils/game-package.utils';
 
 interface TelegramImportDialogProps {
   open: boolean;
@@ -54,6 +54,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
   const [games, setGames] = useState<Game[]>([]);
   const [branches, setBranches] = useState<GameBranch[]>([]);
   const [selectedGameId, setSelectedGameId] = useState<string>('');
+  const [gameAutoSelected, setGameAutoSelected] = useState(false);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [importing, setImporting] = useState(false);
   const [dismissedUpdates, setDismissedUpdates] = useState<number[]>([]);
@@ -296,45 +297,20 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGameId, allAccounts, regions]);
 
-  // Auto-select game based on filename keywords when an import is selected
+  // Auto-select game when an import is selected: filename keywords first, then
+  // the account's package_name as a fallback when the name gives no hint. Only
+  // acts while the game is on "auto" (i.e. the user has not picked it manually).
+  const [selectedContent, setSelectedContent] = useState<string | null>(null);
   useEffect(() => {
-    if (selectedImport && games.length > 0) {
-      const fileName = selectedImport.filename.replace(/\.[^/.]+$/, "").toLowerCase();
-      // Split filename into keywords (minimum 2 chars)
-      const fileKeywords = fileName.split(/[\s\-_]+/).filter(k => k.length >= 2);
-      
-      let bestGame = null;
-      let maxMatches = 0;
-
-      for (const game of games) {
-        // Split game name into keywords (minimum 2 chars)
-        const gameKeywords = game.name.toLowerCase().split(/[\s\-_]+/).filter(k => k.length >= 2);
-        let matches = 0;
-
-        for (const gk of gameKeywords) {
-          // Count keyword matches (partial or full)
-          if (fileKeywords.some(fk => fk.includes(gk) || gk.includes(fk))) {
-            matches++;
-          }
-        }
-
-        // Higher match count wins
-        if (matches > maxMatches) {
-          maxMatches = matches;
-          bestGame = game;
-        } else if (matches === maxMatches && matches > 0 && bestGame) {
-          // In case of tie, prefer the one where game name is longer (potentially more specific)
-          if (game.name.length > bestGame.name.length) {
-            bestGame = game;
-          }
-        }
-      }
-
-      if (bestGame && maxMatches > 0) {
-        setSelectedGameId(bestGame.id.toString());
-      }
+    if (selectedImport && games.length > 0 && gameAutoSelected) {
+      const game = predictGameByAccountOrPackage(
+        selectedImport.filename.replace(/\.[^/.]+$/, ""),
+        selectedContent,
+        games,
+      );
+      if (game) setSelectedGameId(game.id.toString());
     }
-  }, [selectedImport, games]);
+  }, [selectedImport, selectedContent, games, gameAutoSelected]);
 
   // Sync selectedTime when selectedImport changes
   useEffect(() => {
@@ -347,7 +323,6 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
 
   // Download the selected file's content so we can cross-check the account's
   // package_name against the selected game's stored package.
-  const [selectedContent, setSelectedContent] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     if (selectedImport) {
@@ -620,7 +595,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                       "cursor-pointer transition-all border-border/40 hover:border-primary/40 hover:bg-primary/5",
                       selectedImport?.update_id === item.update_id && "border-primary bg-primary/5"
                     )}
-                    onClick={() => setSelectedImport(item)}
+                    onClick={() => { setGameAutoSelected(true); setSelectedImport(item); }}
                   >
                     <CardContent className="p-4 flex items-center gap-4">
                       <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center shrink-0">
@@ -679,7 +654,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                     <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
                       <Gamepad2 className="h-3.5 w-3.5" /> {t('settings.telegramImport.selectGame')}
                     </label>
-                    <Select value={selectedGameId} onValueChange={setSelectedGameId}>
+                    <Select value={selectedGameId} onValueChange={(v) => { setGameAutoSelected(false); setSelectedGameId(v); }}>
                       <SelectTrigger className="rounded-xl bg-background border-border/40">
                         <SelectValue placeholder={t('settings.telegramImport.selectGamePlaceholder')} />
                       </SelectTrigger>
@@ -710,7 +685,7 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                             variant="outline"
                             size="sm"
                             className="h-7 gap-1 text-xs"
-                            onClick={() => setSelectedGameId(packageAnalysis.otherGame!.id.toString())}
+                            onClick={() => { setGameAutoSelected(false); setSelectedGameId(packageAnalysis.otherGame!.id.toString()); }}
                           >
                             <Gamepad2 className="h-3 w-3" />
                             {t('settings.telegramImport.switchGame', 'Import to "{{game}}" instead', { game: packageAnalysis.otherGame.name })}
