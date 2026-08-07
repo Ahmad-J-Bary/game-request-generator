@@ -20,7 +20,7 @@ import { Button } from '@grq/ui/atoms/button';
 import { 
   Gamepad2, Users, CheckCircle, ClipboardList, Rocket, 
   Trash2, ShieldCheck, MapPin, Snowflake,
-  LayoutDashboard, Zap, Send, Settings2
+  LayoutDashboard, Zap, Send, Settings2, ChevronDown, User
 } from 'lucide-react';
 import { TauriService } from '@grq/core/services/tauri.service';
 import { asyncStorageService } from '@grq/core/services/storage.service';
@@ -33,10 +33,19 @@ import { NotificationService } from '@grq/core/utils/notifications';
 import { Progress } from '@grq/ui/atoms/progress';
 import { proxyStateProgressClass } from '@grq/ui/lib/proxy-state-styles';
 import { ExcelService } from '@grq/core/services/excel.service';
+import { sanitizeFilename } from '@grq/core/services/excel/excel-file-operations';
 import { useSettings } from '@grq/ui/contexts/SettingsContext';
 import { useTheme } from '@grq/ui/contexts/ThemeContext';
 import { cn } from '@grq/ui/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@grq/ui/atoms/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@grq/ui/atoms/dropdown-menu';
 import type { Owner } from '@grq/api-bindings';
 
 export default function Dashboard() {
@@ -110,19 +119,20 @@ export default function Dashboard() {
     }
   };
 
-  const handleSendExcelReport = async () => {
+  const handleSendExcelReport = async (owner?: string) => {
     try {
       setIsReporting(true);
       NotificationService.info(t('settings.generatingReport', 'Generating report...'));
       
-      const buffer = await ExcelService.generateAllGamesBuffer('vertical', colors, theme, 'event-only');
+      const buffer = await ExcelService.generateAllGamesBuffer('vertical', colors, theme, 'event-only', owner || undefined);
       
       if (!buffer) {
         throw new Error('Failed to generate Excel buffer');
       }
 
       const uint8Array = new Uint8Array(buffer);
-      const filename = `Full_Report_${toLocalDateIso()}.xlsx`;
+      const suffix = owner ? ` - ${sanitizeFilename(owner)}` : '';
+      const filename = `Full_Report_${toLocalDateIso()}${suffix}.xlsx`;
 
       await invoke('send_excel_to_telegram', { 
         bytes: Array.from(uint8Array), 
@@ -356,16 +366,47 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button
-              size="sm"
-              variant="outline"
-              className="group/btn shrink-0 rounded-full border-primary/20 bg-background/50 px-3.5 text-xs font-bold shadow-sm backdrop-blur-sm transition-all hover:scale-105 hover:border-primary hover:bg-primary hover:text-primary-foreground hover:shadow-lg"
-              onClick={handleSendExcelReport}
-              disabled={isReporting}
-            >
-              <Send className={`h-3.5 w-3.5 ltr:mr-1.5 rtl:ml-1.5 transition-transform group-hover/btn:-rotate-12 ${isReporting ? 'animate-pulse' : ''}`} />
-              {isReporting ? t('common.loading') : t('settings.sendReport', 'Send Excel Report')}
-            </Button>
+            {owners.length >= 2 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="group/btn shrink-0 rounded-full border-primary/20 bg-background/50 px-3.5 text-xs font-bold shadow-sm backdrop-blur-sm transition-all hover:scale-105 hover:border-primary hover:bg-primary hover:text-primary-foreground hover:shadow-lg"
+                    disabled={isReporting}
+                  >
+                    <Send className={`h-3.5 w-3.5 ltr:mr-1.5 rtl:ml-1.5 transition-transform group-hover/btn:-rotate-12 ${isReporting ? 'animate-pulse' : ''}`} />
+                    {isReporting ? t('common.loading') : t('settings.sendReport', 'Send Excel Report')}
+                    {!isReporting && <ChevronDown className="h-3.5 w-3.5 ltr:ml-1 rtl:mr-1" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuLabel>{t('dashboard.selectOwner')}</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => handleSendExcelReport()}>
+                    <Users className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+                    {t('dashboard.allOwners')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {owners.map((o) => (
+                    <DropdownMenuItem key={o.id} onClick={() => handleSendExcelReport(o.name)}>
+                      <User className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+                      {o.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="group/btn shrink-0 rounded-full border-primary/20 bg-background/50 px-3.5 text-xs font-bold shadow-sm backdrop-blur-sm transition-all hover:scale-105 hover:border-primary hover:bg-primary hover:text-primary-foreground hover:shadow-lg"
+                onClick={() => handleSendExcelReport()}
+                disabled={isReporting}
+              >
+                <Send className={`h-3.5 w-3.5 ltr:mr-1.5 rtl:ml-1.5 transition-transform group-hover/btn:-rotate-12 ${isReporting ? 'animate-pulse' : ''}`} />
+                {isReporting ? t('common.loading') : t('settings.sendReport', 'Send Excel Report')}
+              </Button>
+            )}
           </div>
         </div>
       </div>

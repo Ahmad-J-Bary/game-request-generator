@@ -467,6 +467,7 @@
     "thisGame": "Export This Game",
     "toExcel": "Export to Excel (.xlsx)",
     "requestTemplates": "Request Templates (.txt)",
+    "for": "For",
     "templatesExportSuccess": "Exported {{count}} template files",
     "templatesExportFailed": "Failed to export request templates"
   },

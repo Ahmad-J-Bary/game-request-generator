@@ -467,6 +467,7 @@
     "thisGame": "تصدير هذه اللعبة",
     "toExcel": "تصدير إلى Excel (.xlsx)",
     "requestTemplates": "قوالب الطلبات (.txt)",
+    "for": "إلى",
     "templatesExportSuccess": "تم تصدير {{count}} ملف قالب",
     "templatesExportFailed": "فشل تصدير قوالب الطلبات"
   },

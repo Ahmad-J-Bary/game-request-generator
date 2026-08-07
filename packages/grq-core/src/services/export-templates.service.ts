@@ -13,7 +13,7 @@ function sanitize(name: string): string {
   return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'unnamed';
 }
 
-export async function exportRequestTemplates(gameId?: number): Promise<ExportResult> {
+export async function exportRequestTemplates(gameId?: number, owner?: string): Promise<ExportResult> {
   try {
     const picked = await open({ directory: true, multiple: false });
     if (!picked) return { success: false };
@@ -29,7 +29,8 @@ export async function exportRequestTemplates(gameId?: number): Promise<ExportRes
     for (const game of games) {
       let accounts;
       try {
-        accounts = await TauriService.getAccounts(game.id);
+        accounts = (await TauriService.getAccounts(game.id))
+          .filter((a) => !owner || (a.owner?.trim() || '') === owner);
       } catch (err) {
         console.error(`Failed to fetch accounts for game "${game.name}":`, err);
         continue;

@@ -29,6 +29,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@grq/ui/atoms/dropdown-menu";
 import { PageHeader } from "@grq/ui/molecules/PageHeader";
 import { ActionToolbar } from "@grq/ui/molecules/ActionToolbar";
@@ -41,6 +44,8 @@ import {
   GitBranch,
   FileText,
   CheckSquare,
+  Users,
+  User,
 } from "lucide-react";
 
 import { useAccounts } from "@grq/core/hooks/useAccounts";
@@ -65,6 +70,7 @@ import type {
   Account,
   GameBranch,
   Game,
+  Owner,
 } from "@grq/api-bindings";
 import type {
   TimelineColumnData as ColumnData,
@@ -170,6 +176,15 @@ export default function AccountsDetailPage() {
   const { accounts = [], deleteAccount, refreshAccounts } = useAccounts(selectedGameId);
   const { games, fetchBranches } = useGames();
   const [branches, setBranches] = useState<GameBranch[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    TauriService.getOwners()
+      .then((data) => { if (active) setOwners(data || []); })
+      .catch(console.error);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -212,6 +227,7 @@ export default function AccountsDetailPage() {
             accounts={accounts}
             branches={branches}
             games={games}
+            owners={owners}
             selectedGameId={selectedGameId}
             setSelectedGameId={setSelectedGameId}
             mode={mode}
@@ -241,6 +257,7 @@ interface AccountsDetailContentProps {
   accounts: Account[];
   branches: GameBranch[];
   games: Game[];
+  owners: Owner[];
   selectedGameId?: number;
   setSelectedGameId: (id?: number) => void;
   mode: Mode;
@@ -265,6 +282,7 @@ function AccountsDetailContent({
   accounts,
   branches,
   games,
+  owners,
   selectedGameId,
   setSelectedGameId,
   mode,
@@ -295,16 +313,14 @@ function AccountsDetailContent({
   >();
 
   const [ownerFilter, setOwnerFilter] = useState("");
+  const [exportOwner, setExportOwner] = useState("");
   const ownerOptions = useMemo(
     () =>
-      Array.from(
-        new Set(
-          accounts
-            .map((a) => a.owner?.trim())
-            .filter((o): o is string => !!o),
-        ),
-      ).sort(),
-    [accounts],
+      owners
+        .map((o) => o.name?.trim())
+        .filter((o): o is string => !!o)
+        .sort(),
+    [owners],
   );
   const filteredAccounts = useMemo(
     () =>
@@ -331,8 +347,8 @@ function AccountsDetailContent({
   const currentGameName =
     games.find((g) => g.id === selectedGameId)?.name || "";
 
-  const handleExportTemplates = async (gameId?: number) => {
-    const result = await exportRequestTemplates(gameId);
+  const handleExportTemplates = async (gameId?: number, owner?: string) => {
+    const result = await exportRequestTemplates(gameId, owner);
     if (result.success) {
       NotificationService.success(
         t("export.templatesExportSuccess", "Exported {{count}} template files", {
@@ -926,6 +942,36 @@ function AccountsDetailContent({
     window.dispatchEvent(new CustomEvent("daily-task-completed"));
   };
 
+  const ownerExportAction = (
+    label: string,
+    onPick: (owner: string) => void,
+  ) =>
+    owners.length >= 2 ? (
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger className="cursor-pointer">
+          {label}
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="min-w-[180px]">
+          <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
+            {t("export.for")}
+          </DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => onPick("")}>
+            <Users className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+            {t("accounts.allOwners")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {owners.map((o) => (
+            <DropdownMenuItem key={o.id} onClick={() => onPick(o.name)}>
+              <User className="h-4 w-4 ltr:mr-2 rtl:ml-2" />
+              {o.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    ) : (
+      <DropdownMenuItem onClick={() => onPick("")}>{label}</DropdownMenuItem>
+    );
+
   const exportDropdown = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -945,37 +991,28 @@ function AccountsDetailContent({
           <FileText className="h-3.5 w-3.5 inline mr-1.5" />
           {t("export.toExcel")}
         </DropdownMenuLabel>
-        <DropdownMenuItem
-          onClick={() => {
-            setExportType("all");
-            setShowExportDialog(true);
-          }}
-        >
-          {t("export.allGames")}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => {
-            setExportType("game");
-            setSelectedBranchId(undefined);
-            setShowExportDialog(true);
-          }}
-        >
-          {t("export.thisGame")} ({currentGameName})
-        </DropdownMenuItem>
+        {ownerExportAction(t("export.allGames"), (owner) => {
+          setExportOwner(owner);
+          setExportType("all");
+          setShowExportDialog(true);
+        })}
+        {ownerExportAction(`${t("export.thisGame")} (${currentGameName})`, (owner) => {
+          setExportOwner(owner);
+          setExportType("game");
+          setSelectedBranchId(undefined);
+          setShowExportDialog(true);
+        })}
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs text-muted-foreground font-medium">
           <FileText className="h-3.5 w-3.5 inline mr-1.5" />
           {t("export.requestTemplates")}
         </DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => handleExportTemplates()}>
-          {t("export.allGames")}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => selectedGameId && handleExportTemplates(selectedGameId)}
-          disabled={!selectedGameId}
-        >
-          {t("export.thisGame")} ({currentGameName})
-        </DropdownMenuItem>
+        {ownerExportAction(t("export.allGames"), (owner) =>
+          handleExportTemplates(undefined, owner),
+        )}
+        {ownerExportAction(`${t("export.thisGame")} (${currentGameName})`, (owner) =>
+          selectedGameId && handleExportTemplates(selectedGameId, owner),
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1061,7 +1098,26 @@ function AccountsDetailContent({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background/50">
-      <PageHeader title={t("nav.accountsDetail")}>
+      <PageHeader
+        title={t("nav.accountsDetail")}
+        titleExtra={ownerOptions.length >= 2 ? (
+          <div className="flex items-center gap-2 w-full max-w-xs">
+            <Label className="text-muted-foreground whitespace-nowrap">
+              {t("accounts.owner", "Owner")}
+            </Label>
+            <select
+              value={ownerFilter}
+              onChange={(e) => setOwnerFilter(e.target.value)}
+              className="w-full rounded-xl bg-background border border-border/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            >
+              <option value="">{t("accounts.allOwners", "All owners")}</option>
+              {ownerOptions.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </div>
+        ) : undefined}
+      >
         <ActionToolbar
           mode={mode}
           onModeChange={setMode}
@@ -1080,24 +1136,6 @@ function AccountsDetailContent({
           mobilePopoverExtra={mobilePopoverExtra}
         />
       </PageHeader>
-
-      {ownerOptions.length > 0 && (
-        <div className="flex items-center gap-2 w-full max-w-xs">
-          <Label className="text-muted-foreground whitespace-nowrap">
-            {t("accounts.owner", "Owner")}
-          </Label>
-          <select
-            value={ownerFilter}
-            onChange={(e) => setOwnerFilter(e.target.value)}
-            className="w-full rounded-xl bg-background border border-border/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-          >
-            <option value="">{t("accounts.allOwners", "All owners")}</option>
-            {ownerOptions.map((o) => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
-        </div>
-      )}
 
       <div className="flex-1 space-y-12 pb-24">
         {branches.length === 0 ? (
@@ -1120,13 +1158,7 @@ function AccountsDetailContent({
             </CardContent>
           </Card>
         ) : (
-          branches
-            .filter(
-              (branch) =>
-                !ownerFilter ||
-                filteredAccounts.some((a) => a.branch_id === branch.id),
-            )
-            .map((branch) => (
+          branches.map((branch) => (
             <BranchSection
               key={branch.id}
               branch={branch}
@@ -1170,7 +1202,7 @@ function AccountsDetailContent({
         theme={theme}
         source="accounts-detail"
         mode={mode}
-        owner={ownerFilter || undefined}
+        owner={exportOwner || undefined}
         levelsProgress={levelsProgress}
         purchaseProgress={purchaseProgress}
       />
@@ -1547,8 +1579,6 @@ function BranchSection({
       });
     });
   }, [sortedAccounts, columns, purchaseProgress]);
-
-  if (accounts.length === 0) return null;
 
   return (
     <section className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
