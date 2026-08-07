@@ -205,9 +205,9 @@ export default function AccountsDetailPage() {
     };
   }, [selectedGameId, fetchBranches]);
 
-  const handleCreateGameAsync = async (name: string) => {
+  const handleCreateGameAsync = async (name: string, packageName: string) => {
     try {
-      const newId = await TauriService.addGame({ name });
+      const newId = await TauriService.addGame({ name, package_name: packageName });
       if (newId) {
         window.dispatchEvent(
           new CustomEvent("games-updated", { detail: { id: newId } }),
@@ -273,7 +273,7 @@ interface AccountsDetailContentProps {
   setShowExportDialog: (show: boolean) => void;
   exportType: "game" | "account" | "all";
   setExportType: (type: "game" | "account" | "all") => void;
-  onCreateGame: (name: string) => Promise<void>;
+  onCreateGame: (name: string, packageName: string) => Promise<void>;
   deleteAccount: (id: number) => Promise<boolean>;
   refreshAccounts: () => Promise<void>;
 }

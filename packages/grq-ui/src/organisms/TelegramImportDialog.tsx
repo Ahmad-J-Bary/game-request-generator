@@ -38,6 +38,7 @@ import { TelegramImportPreview, Game, GameBranch, TelegramConfig, Region, Accoun
 import { cn } from '@grq/ui/lib/utils';
 import { asyncStorageService } from '@grq/core/services/storage.service';
 import { applySessionCompletionForGame } from '@grq/core/services/excel/excel-session-processor';
+import { analyzeAccountGame } from '@grq/core/utils/game-package.utils';
 
 interface TelegramImportDialogProps {
   open: boolean;
@@ -344,6 +345,34 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
     }
   }, [selectedImport]);
 
+  // Download the selected file's content so we can cross-check the account's
+  // package_name against the selected game's stored package.
+  const [selectedContent, setSelectedContent] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (selectedImport) {
+      setSelectedContent(null);
+      TauriService.downloadTelegramFile(selectedImport.file_id)
+        .then((content) => {
+          if (active) setSelectedContent(content);
+        })
+        .catch((err) => {
+          if (active) setSelectedContent(null);
+          console.error('Failed to load telegram file content:', err);
+        });
+    } else {
+      setSelectedContent(null);
+    }
+    return () => { active = false; };
+  }, [selectedImport]);
+
+  const packageAnalysis = analyzeAccountGame({
+    accountName: selectedImport?.filename.replace(/\.[^/.]+$/, ""),
+    template: selectedContent,
+    selectedGameId: selectedGameId ? parseInt(selectedGameId, 10) : undefined,
+    games,
+  });
+
   const handleProcessImport = async () => {
     if (!selectedImport || !selectedGameId || !selectedBranchId) return;
 
@@ -362,10 +391,38 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         return;
       }
 
-      // 2. Create account
       // Remove .txt extension for account name
       const accountName = selectedImport.filename.replace(/\.[^/.]+$/, "");
-      
+
+      // 2. Verify the account's package belongs to the selected game before
+      //    saving, to prevent permanently linking it to the wrong game.
+      const analysis = analyzeAccountGame({
+        accountName,
+        template: content,
+        selectedGameId: parseInt(selectedGameId),
+        games,
+      });
+      if (analysis.status === 'mismatch') {
+        toast.error(
+          analysis.otherGame
+            ? t('settings.telegramImport.packageMismatchOther', 'This file\'s package ({{pkg}}) belongs to game "{{game}}" not to the selected game. Double-check the game selection.', {
+                pkg: analysis.accountPackage,
+                game: analysis.otherGame.name,
+              })
+            : t('settings.telegramImport.packageMismatch', 'The package name ({{pkg}}) does not match the selected game. Double-check the game selection.', {
+                pkg: analysis.accountPackage,
+              }),
+        );
+        return;
+      }
+      if (analysis.status === 'missing-package') {
+        toast.error(
+          t('settings.telegramImport.packageMissing', 'The request template is missing a valid "package_name" field. Add a line like "package_name=com.example.game" and try again.'),
+        );
+        return;
+      }
+
+      // 3. Create account
       await TauriService.addAccount({
         name: accountName,
         game_id: parseInt(selectedGameId),
@@ -634,6 +691,49 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                     </Select>
                   </div>
 
+                  {packageAnalysis.status === 'mismatch' && (
+                    <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2">
+                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <span>
+                          {packageAnalysis.otherGame
+                            ? t('settings.telegramImport.packageMismatchOther', 'This file\'s package ({{pkg}}) belongs to game "{{game}}" not to the selected game. Double-check the game selection.', {
+                                pkg: packageAnalysis.accountPackage,
+                                game: packageAnalysis.otherGame.name,
+                              })
+                            : t('settings.telegramImport.packageMismatch', 'The package name ({{pkg}}) does not match the selected game. Double-check the game selection.', {
+                                pkg: packageAnalysis.accountPackage,
+                              })}
+                        </span>
+                        {packageAnalysis.otherGame && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            onClick={() => setSelectedGameId(packageAnalysis.otherGame!.id.toString())}
+                          >
+                            <Gamepad2 className="h-3 w-3" />
+                            {t('settings.telegramImport.switchGame', 'Import to "{{game}}" instead', { game: packageAnalysis.otherGame.name })}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {packageAnalysis.status === 'game-no-package' && (
+                    <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
+                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>
+                        {packageAnalysis.otherGame
+                          ? t('settings.telegramImport.packageGameNoPackageOther', 'This game has no package name set yet, so package verification is skipped. This file\'s package ({{pkg}}) belongs to game "{{game}}". Set the package name on the game page to enable verification.', {
+                              pkg: packageAnalysis.accountPackage,
+                              game: packageAnalysis.otherGame.name,
+                            })
+                          : t('settings.telegramImport.packageGameNoPackage', 'This game has no package name set yet, so package verification is skipped. Set it on the game page to enable verification.')}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Branch Selection */}
                   <div className="space-y-2.5">
                     <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
@@ -774,6 +874,15 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
                        </p>
                     </CardContent>
                   </Card>
+
+                  {selectedContent !== null && packageAnalysis.status === 'missing-package' && (
+                    <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2">
+                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>
+                        {t('settings.telegramImport.packageMissing', 'The request template is missing a valid "package_name" field. Add a line like "package_name=com.example.game" and try again.')}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="flex flex-col gap-2 pt-4">
                     <Button 

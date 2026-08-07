@@ -55,6 +55,11 @@ impl Database {
         self.create_tables()
             .map_err(|e| format!("Failed to create tables: {}", e))?;
 
+        // Auto-infer and store package_name for legacy games that have accounts
+        // but no stored package yet (deduped from their request templates).
+        backfill_game_package_names(&self.connection)
+            .map_err(|e| format!("Failed to backfill game package names: {}", e))?;
+
         // One-time VACUUM to reclaim any free pages that accumulated before
         // auto_vacuum was enabled. After this, incremental_vacuum handles it.
         let freelist: i64 = self
@@ -76,7 +81,11 @@ impl Database {
     /// Idempotent — safe to call after the DB file is replaced at runtime.
     pub fn ensure_schema(&self) -> Result<(), String> {
         self.create_tables()
-            .map_err(|e| format!("Failed to ensure schema: {}", e))
+            .map_err(|e| format!("Failed to ensure schema: {}", e))?;
+
+        backfill_game_package_names(&self.connection)
+            .map_err(|e| format!("Failed to backfill game package names: {}", e))
+            .map(|_| ())
     }
 
     /// المرجع غير المتغير للاتصال
@@ -141,6 +150,7 @@ impl Database {
             CREATE TABLE IF NOT EXISTS games (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
+                package_name TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -300,6 +310,28 @@ impl Database {
         };
 
         // 2. Incremental column migrations
+        if !column_exists("games", "package_name")? {
+            tx.execute("ALTER TABLE games ADD COLUMN package_name TEXT", [])?;
+        }
+        // package_name must be unique across games. Legacy data (created before
+        // the field was enforced) may contain duplicates, so de-duplicate first:
+        // keep the lowest-id row per package and clear the rest before the
+        // unique index can be created.
+        tx.execute_batch(
+            "
+            UPDATE games
+            SET package_name = NULL
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM games
+                WHERE package_name IS NOT NULL AND trim(package_name) <> ''
+                GROUP BY lower(trim(package_name))
+            )
+            AND package_name IS NOT NULL AND trim(package_name) <> '';
+
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_games_package_name
+                ON games(lower(trim(package_name)))
+                WHERE package_name IS NOT NULL AND trim(package_name) <> '';
+        ")?;
         if !column_exists("purchase_events", "game_id")? {
             tx.execute(
                 "ALTER TABLE purchase_events ADD COLUMN game_id INTEGER NOT NULL DEFAULT 0",
@@ -867,9 +899,138 @@ fn cleanup_session_levels_filtered(
     Ok((doomed.len(), retokenized_count))
 }
 
+/// Extract the game package name from an account's request template.
+///
+/// Mirrors the TypeScript logic in `game-package.utils.ts`: scans case-insensitively
+/// for `package_name` followed (after optional whitespace/newlines) by `=`, captures
+/// the value up to the first whitespace, `&`, `;` or newline, and accepts it only if
+/// it matches `/^[A-Za-z0-9_.-]+$/`. Returns `None` when no valid value is present.
+pub fn extract_package_name(template: &str) -> Option<String> {
+    const KEY: &str = "package_name";
+    let lower = template.to_ascii_lowercase();
+    let mut search_from = 0usize;
+
+    while let Some(rel) = lower[search_from..].find(KEY) {
+        let idx = search_from + rel;
+        search_from = idx + KEY.len();
+        let after = &template[idx + KEY.len()..];
+
+        // Keep scanning when this occurrence is not a key=value (e.g. a longer
+        // identifier like `package_name_foo`), matching the regex engine's advance.
+        let Some(rest) = after.trim_start().strip_prefix('=') else {
+            continue;
+        };
+
+        let value: String = rest
+            .trim_start()
+            .chars()
+            .take_while(|c| !c.is_whitespace() && *c != '&' && *c != ';' && *c != '\r' && *c != '\n')
+            .collect();
+        let value = value.trim();
+
+        if !value.is_empty()
+            && value
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
+        {
+            return Some(value.to_string());
+        }
+
+        // A `package_name=` with an invalid/empty value is a dead end for this
+        // template (the runtime treats it as `missing-package`), so stop here.
+        return None;
+    }
+
+    None
+}
+
+/// Infer the package name a legacy game should have from its accounts' request
+/// templates. Returns `Some(pkg)` only when EVERY account of the game yields the
+/// same valid package value (case-insensitive). Returns `None` when there are no
+/// accounts, no valid template package, or accounts disagree — the game stays NULL
+/// and is left for the user to set manually.
+fn infer_unique_package(conn: &Connection, game_id: i64) -> SqlResult<Option<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT request_template FROM accounts
+         WHERE game_id = ?1 AND request_template IS NOT NULL",
+    )?;
+    let rows = stmt.query_map(params![game_id], |row| row.get::<_, Option<String>>(0))?;
+
+    let mut candidate: Option<String> = None;
+    for row in rows {
+        let Some(template) = row? else {
+            continue;
+        };
+        let Some(pkg) = extract_package_name(&template) else {
+            continue;
+        };
+        match &candidate {
+            Some(existing) if !existing.eq_ignore_ascii_case(&pkg) => {
+                // Accounts disagree — do not auto-bind a possibly wrong package
+                // (the field locks once set).
+                return Ok(None);
+            }
+            Some(_) => {}
+            None => candidate = Some(pkg),
+        }
+    }
+
+    Ok(candidate)
+}
+
+/// Backfill `games.package_name` for legacy games created before the field existed.
+///
+/// For every game with an empty package, infer the package from its accounts'
+/// request templates (see `infer_unique_package`) and store it — but only when no
+/// other game already claims the same package (case-insensitive), so the unique
+/// index `uq_games_package_name` is never violated. Idempotent: games that were
+/// backfilled no longer match the "empty package" filter on the next run.
+pub fn backfill_game_package_names(conn: &Connection) -> SqlResult<usize> {
+    let ids: Vec<i64> = {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM games
+             WHERE package_name IS NULL OR trim(package_name) = ''
+             ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+        rows.filter_map(Result::ok).collect()
+    };
+
+    let mut updated = 0usize;
+    for id in ids {
+        let Some(pkg) = infer_unique_package(conn, id)? else {
+            continue;
+        };
+
+        let conflict: bool = conn.query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM games
+                 WHERE id != ?1 AND lower(trim(package_name)) = lower(trim(?2))
+             )",
+            params![id, pkg],
+            |row| row.get(0),
+        )?;
+        if conflict {
+            continue;
+        }
+
+        let changed = conn.execute(
+            "UPDATE games SET package_name = ?1
+             WHERE id = ?2 AND (package_name IS NULL OR trim(package_name) = '')",
+            params![pkg, id],
+        )?;
+        updated += changed;
+    }
+
+    Ok(updated)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{cleanup_branch_session_levels, cleanup_session_levels, Database};
+    use super::{
+        backfill_game_package_names, cleanup_branch_session_levels, cleanup_session_levels,
+        extract_package_name, Database,
+    };
     use rusqlite::{params, Connection};
 
     fn setup_db() -> Connection {
@@ -1185,5 +1346,143 @@ mod tests {
                  FROM regions ORDER BY sort_order, id",
             )
             .unwrap();
+    }
+
+    #[test]
+    fn extract_package_name_basic() {
+        assert_eq!(
+            extract_package_name("hello=1\npackage_name=com.example.game\nrequest=foo"),
+            Some("com.example.game".to_string())
+        );
+        assert_eq!(
+            extract_package_name("package_name=com.example.game"),
+            Some("com.example.game".to_string())
+        );
+        assert_eq!(
+            extract_package_name("PACKAGE_NAME=com.example.game"),
+            Some("com.example.game".to_string())
+        );
+        assert_eq!(
+            extract_package_name("Package_Name = com.example.game"),
+            Some("com.example.game".to_string())
+        );
+        assert_eq!(
+            extract_package_name("package_name=com.example.game&x=1"),
+            Some("com.example.game".to_string())
+        );
+        assert_eq!(
+            extract_package_name("package_name=com.example.game;x=2"),
+            Some("com.example.game".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_package_name_invalid_and_missing() {
+        assert_eq!(extract_package_name("no package here"), None);
+        assert_eq!(extract_package_name("package_name="), None);
+        assert_eq!(extract_package_name("package_name_foo=com.x"), None);
+        assert_eq!(extract_package_name("package_name=x$y"), None);
+        assert_eq!(extract_package_name("package_name foo=com.x"), None);
+        assert_eq!(extract_package_name(""), None);
+    }
+
+    #[test]
+    fn backfill_stores_package_only_when_unanimous_and_unique() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE games (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                package_name TEXT
+            );
+            CREATE TABLE accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                game_id INTEGER NOT NULL,
+                request_template TEXT NOT NULL
+            );
+            ",
+        )
+        .unwrap();
+        conn.execute("INSERT INTO games (name, package_name) VALUES ('A', NULL)", [])
+            .unwrap();
+        conn.execute("INSERT INTO games (name, package_name) VALUES ('B', NULL)", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO accounts (game_id, request_template) VALUES (1, 'package_name=com.example.a')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO accounts (game_id, request_template) VALUES (1, 'url=1\npackage_name=com.example.a\nx=2')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO accounts (game_id, request_template) VALUES (2, 'package_name=com.example.b1')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO accounts (game_id, request_template) VALUES (2, 'package_name=com.example.b2')",
+            [],
+        )
+        .unwrap();
+
+        let n = backfill_game_package_names(&conn).unwrap();
+        assert_eq!(n, 1);
+
+        let a: Option<String> = conn
+            .query_row("SELECT package_name FROM games WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(a.as_deref(), Some("com.example.a"));
+
+        let b: Option<String> = conn
+            .query_row("SELECT package_name FROM games WHERE id = 2", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(b, None, "disagreeing accounts must not auto-bind");
+
+        let n2 = backfill_game_package_names(&conn).unwrap();
+        assert_eq!(n2, 0, "idempotent — second run changes nothing");
+    }
+
+    #[test]
+    fn backfill_skips_package_claimed_by_another_game() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE games (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                package_name TEXT
+            );
+            CREATE TABLE accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                game_id INTEGER NOT NULL,
+                request_template TEXT NOT NULL
+            );
+            ",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO games (name, package_name) VALUES ('X', 'com.example.shared')",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO games (name, package_name) VALUES ('Y', NULL)", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO accounts (game_id, request_template) VALUES (2, 'package_name=com.example.shared')",
+            [],
+        )
+        .unwrap();
+
+        let n = backfill_game_package_names(&conn).unwrap();
+        assert_eq!(n, 0);
+
+        let y: Option<String> = conn
+            .query_row("SELECT package_name FROM games WHERE id = 2", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(y, None, "must not steal a package used by another game");
     }
 }

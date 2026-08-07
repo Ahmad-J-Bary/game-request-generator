@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@grq/ui/atoms/alert-dialog";
-import { Settings, Trash2, Plus, Download, ChevronDown, FileText } from "lucide-react";
+import { Settings, Trash2, Plus, Download, ChevronDown, FileText, Package, Lock } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -58,6 +58,7 @@ import { TauriService } from
 "@grq/core/services/tauri.service";
 import { asyncStorageService } from "@grq/core/services/storage.service";
 import { Level, PurchaseEvent, GameBranch } from "@grq/api-bindings";
+import { isValidPackageValue } from "@grq/core/utils/game-package.utils";
 import { useEffect } from "react";
 import {
   getRealTimelineLevels,
@@ -80,7 +81,7 @@ export default function GameDetailPage({
   const { colors } = useSettings();
   const { theme } = useTheme();
 
-  const { games, deleteGame, fetchBranches, addBranch, deleteBranch } =
+  const { games, deleteGame, fetchBranches, addBranch, deleteBranch, updateGame } =
     useGames();
 
   const [branches, setBranches] = useState<GameBranch[]>([]);
@@ -89,6 +90,55 @@ export default function GameDetailPage({
   const [newBranchName, setNewBranchName] = useState("");
   const [isCreatingBranch, setIsCreatingBranch] = useState(false);
   const [copyFromBranchId, setCopyFromBranchId] = useState<number | null>(null);
+
+  // Editable package_name for the current game (used for account detection).
+  // Once set, the package is authoritative and locked; it may only be
+  // assigned to a game that does not have one yet (legacy games).
+  const [showPackageDialog, setShowPackageDialog] = useState(false);
+  const [packageName, setPackageName] = useState("");
+  const [savingPackage, setSavingPackage] = useState(false);
+  const [packageError, setPackageError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const currentGame = games.find((g) => String(g.id) === String(gameId));
+    setPackageName(currentGame?.package_name || "");
+  }, [games, gameId]);
+
+  const isPackageLocked = !!(
+    games.find((g) => String(g.id) === String(gameId))?.package_name || ""
+  ).trim();
+
+  const handleSavePackageName = async () => {
+    if (!gameId) return;
+    const pkg = packageName.trim();
+    if (!isValidPackageValue(pkg)) {
+      setPackageError(t("games.packageRequired", "Package name is required for each game."));
+      return;
+    }
+    if (
+      games.some(
+        (g) =>
+          g.id !== Number(gameId) &&
+          (g.package_name || "").trim().toLowerCase() === pkg.toLowerCase(),
+      )
+    ) {
+      setPackageError(t("games.packageDuplicate", "This package name is already in use by another game."));
+      return;
+    }
+    setPackageError(null);
+    setSavingPackage(true);
+    try {
+      const success = await updateGame({
+        id: gameId,
+        package_name: pkg,
+      });
+      if (success) {
+        setShowPackageDialog(false);
+      }
+    } finally {
+      setSavingPackage(false);
+    }
+  };
 
   // Fetch branches when game changed
   useEffect(() => {
@@ -144,9 +194,9 @@ export default function GameDetailPage({
   }
 
   // Game Creation State
-  const handleCreateGameAsync = async (name: string) => {
+  const handleCreateGameAsync = async (name: string, packageName: string) => {
     try {
-      const newId = await TauriService.addGame({ name });
+      const newId = await TauriService.addGame({ name, package_name: packageName });
       if (newId) {
         window.dispatchEvent(
           new CustomEvent("games-updated", { detail: { id: newId } }),
@@ -656,21 +706,51 @@ export default function GameDetailPage({
           title={game ? game.name : t("games.detailTitle")}
           subtitle={t("games.detailSubtitle")}
           titleExtra={
-            branches.length > 0 && (
-              <div className="flex items-center gap-2 bg-accent/30 p-1 rounded-md border border-border/50">
-                <span className="text-sm font-medium px-2 text-muted-foreground">
-                  {t("branches.count", { count: branches.length })}
+            <div className="flex items-center gap-2">
+              {game?.package_name && (
+                <span className="hidden sm:inline-flex items-center gap-1.5 bg-primary/5 text-primary/80 px-2 py-1 rounded-md border border-primary/10 text-xs font-mono">
+                  <Package className="h-3 w-3" />
+                  {game.package_name}
                 </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setShowManageBranches(true)}
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )
+              )}
+              {branches.length > 0 && (
+                <div className="flex items-center gap-2 bg-accent/30 p-1 rounded-md border border-border/50">
+                  <span className="text-sm font-medium px-2 text-muted-foreground">
+                    {t("branches.count", { count: branches.length })}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setShowManageBranches(true)}
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2 gap-1.5"
+                onClick={() => setShowPackageDialog(true)}
+                title={
+                  isPackageLocked
+                    ? t("games.packageLocked", "The package name is locked")
+                    : t("games.editPackageName", "Set package name")
+                }
+              >
+                {isPackageLocked ? (
+                  <Lock className="h-3.5 w-3.5" />
+                ) : (
+                  <Package className="h-3.5 w-3.5" />
+                )}
+                <span className="hidden sm:inline text-xs">
+                  {isPackageLocked
+                    ? t("games.packageLocked", "Locked")
+                    : t("games.packageName", "Package")}
+                </span>
+              </Button>
+            </div>
           }
         >
           <ActionToolbar
@@ -846,6 +926,55 @@ export default function GameDetailPage({
             >
               {t("common.close")}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Game Package Name Dialog */}
+      <Dialog open={showPackageDialog} onOpenChange={setShowPackageDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("games.packageName", "Package name")}</DialogTitle>
+            <DialogDescription>
+              {isPackageLocked
+                ? t("games.packageLockedHint", "This game's package name is locked and cannot be changed.")
+                : t("games.editPackageNameHint", "Used to detect whether an added account belongs to this game.")}
+            </DialogDescription>
+          </DialogHeader>
+          {isPackageLocked ? (
+            <div className="space-y-2 py-2">
+              <div className="flex items-center gap-2 rounded-md border border-border/50 bg-accent/30 px-3 py-2.5">
+                <Lock className="h-4 w-4 text-muted-foreground" />
+                <span className="font-mono text-sm">{game?.package_name}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2 py-2">
+              <Label>{t("games.packageName", "Package name")}</Label>
+              <Input
+                placeholder="e.g. com.example.game"
+                value={packageName}
+                onChange={(e) => {
+                  setPackageName(e.target.value);
+                  if (packageError) setPackageError(null);
+                }}
+                className="font-mono"
+                aria-invalid={!!packageError}
+              />
+              {packageError && (
+                <p className="text-xs text-destructive font-medium">{packageError}</p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPackageDialog(false)}>
+              {t("common.close", "Close")}
+            </Button>
+            {!isPackageLocked && (
+              <Button onClick={handleSavePackageName} disabled={savingPackage}>
+                {savingPackage ? t("common.loading") : t("common.save")}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -12,12 +12,14 @@ import {
 } from '@grq/ui/atoms/popover';
 import { cn } from '@grq/ui/lib/utils';
 import type { Game } from '@grq/api-bindings';
+import { isValidPackageValue } from '@grq/core/utils/game-package.utils';
+import { NotificationService } from '@grq/core/utils/notifications';
 
 export interface ExcelTabBarProps {
   games: Game[];
   activeGameId: number | undefined;
   onSelectGame: (gameId: number) => void;
-  onCreateGame: (name: string) => Promise<void>;
+  onCreateGame: (name: string, packageName: string) => Promise<void>;
   onDeleteGame?: (gameId: number) => void;
   isEditMode?: boolean;
 }
@@ -33,16 +35,37 @@ export function ExcelTabBar({
   const { t } = useTranslation();
   const [isCreatingGame, setIsCreatingGame] = useState(false);
   const [newGameName, setNewGameName] = useState('');
+  const [newGamePackage, setNewGamePackage] = useState('');
+  const [packageError, setPackageError] = useState<string | null>(null);
 
   const handleCreateGame = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newGameName.trim()) return;
+    const pkg = newGamePackage.trim();
+    if (!newGameName.trim()) {
+      NotificationService.error(t('errors.required'));
+      return;
+    }
+    if (!isValidPackageValue(pkg)) {
+      setPackageError(t('games.packageRequired', 'Package name is required for each game.'));
+      return;
+    }
+    if (
+      games.some(
+        (g) => (g.package_name || '').trim().toLowerCase() === pkg.toLowerCase(),
+      )
+    ) {
+      setPackageError(t('games.packageDuplicate', 'This package name is already in use by another game.'));
+      return;
+    }
+    setPackageError(null);
     try {
-      await onCreateGame(newGameName.trim());
+      await onCreateGame(newGameName.trim(), pkg);
       setNewGameName('');
+      setNewGamePackage('');
       setIsCreatingGame(false);
     } catch (error) {
       console.error('Failed to create game', error);
+      NotificationService.error(t('games.createFailed', 'Failed to create game.'));
     }
   };
 
@@ -127,6 +150,20 @@ export function ExcelTabBar({
                   className="h-9 text-sm"
                   autoFocus
                 />
+                <Input
+                  id="package_name"
+                  placeholder={t('games.packageNamePlaceholder', 'e.g. com.example.game')}
+                  value={newGamePackage}
+                  onChange={(e) => {
+                    setNewGamePackage(e.target.value);
+                    if (packageError) setPackageError(null);
+                  }}
+                  className={cn("h-9 text-sm font-mono", packageError && "border-destructive")}
+                  aria-invalid={!!packageError}
+                />
+                {packageError && (
+                  <p className="text-xs text-destructive font-medium">{packageError}</p>
+                )}
               </div>
               <Button type="submit" size="sm" className="w-full h-9">
                 {t('common.create', 'Create Sheet')}

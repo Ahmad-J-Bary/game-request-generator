@@ -11,12 +11,20 @@ impl GameService {
     }
 
     pub fn create_game(&self, conn: &Connection, request: CreateGameRequest) -> Result<i64, String> {
+        let package_name = request
+            .package_name
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .ok_or_else(|| "Package name is required. Please enter the game's package name.".to_string())?;
+
+        Self::ensure_package_unique(conn, &package_name, None)?;
+
         // Use a transaction to ensure both game and default branch are created
         let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
         tx.execute(
-            "INSERT INTO games (name) VALUES (?1)",
-            params![request.name],
+            "INSERT INTO games (name, package_name) VALUES (?1, ?2)",
+            params![request.name, package_name],
         )
         .map_err(|e| format!("Failed to create game: {}", e))?;
 
@@ -36,7 +44,7 @@ impl GameService {
 
     pub fn get_games(&self, conn: &Connection) -> Result<Vec<Game>, String> {
         let mut stmt = conn
-            .prepare("SELECT id, name, created_at FROM games ORDER BY name")
+            .prepare("SELECT id, name, package_name, created_at FROM games ORDER BY name")
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let games_iter = stmt
@@ -44,7 +52,8 @@ impl GameService {
                 Ok(Game {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    created_at: row.get(2).ok(),
+                    package_name: row.get(2).ok(),
+                    created_at: row.get(3).ok(),
                 })
             })
             .map_err(|e| format!("Failed to query games: {}", e))?;
@@ -59,13 +68,14 @@ impl GameService {
 
     pub fn get_game_by_id(&self, conn: &Connection, id: i64) -> Result<Option<Game>, String> {
         conn.query_row(
-            "SELECT id, name, created_at FROM games WHERE id = ?1",
+            "SELECT id, name, package_name, created_at FROM games WHERE id = ?1",
             params![id],
             |row| {
                 Ok(Game {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    created_at: row.get(2).ok(),
+                    package_name: row.get(2).ok(),
+                    created_at: row.get(3).ok(),
                 })
             },
         )
@@ -74,16 +84,63 @@ impl GameService {
     }
 
     pub fn update_game(&self, conn: &Connection, request: UpdateGameRequest) -> Result<bool, String> {
+        let mut changed = false;
+
         if let Some(name) = request.name {
             conn.execute(
                 "UPDATE games SET name = ?1 WHERE id = ?2",
                 params![name, request.id],
             )
-            .map_err(|e| format!("Failed to update game: {}", e))?;
-
-            return Ok(conn.changes() > 0);
+            .map_err(|e| format!("Failed to update game name: {}", e))?;
+            changed = true;
         }
-        Ok(false)
+
+        if let Some(package_name) = request.package_name {
+            let package_name = package_name.trim().to_string();
+
+            // The stored package is authoritative once set: it may only be
+            // assigned to a game that does not have one yet (legacy games).
+            // It can never be changed or cleared afterwards.
+            let current: Option<String> = conn
+                .query_row(
+                    "SELECT package_name FROM games WHERE id = ?1",
+                    params![request.id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| format!("Failed to read game package_name: {}", e))?
+                .flatten();
+
+            if package_name.is_empty() {
+                if current.is_some() {
+                    return Err(
+                        "The game's package name is locked and cannot be removed.".to_string(),
+                    );
+                }
+                return Ok(changed);
+            }
+
+            if let Some(existing) = current {
+                if existing.trim().eq_ignore_ascii_case(&package_name) {
+                    return Ok(changed);
+                }
+                return Err(format!(
+                    "The game's package name (\"{}\") is locked and cannot be changed.",
+                    existing.trim()
+                ));
+            }
+
+            Self::ensure_package_unique(conn, &package_name, Some(request.id))?;
+
+            conn.execute(
+                "UPDATE games SET package_name = ?1 WHERE id = ?2",
+                params![package_name, request.id],
+            )
+            .map_err(|e| format!("Failed to update game package_name: {}", e))?;
+            changed = true;
+        }
+
+        Ok(changed)
     }
 
     pub fn delete_game(&self, conn: &Connection, id: i64) -> Result<bool, String> {
@@ -91,6 +148,35 @@ impl GameService {
             .map_err(|e| format!("Failed to delete game: {}", e))?;
 
         Ok(conn.changes() > 0)
+    }
+
+    /// Ensures no other game already stores the same package_name
+    /// (case-insensitive). `exclude_id` is the game being updated, if any.
+    fn ensure_package_unique(
+        conn: &Connection,
+        package_name: &str,
+        exclude_id: Option<i64>,
+    ) -> Result<(), String> {
+        let duplicate: Option<(i64, String)> = conn
+            .query_row(
+                "SELECT id, name FROM games
+                 WHERE lower(trim(package_name)) = lower(trim(?1))
+                   AND (?2 IS NULL OR id != ?2)
+                 LIMIT 1",
+                params![package_name, exclude_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| format!("Failed to check package uniqueness: {}", e))?;
+
+        if let Some((_, game_name)) = duplicate {
+            return Err(format!(
+                "Package name \"{}\" is already in use by game \"{}\".",
+                package_name, game_name
+            ));
+        }
+
+        Ok(())
     }
 
     // --- Branch Methods ---

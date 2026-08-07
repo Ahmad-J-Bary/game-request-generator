@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Calendar, ChevronLeft, ChevronRight, Clock, RefreshCw } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Clock, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useAccounts } from '@grq/core/hooks/useAccounts';
 import { Button } from '@grq/ui/atoms/button';
 import { Input } from '@grq/ui/atoms/input';
@@ -12,12 +12,13 @@ import { Textarea } from '@grq/ui/atoms/textarea';
 import { Card, CardContent } from '@grq/ui/atoms/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@grq/ui/atoms/popover';
 import { BackButton } from '@grq/ui/molecules/BackButton';
-import { CreateAccountRequest, UpdateAccountRequest, GameBranch, AccountBranchTransferResult, Region, Account, Owner } from '@grq/api-bindings';
+import { CreateAccountRequest, UpdateAccountRequest, GameBranch, AccountBranchTransferResult, Region, Account, Owner, Game } from '@grq/api-bindings';
 import { NotificationService } from '@grq/core/utils/notifications';
 import { toLocalDateIso } from '@grq/core/utils/date.utils';
 import { normalizeState } from '@grq/core/utils/proxy-state.utils';
 import { TauriService } from '@grq/core/services/tauri.service';
 import { useGames } from '@grq/core/hooks/useGames';
+import { analyzeAccountGame } from '@grq/core/utils/game-package.utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@grq/ui/atoms/select';
 import { BranchTransferDialog } from '@grq/ui/organisms/BranchTransferDialog';
 
@@ -458,6 +459,24 @@ export default function AccountFormPage() {
 
   const currentGameId = account ? account.game_id : gameId;
 
+  // Fetch games so we can cross-check the account's package_name against the
+  // selected game's stored package.
+  const [games, setGames] = useState<Game[]>([]);
+  useEffect(() => {
+    let active = true;
+    TauriService.getGames()
+      .then((data) => { if (active) setGames(data || []); })
+      .catch(console.error);
+    return () => { active = false; };
+  }, []);
+
+  const packageAnalysis = analyzeAccountGame({
+    accountName: name,
+    template: requestTemplate,
+    selectedGameId: currentGameId,
+    games,
+  });
+
   // Recompute the rotating sub-region suggestion when the game or data changes.
   useEffect(() => {
     if (currentGameId) {
@@ -590,6 +609,30 @@ export default function AccountFormPage() {
     if (!currentGameId || !name.trim() || !startDate || !startTime.trim() || !requestTemplate.trim()) {
       NotificationService.error(t('errors.required'));
       return;
+    }
+
+    // Block creating an account whose request template's package_name does not
+    // match the selected game, to prevent permanently linking it to the wrong
+    // game. (Editing an existing account stays warning-only.)
+    if (!account) {
+      if (packageAnalysis.status === 'mismatch') {
+        const message = packageAnalysis.otherGame
+          ? t('accounts.packageMismatchOther', 'This account\'s package ({{pkg}}) belongs to game "{{game}}" not to the selected game. Double-check the game selection.', {
+              pkg: packageAnalysis.accountPackage,
+              game: packageAnalysis.otherGame.name,
+            })
+          : t('accounts.packageMismatch', 'The package name ({{pkg}}) does not match the selected game. Double-check the game selection.', {
+              pkg: packageAnalysis.accountPackage,
+            });
+        NotificationService.error(message);
+        return;
+      }
+      if (packageAnalysis.status === 'missing-package') {
+        NotificationService.error(
+          t('accounts.packageMissing', 'The request template is missing a valid "package_name" field. Add a line like "package_name=com.example.game" and try again.'),
+        );
+        return;
+      }
     }
 
     setLoading(true);
@@ -856,6 +899,42 @@ export default function AccountFormPage() {
                 className="font-mono text-xs"
                 required
               />
+              {requestTemplate.trim() && packageAnalysis.status === 'missing-package' && (
+                <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    {t('accounts.packageMissing', 'The request template is missing a valid "package_name" field. Add a line like "package_name=com.example.game" and try again.')}
+                  </span>
+                </div>
+              )}
+              {packageAnalysis.status === 'game-no-package' && (
+                <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    {packageAnalysis.otherGame
+                      ? t('accounts.packageGameNoPackageOther', 'This game has no package name set yet, so package verification is skipped. This account\'s package ({{pkg}}) belongs to game "{{game}}". Set the package name on the game page to enable verification.', {
+                          pkg: packageAnalysis.accountPackage,
+                          game: packageAnalysis.otherGame.name,
+                        })
+                      : t('accounts.packageGameNoPackage', 'This game has no package name set yet, so package verification is skipped. Set it on the game page to enable verification.')}
+                  </span>
+                </div>
+              )}
+              {packageAnalysis.status === 'mismatch' && (
+                <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    {packageAnalysis.otherGame
+                      ? t('accounts.packageMismatchOther', 'This account\'s package ({{pkg}}) belongs to game "{{game}}" not to the selected game. Double-check the game selection.', {
+                          pkg: packageAnalysis.accountPackage,
+                          game: packageAnalysis.otherGame.name,
+                        })
+                      : t('accounts.packageMismatch', 'The package name ({{pkg}}) does not match the selected game. Double-check the game selection.', {
+                          pkg: packageAnalysis.accountPackage,
+                        })}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct Game {
     pub id: i64,
     pub name: String,
+    pub package_name: Option<String>,
     pub created_at: Option<String>,
 }
 
@@ -21,12 +22,14 @@ pub struct GameBranch {
 #[derive(Debug, Deserialize)]
 pub struct CreateGameRequest {
     pub name: String,
+    pub package_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateGameRequest {
     pub id: i64,
     pub name: Option<String>,
+    pub package_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
