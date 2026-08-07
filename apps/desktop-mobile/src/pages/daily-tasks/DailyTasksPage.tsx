@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlayCircle, Layers, Flag } from "lucide-react";
@@ -16,6 +16,10 @@ import type {
   GameBatch,
   DailyTask,
 } from "@grq/api-bindings/types/daily-tasks.types";
+import type { Owner } from "@grq/api-bindings";
+import { TauriService } from "@grq/core/services/tauri.service";
+import { Label } from "@grq/ui/atoms/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@grq/ui/atoms/select";
 
 const LEVEL_META: Record<TaskLevel, { icon: typeof PlayCircle; titleKey: string; iconClass: string }> = {
   first: {
@@ -36,7 +40,7 @@ const LEVEL_META: Record<TaskLevel, { icon: typeof PlayCircle; titleKey: string;
 };
 
 export default function DailyTasksPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const {
     batches,
@@ -54,6 +58,35 @@ export default function DailyTasksPage() {
     regionColorMap,
   } = useDailyTasks();
 
+  const [owners, setOwners] = useState<Owner[]>([]);
+  const [ownerFilter, setOwnerFilter] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    TauriService.getOwners()
+      .then((data) => { if (active) setOwners(data || []); })
+      .catch(console.error);
+    return () => { active = false; };
+  }, []);
+
+  // Reset the selection if the chosen owner was deleted while this page is open.
+  useEffect(() => {
+    if (ownerFilter && owners.length > 0 && !owners.some((o) => o.name === ownerFilter)) {
+      setOwnerFilter("");
+    }
+  }, [owners, ownerFilter]);
+
+  const { filteredBatches, filteredDeferred } = useMemo(() => {
+    if (!ownerFilter) return { filteredBatches: batches, filteredDeferred: hookDeferredTasks };
+    const match = (task: DailyTask) => (task.account.owner?.trim() || "") === ownerFilter;
+    return {
+      filteredBatches: batches
+        .map((b) => ({ ...b, tasks: b.tasks.filter(match) }))
+        .filter((b) => b.tasks.length > 0),
+      filteredDeferred: hookDeferredTasks.filter(match),
+    };
+  }, [batches, hookDeferredTasks, ownerFilter]);
+
   const { levelSections, hasTasks } = useMemo(() => {
     const sections: Record<TaskLevel, GameBatch[]> = {
       first: [],
@@ -68,15 +101,14 @@ export default function DailyTasksPage() {
       middle: [],
       last: [],
     };
-    batches.forEach((batch) => {
+    filteredBatches.forEach((batch) => {
       batch.tasks.forEach((task) => {
         tasksByLevel[taskLevel(task)].push(task);
       });
     });
-    hookDeferredTasks.forEach((task) => {
+    filteredDeferred.forEach((task) => {
       tasksByLevel[taskLevel(task)].push(task);
     });
-
     // Rebuild the batch system WITHIN each level using the generator's exact
     // mechanism (group by region, then by game, one task per game per batch).
     // Batch numbering continues across levels (global sequential counter), so
@@ -90,7 +122,7 @@ export default function DailyTasksPage() {
     const hasTasks = TASK_LEVEL_ORDER.some((level) => sections[level].length > 0);
 
     return { levelSections: sections, hasTasks };
-  }, [batches, hookDeferredTasks]);
+  }, [filteredBatches, filteredDeferred]);
 
   // Generate today's tasks on mount and when games change
   useEffect(() => {
@@ -104,9 +136,29 @@ export default function DailyTasksPage() {
     <div className="w-full px-1 sm:px-2 space-y-4 lg:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-            {t("dailyTasks.title")}
-          </h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight whitespace-nowrap">
+              {t("dailyTasks.title")}
+            </h1>
+            {owners.length >= 2 && (
+              <div className="flex items-center gap-2">
+                <Label className="text-muted-foreground whitespace-nowrap text-xs">
+                  {t("accounts.owner", "Owner")}
+                </Label>
+                <Select value={ownerFilter || "none"} onValueChange={(v) => setOwnerFilter(v === "none" ? "" : v)}>
+                  <SelectTrigger dir={i18n.dir()} className="h-8 w-44 rounded-xl bg-background border border-border/40 text-sm">
+                    <SelectValue placeholder={t("accounts.allOwners", "All owners")} />
+                  </SelectTrigger>
+                  <SelectContent dir={i18n.dir()}>
+                    <SelectItem value="none">{t("accounts.allOwners", "All owners")}</SelectItem>
+                    {owners.map((o) => (
+                      <SelectItem key={o.id} value={o.name}>{o.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             {t("dailyTasks.subtitle")}
           </p>
@@ -164,14 +216,14 @@ export default function DailyTasksPage() {
                       >
                         <BatchDisplay
                           batch={batch}
-                          allBatches={batches}
+                          allBatches={filteredBatches}
                           accountCompletionRecords={accountCompletionRecords}
                           accountTaskAssignments={accountTaskAssignments}
                           accountStartStates={accountStartStates}
                           onCompleteTask={completeTask}
                           onCopyRequest={copyToClipboard}
                           completedTasks={completedTasks}
-                          deferredTasks={hookDeferredTasks}
+                          deferredTasks={filteredDeferred}
                           regionColorMap={regionColorMap}
                         />
                       </motion.div>
