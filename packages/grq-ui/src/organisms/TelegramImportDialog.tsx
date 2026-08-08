@@ -37,7 +37,6 @@ import { TelegramImportPreview, Game, GameBranch, TelegramConfig, Region, Accoun
   '@grq/api-bindings';
 import { cn } from '@grq/ui/lib/utils';
 import { asyncStorageService } from '@grq/core/services/storage.service';
-import { applySessionCompletionForGame } from '@grq/core/services/excel/excel-session-processor';
 import { analyzeAccountGame, predictGameByAccountOrPackage } from '@grq/core/utils/game-package.utils';
 
 interface TelegramImportDialogProps {
@@ -409,7 +408,6 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         owner: owner.trim() || undefined,
       });
 
-      applySessionCompletionForGame(parseInt(selectedGameId)).catch(() => {});
       // Refetch accounts so the suggested rotating sub-region advances for the next import.
       fetchAllAccounts();
 
