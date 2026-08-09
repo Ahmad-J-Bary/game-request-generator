@@ -311,12 +311,15 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
     }
   }, [selectedImport, selectedContent, games, gameAutoSelected]);
 
-  // Sync selectedTime when selectedImport changes
+  // Sync selectedTime when selectedImport changes. Default to the current
+  // local time (like a manual Add Account) so freshly imported accounts start
+  // now instead of at the message's own (already-past) date/time.
   useEffect(() => {
     if (selectedImport) {
-      const timePart = selectedImport.date.split(' ')[1] || '00:00:00';
-      // Convert to HH:mm format for input[type=time]
-      setSelectedTime(timePart.substring(0, 5));
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      setSelectedTime(`${hh}:${mm}`);
     }
   }, [selectedImport]);
 
@@ -401,8 +404,8 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         name: accountName,
         game_id: parseInt(selectedGameId),
         branch_id: parseInt(selectedBranchId),
-        start_date: selectedImport.date.split(' ')[0],
-        start_time: selectedTime ? `${selectedTime}:00` : (selectedImport.date.split(' ')[1] || '00:00:00'),
+        start_date: toLocalDateIso(),
+        start_time: selectedTime ? `${selectedTime}:00` : new Date().toTimeString().slice(0, 8),
         request_template: content,
         proxy_state: selectedSub ? selectedSub : undefined,
         owner: owner.trim() || undefined,
