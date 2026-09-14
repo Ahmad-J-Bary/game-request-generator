@@ -205,7 +205,7 @@ export default function AccountsDetailPage() {
     };
   }, [selectedGameId, fetchBranches]);
 
-  const handleCreateGameAsync = async (name: string, packageName: string) => {
+  const handleCreateGameAsync = async (name: string, packageName?: string) => {
     try {
       const newId = await TauriService.addGame({ name, package_name: packageName });
       if (newId) {

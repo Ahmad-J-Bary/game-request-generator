@@ -143,6 +143,7 @@ fn find_latest_backup_with_subdirs() {
 }
 
 // ===== cleanup_old_backups =====
+#[test]
 fn cleanup_deletes_old_backups() {
     let dir = create_temp_dir();
     // "Very old" files: guaranteed to be older than (today - 1 day)

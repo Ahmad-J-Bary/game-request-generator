@@ -10,6 +10,7 @@ import {
   TASK_LEVEL_ORDER,
   taskLevel,
   buildLevelBatches,
+  buildEffectiveTaskLevelMap,
   type TaskLevel,
 } from "@grq/core/utils/task-level.utils";
 import type {
@@ -69,23 +70,22 @@ export default function DailyTasksPage() {
     return () => { active = false; };
   }, []);
 
-  // Reset the selection if the chosen owner was deleted while this page is open.
-  useEffect(() => {
-    if (ownerFilter && owners.length > 0 && !owners.some((o) => o.name === ownerFilter)) {
-      setOwnerFilter("");
-    }
-  }, [owners, ownerFilter]);
+  // Derive a safe ownerFilter: clear it if the selected owner no longer exists.
+  const safeOwnerFilter =
+    ownerFilter && owners.length > 0 && !owners.some((o) => o.name === ownerFilter)
+      ? ""
+      : ownerFilter;
 
   const { filteredBatches, filteredDeferred } = useMemo(() => {
-    if (!ownerFilter) return { filteredBatches: batches, filteredDeferred: hookDeferredTasks };
-    const match = (task: DailyTask) => (task.account.owner?.trim() || "") === ownerFilter;
+    if (!safeOwnerFilter) return { filteredBatches: batches, filteredDeferred: hookDeferredTasks };
+    const match = (task: DailyTask) => (task.account.owner?.trim() || "") === safeOwnerFilter;
     return {
       filteredBatches: batches
         .map((b) => ({ ...b, tasks: b.tasks.filter(match) }))
         .filter((b) => b.tasks.length > 0),
       filteredDeferred: hookDeferredTasks.filter(match),
     };
-  }, [batches, hookDeferredTasks, ownerFilter]);
+  }, [batches, hookDeferredTasks, safeOwnerFilter]);
 
   const { levelSections, hasTasks } = useMemo(() => {
     const sections: Record<TaskLevel, GameBatch[]> = {
@@ -94,20 +94,30 @@ export default function DailyTasksPage() {
       last: [],
     };
 
-    // Partition ALL displayed tasks (ready + deferred) by level, preserving the
-    // generator's ordering (ready batches first, then the deferred list).
+    // Partition ALL displayed tasks (ready + deferred) by effective level, preserving
+    // the generator's ordering. The first active task for an account (where all
+    // previous stages are completed) stays in Level 1 and does not demote.
     const tasksByLevel: Record<TaskLevel, DailyTask[]> = {
       first: [],
       middle: [],
       last: [],
     };
+
+    const allDisplayedTasks: DailyTask[] = [];
     filteredBatches.forEach((batch) => {
       batch.tasks.forEach((task) => {
-        tasksByLevel[taskLevel(task)].push(task);
+        allDisplayedTasks.push(task);
       });
     });
     filteredDeferred.forEach((task) => {
-      tasksByLevel[taskLevel(task)].push(task);
+      allDisplayedTasks.push(task);
+    });
+
+    const levelMap = buildEffectiveTaskLevelMap(allDisplayedTasks);
+
+    allDisplayedTasks.forEach((task) => {
+      const lvl = levelMap.get(task) ?? taskLevel(task);
+      tasksByLevel[lvl].push(task);
     });
     // Rebuild the batch system WITHIN each level using the generator's exact
     // mechanism (group by region, then by game, one task per game per batch).
@@ -130,6 +140,7 @@ export default function DailyTasksPage() {
 
     // Always generate/refresh tasks on mount to get fresh random numbers
     generateTodaysTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [games]);
 
   return (
@@ -145,7 +156,7 @@ export default function DailyTasksPage() {
                 <Label className="text-muted-foreground whitespace-nowrap text-xs">
                   {t("accounts.owner", "Owner")}
                 </Label>
-                <Select value={ownerFilter || "none"} onValueChange={(v) => setOwnerFilter(v === "none" ? "" : v)}>
+                <Select value={safeOwnerFilter || "none"} onValueChange={(v) => setOwnerFilter(v === "none" ? "" : v)}>
                   <SelectTrigger dir={i18n.dir()} className="h-8 w-44 rounded-xl bg-background border border-border/40 text-sm">
                     <SelectValue placeholder={t("accounts.allOwners", "All owners")} />
                   </SelectTrigger>

@@ -392,12 +392,8 @@ export function TelegramImportDialog({ open, onOpenChange }: TelegramImportDialo
         );
         return;
       }
-      if (analysis.status === 'missing-package') {
-        toast.error(
-          t('settings.telegramImport.packageMissing', 'The request template is missing a valid "package_name" field. Add a line like "package_name=com.example.game" and try again.'),
-        );
-        return;
-      }
+      // missing-package is allowed when the game has no stored package yet;
+      // the backend will auto-extract and set it from this first account.
 
       // 3. Create account
       await TauriService.addAccount({

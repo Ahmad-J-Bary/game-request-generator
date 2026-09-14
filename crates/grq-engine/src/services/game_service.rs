@@ -14,17 +14,18 @@ impl GameService {
         let package_name = request
             .package_name
             .map(|p| p.trim().to_string())
-            .filter(|p| !p.is_empty())
-            .ok_or_else(|| "Package name is required. Please enter the game's package name.".to_string())?;
+            .filter(|p| !p.is_empty());
 
-        Self::ensure_package_unique(conn, &package_name, None)?;
+        if let Some(ref pkg) = package_name {
+            Self::ensure_package_unique(conn, pkg, None)?;
+        }
 
         // Use a transaction to ensure both game and default branch are created
         let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
         tx.execute(
             "INSERT INTO games (name, package_name) VALUES (?1, ?2)",
-            params![request.name, package_name],
+            params![request.name, package_name.as_deref()],
         )
         .map_err(|e| format!("Failed to create game: {}", e))?;
 

@@ -19,7 +19,7 @@ export interface ExcelTabBarProps {
   games: Game[];
   activeGameId: number | undefined;
   onSelectGame: (gameId: number) => void;
-  onCreateGame: (name: string, packageName: string) => Promise<void>;
+  onCreateGame: (name: string, packageName?: string) => Promise<void>;
   onDeleteGame?: (gameId: number) => void;
   isEditMode?: boolean;
 }
@@ -45,11 +45,12 @@ export function ExcelTabBar({
       NotificationService.error(t('errors.required'));
       return;
     }
-    if (!isValidPackageValue(pkg)) {
-      setPackageError(t('games.packageRequired', 'Package name is required for each game.'));
+    if (pkg && !isValidPackageValue(pkg)) {
+      setPackageError(t('games.packageInvalid', 'Invalid package name format. Use letters, digits, dots, hyphens, and underscores only.'));
       return;
     }
     if (
+      pkg &&
       games.some(
         (g) => (g.package_name || '').trim().toLowerCase() === pkg.toLowerCase(),
       )
@@ -59,7 +60,7 @@ export function ExcelTabBar({
     }
     setPackageError(null);
     try {
-      await onCreateGame(newGameName.trim(), pkg);
+      await onCreateGame(newGameName.trim(), pkg || undefined);
       setNewGameName('');
       setNewGamePackage('');
       setIsCreatingGame(false);

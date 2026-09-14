@@ -627,12 +627,8 @@ export default function AccountFormPage() {
         NotificationService.error(message);
         return;
       }
-      if (packageAnalysis.status === 'missing-package') {
-        NotificationService.error(
-          t('accounts.packageMissing', 'The request template is missing a valid "package_name" field. Add a line like "package_name=com.example.game" and try again.'),
-        );
-        return;
-      }
+      // missing-package is allowed when the game has no stored package yet;
+      // the backend will auto-extract and set it from this first account.
     }
 
     setLoading(true);

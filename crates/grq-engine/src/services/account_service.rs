@@ -176,7 +176,40 @@ impl AccountService {
         )
         .map_err(|e| format!("Failed to create account: {}", e))?;
 
-        Ok(conn.last_insert_rowid())
+        let new_account_id = conn.last_insert_rowid();
+
+        // Auto-extract and set package_name for games that don't have one yet.
+        // When the first account is created for a game without a stored package,
+        // extract it from the account's request_template and lock it in.
+        let game_has_package: bool = conn
+            .query_row(
+                "SELECT package_name IS NOT NULL AND trim(package_name) != '' FROM games WHERE id = ?1",
+                params![request.game_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !game_has_package {
+            if let Some(pkg) = crate::db::connection::extract_package_name(&request.request_template) {
+                // Verify uniqueness before assigning
+                let is_unique: bool = !conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM games WHERE id != ?1 AND lower(trim(package_name)) = lower(trim(?2)))",
+                        params![request.game_id, pkg],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(true);
+
+                if is_unique {
+                    let _ = conn.execute(
+                        "UPDATE games SET package_name = ?1 WHERE id = ?2 AND (package_name IS NULL OR trim(package_name) = '')",
+                        params![pkg, request.game_id],
+                    );
+                }
+            }
+        }
+
+        Ok(new_account_id)
     }
 
     pub fn get_accounts_by_game(

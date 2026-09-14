@@ -42,6 +42,115 @@ export const taskLevel = (task: DailyTask): TaskLevel =>
   taskLevelOf(task.requests?.[0]?.day_index, task.dayTotalTasks);
 
 /**
+ * Check if all requests within a DailyTask are marked completed.
+ */
+export const isTaskFullyCompleted = (task: DailyTask): boolean => {
+  if (!task.completedTasks || !task.requests) return false;
+  return (
+    task.requests.length > 0 &&
+    task.requests.every((_, idx) => task.completedTasks.has(idx.toString()))
+  );
+};
+
+/**
+ * Generic reordering algorithm for stage/task items based on current order:
+ *
+ * Rule 1: If a stage is completed and NOT all stages before it in the CURRENT order are completed,
+ * it is moved to be placed right after the last completed stage in the contiguous completed prefix.
+ *
+ * Rule 2: If a stage is completed and ALL stages before it in the CURRENT order are completed,
+ * it is NOT reordered; it remains in its exact current position in the sequence.
+ */
+export function applyStageReorderingRules<T>(
+  currentItems: T[],
+  getIsCompleted: (item: T) => boolean,
+): T[] {
+  const result = [...currentItems];
+
+  for (let i = 0; i < result.length; i++) {
+    const item = result[i];
+    if (getIsCompleted(item)) {
+      const previousItems = result.slice(0, i);
+      const allPreviousCompleted = previousItems.every((prev) =>
+        getIsCompleted(prev),
+      );
+
+      if (!allPreviousCompleted) {
+        let lastContiguousCompletedIdx = -1;
+        for (let j = 0; j < i; j++) {
+          if (getIsCompleted(result[j])) {
+            lastContiguousCompletedIdx = j;
+          } else {
+            break;
+          }
+        }
+
+        result.splice(i, 1);
+        const targetIndex = lastContiguousCompletedIdx + 1;
+        result.splice(targetIndex, 0, item);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Map each task to its effective level for UI rendering and grouping.
+ *
+ * Rule:
+ * For each account, the FIRST active (uncompleted) task is assigned to Level 1 ("first")
+ * because all stages before it for that account are completed.
+ * It will NOT be moved down to Level 2 or Level 3 when earlier tasks finish.
+ */
+export const buildEffectiveTaskLevelMap = (
+  tasks: DailyTask[],
+): Map<DailyTask, TaskLevel> => {
+  const levelMap = new Map<DailyTask, TaskLevel>();
+  const tasksByAccount: Record<number, DailyTask[]> = {};
+
+  for (const task of tasks) {
+    const accId = task.account.id;
+    if (!tasksByAccount[accId]) {
+      tasksByAccount[accId] = [];
+    }
+    tasksByAccount[accId].push(task);
+  }
+
+  for (const accIdStr of Object.keys(tasksByAccount)) {
+    const originalAccTasks = tasksByAccount[Number(accIdStr)];
+    const reorderedAccTasks = applyStageReorderingRules(
+      originalAccTasks,
+      isTaskFullyCompleted,
+    );
+    const pendingTasks = reorderedAccTasks.filter((t) => !isTaskFullyCompleted(t));
+
+    for (const task of reorderedAccTasks) {
+      if (isTaskFullyCompleted(task)) {
+        levelMap.set(
+          task,
+          "first"
+        );
+      } else {
+        const pendingIdx = pendingTasks.indexOf(task);
+        if (pendingIdx === 0) {
+          levelMap.set(task, "first");
+        } else if (
+          pendingTasks.length > 1 &&
+          pendingIdx === pendingTasks.length - 1
+        ) {
+          levelMap.set(task, "last");
+        } else {
+          levelMap.set(task, "middle");
+        }
+      }
+    }
+  }
+
+  return levelMap;
+};
+
+/**
  * Rebuild the batch system within a single level using the SAME mechanism the
  * TaskGenerator uses: tasks are first grouped by region (proxy_state, in
  * first-seen order which mirrors the generator's region processing order),
@@ -99,3 +208,5 @@ export const buildLevelBatches = (
 
   return batches;
 };
+
+

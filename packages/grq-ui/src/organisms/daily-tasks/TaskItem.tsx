@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@grq/
 import { Badge } from '@grq/ui/atoms/badge';
 import { RequestItem } from './RequestItem';
 import { calculateTimerState, getTimerMessage, formatRemainingTime } from '@grq/core/utils/timer.utils';
-import { TaskItemProps } from '@grq/api-bindings/types/daily-tasks.types';
+import { TaskItemProps, DailyTask } from '@grq/api-bindings/types/daily-tasks.types';
 import { useTimer } from '@grq/core/hooks/useTimer';
 import { cn } from '@grq/ui/lib/utils';
 import { proxyStateBadgeClass, proxyStateCardClass } from '@grq/ui/lib/proxy-state-styles';
@@ -162,18 +162,43 @@ export const TaskItem = React.memo(({ task, onCompleteTask, onCopyRequest, accou
     );
   };
 
-  // Position-based container color: the FIRST task of the day is white, the
-  // LAST (n === N > 1) is a translucent black, and the middle ones take the
-  // account's region color. Applied to the card that wraps the requests.
-  const taskPosition = task.requests[0]?.day_index ?? accountTaskMeta.accountTaskIndex;
-  const taskTotal = task.dayTotalTasks ?? accountTaskMeta.accountTaskTotal;
-  const taskLevel = taskLevelOf(taskPosition, taskTotal);
+  // Position-based container color: the FIRST active task of the day is white, the
+  // LAST active is translucent black, and middle ones take region color.
+  const effectiveTaskLevel = useMemo(() => {
+    const flatReadyTasks = allBatches.flatMap((batch) => batch.tasks);
+    const allDailyTasks = [...flatReadyTasks, ...deferredTasks];
+    const accountTasks = allDailyTasks.filter((dt) => dt.account.id === accountId);
+    const isCompleted = (t: DailyTask) =>
+      t.completedTasks && t.requests && t.requests.every((_, idx) => t.completedTasks.has(idx.toString()));
+
+    if (isCompleted(task)) {
+      const taskPosition = task.requests[0]?.day_index ?? accountTaskMeta.accountTaskIndex;
+      const taskTotal = task.dayTotalTasks ?? accountTaskMeta.accountTaskTotal;
+      return taskLevelOf(taskPosition, taskTotal);
+    }
+
+    const pendingAccountTasks = accountTasks.filter((t) => !isCompleted(t));
+    const pendingIdx = pendingAccountTasks.findIndex((t) => {
+      const g = t.requestGroups?.[0];
+      const targetG = task.requestGroups?.[0];
+      return (
+        t.account.id === task.account.id &&
+        t.targetDate === task.targetDate &&
+        (g?.event_token ?? t.requests?.[0]?.event_token) === (targetG?.event_token ?? task.requests?.[0]?.event_token) &&
+        (g?.time_spent ?? t.requests?.[0]?.time_spent) === (targetG?.time_spent ?? task.requests?.[0]?.time_spent)
+      );
+    });
+
+    if (pendingIdx === 0) return 'first';
+    if (pendingAccountTasks.length > 1 && pendingIdx === pendingAccountTasks.length - 1) return 'last';
+    return 'middle';
+  }, [allBatches, deferredTasks, accountId, task, accountTaskMeta]);
 
   const containerCardClass = () => {
-    if (taskLevel === 'first') {
+    if (effectiveTaskLevel === 'first') {
       return "bg-white/70 dark:bg-white/10 border-white/40 dark:border-white/15 shadow-[0_0_24px_rgba(255,255,255,0.12)]";
     }
-    if (taskLevel === 'last') {
+    if (effectiveTaskLevel === 'last') {
       return "bg-black/15 dark:bg-white/5 border-black/25 dark:border-white/10";
     }
     return proxyStateCardClass(effectiveRegionColor);

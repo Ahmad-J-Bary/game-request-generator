@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { taskLevelOf, buildLevelBatches } from './task-level.utils.ts';
+import {
+  taskLevelOf,
+  buildLevelBatches,
+  buildEffectiveTaskLevelMap,
+  applyStageReorderingRules,
+} from './task-level.utils.ts';
 import type { DailyTask } from '@grq/api-bindings';
 
 const makeTask = (accountId: number, gameId: number, dayIndex: number, total: number, state?: string): DailyTask => ({
@@ -9,6 +14,53 @@ const makeTask = (accountId: number, gameId: number, dayIndex: number, total: nu
   targetDate: '2024-01-03',
   completedTasks: new Set<string>(),
   dayTotalTasks: total,
+});
+
+describe('applyStageReorderingRules', () => {
+  it('does NOT reorder a stage when all previous stages in current order are completed (in-order)', () => {
+    const items = [
+      { id: 1, isCompleted: true },
+      { id: 2, isCompleted: true },
+      { id: 3, isCompleted: true },
+      { id: 4, isCompleted: false },
+    ];
+    const reordered = applyStageReorderingRules(items, (x) => x.isCompleted);
+    assert.deepEqual(
+      reordered.map((x) => x.id),
+      [1, 2, 3, 4],
+    );
+  });
+
+  it('moves an out-of-order completed stage to right after the last completed stage in the current order', () => {
+    const items = [
+      { id: 1, isCompleted: true },
+      { id: 2, isCompleted: true },
+      { id: 3, isCompleted: false },
+      { id: 4, isCompleted: false },
+      { id: 5, isCompleted: true }, // completed out-of-order while 3 & 4 are pending
+    ];
+    const reordered = applyStageReorderingRules(items, (x) => x.isCompleted);
+    // 5 should be moved to after 2 (since 1 & 2 are completed, and 3 is pending)
+    assert.deepEqual(
+      reordered.map((x) => x.id),
+      [1, 2, 5, 3, 4],
+    );
+  });
+
+  it('evaluates using the latest/current order, placing subsequent out-of-order completions sequentially', () => {
+    const items = [
+      { id: 1, isCompleted: true },
+      { id: 2, isCompleted: false },
+      { id: 3, isCompleted: true },
+      { id: 4, isCompleted: true },
+    ];
+    const reordered = applyStageReorderingRules(items, (x) => x.isCompleted);
+    // 3 and 4 move to after 1 because 2 is pending
+    assert.deepEqual(
+      reordered.map((x) => x.id),
+      [1, 3, 4, 2],
+    );
+  });
 });
 
 describe('taskLevelOf', () => {
@@ -103,5 +155,34 @@ describe('buildLevelBatches', () => {
 
   it('returns an empty array for no tasks', () => {
     assert.deepEqual(buildLevelBatches([]), []);
+  });
+});
+
+describe('buildEffectiveTaskLevelMap', () => {
+  it('keeps active task in level "first" when prior tasks are completed', () => {
+    const t1 = makeTask(1, 1, 1, 3);
+    const t2 = makeTask(1, 1, 2, 3);
+    const t3 = makeTask(1, 1, 3, 3);
+
+    // Initially none completed
+    let map = buildEffectiveTaskLevelMap([t1, t2, t3]);
+    assert.equal(map.get(t1), 'first');
+    assert.equal(map.get(t2), 'middle');
+    assert.equal(map.get(t3), 'last');
+
+    // Mark t1 completed
+    t1.completedTasks.add('0');
+
+    map = buildEffectiveTaskLevelMap([t1, t2, t3]);
+    // t2 is now the first active task for account 1, so it gets 'first'
+    assert.equal(map.get(t2), 'first');
+    assert.equal(map.get(t3), 'last');
+
+    // Mark t2 completed
+    t2.completedTasks.add('0');
+
+    map = buildEffectiveTaskLevelMap([t1, t2, t3]);
+    // t3 is now the first active task for account 1, so it gets 'first'
+    assert.equal(map.get(t3), 'first');
   });
 });
