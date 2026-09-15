@@ -655,8 +655,23 @@ function AccountsDetailContent({
             (selectedDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
           );
         }
+      } else if (existing?.days_offset != null) {
+        daysOffset = existing.days_offset;
+      } else if (account.branch_id != null) {
+        try {
+          if (!branchPurchaseEventsCache.has(account.branch_id)) {
+            const pes = await TauriService.getGamePurchaseEvents(account.branch_id);
+            branchPurchaseEventsCache.set(account.branch_id, pes);
+          }
+          const peDef = branchPurchaseEventsCache.get(account.branch_id)!.find(
+            (pe) => pe.id === peId,
+          );
+          daysOffset = peDef?.days_offset ?? 0;
+        } catch {
+          daysOffset = 0;
+        }
       } else {
-        daysOffset = existing?.days_offset || 0;
+        daysOffset = 0;
       }
 
       // Calculate time_spent: average of same-day real levels + next real level.
@@ -921,7 +936,7 @@ function AccountsDetailContent({
             gameId: account.game_id,
             gameName: gameNameCache.get(account.game_id) || t("common.unknown"),
             eventToken: purchaseEventToken,
-            durationMs: pu.time_spent || computeTaskDuration(1000),
+            durationMs: computeTaskDuration(pu.time_spent || 1000),
             requestType: 'Purchase Event',
             isPurchase: true,
           });

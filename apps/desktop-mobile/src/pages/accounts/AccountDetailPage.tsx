@@ -665,7 +665,7 @@ export default function AccountDetailPage() {
               gameId: account!.game_id,
               gameName: gameName || t("common.unknown"),
               eventToken: eventDef?.event_token || '',
-              durationMs: calculatedTimeSpent,
+              durationMs: computeTaskDuration(calculatedTimeSpent || 1000),
               requestType: 'Purchase Event',
               isPurchase: true,
             });
