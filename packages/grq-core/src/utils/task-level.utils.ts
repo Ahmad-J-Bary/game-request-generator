@@ -123,26 +123,12 @@ export const buildEffectiveTaskLevelMap = (
       originalAccTasks,
       isTaskFullyCompleted,
     );
-    const pendingTasks = reorderedAccTasks.filter((t) => !isTaskFullyCompleted(t));
 
     for (const task of reorderedAccTasks) {
       if (isTaskFullyCompleted(task)) {
-        levelMap.set(
-          task,
-          "first"
-        );
+        levelMap.set(task, "first");
       } else {
-        const pendingIdx = pendingTasks.indexOf(task);
-        if (pendingIdx === 0) {
-          levelMap.set(task, "first");
-        } else if (
-          pendingTasks.length > 1 &&
-          pendingIdx === pendingTasks.length - 1
-        ) {
-          levelMap.set(task, "last");
-        } else {
-          levelMap.set(task, "middle");
-        }
+        levelMap.set(task, taskLevel(task));
       }
     }
   }

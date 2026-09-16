@@ -174,15 +174,51 @@ describe('buildEffectiveTaskLevelMap', () => {
     t1.completedTasks.add('0');
 
     map = buildEffectiveTaskLevelMap([t1, t2, t3]);
-    // t2 is now the first active task for account 1, so it gets 'first'
-    assert.equal(map.get(t2), 'first');
-    assert.equal(map.get(t3), 'last');
+    assert.equal(map.get(t1), 'first'); // completed → first
+    assert.equal(map.get(t2), 'middle'); // dayIndex=2, N=3 → middle
+    assert.equal(map.get(t3), 'last');  // dayIndex=3, N=3 → last
 
     // Mark t2 completed
     t2.completedTasks.add('0');
 
     map = buildEffectiveTaskLevelMap([t1, t2, t3]);
-    // t3 is now the first active task for account 1, so it gets 'first'
-    assert.equal(map.get(t3), 'first');
+    assert.equal(map.get(t1), 'first'); // completed → first
+    assert.equal(map.get(t2), 'first'); // completed → first
+    assert.equal(map.get(t3), 'last');  // dayIndex=3, N=3 → last
+  });
+
+  it('preserves n/N-based levels for pending tasks regardless of reordering', () => {
+    // 5 tasks, mark 1 and 5 completed
+    const t1 = makeTask(1, 1, 1, 5);
+    const t2 = makeTask(1, 1, 2, 5);
+    const t3 = makeTask(1, 1, 3, 5);
+    const t4 = makeTask(1, 1, 4, 5);
+    const t5 = makeTask(1, 1, 5, 5);
+
+    t1.completedTasks.add('0');
+    t5.completedTasks.add('0');
+
+    const map = buildEffectiveTaskLevelMap([t1, t2, t3, t4, t5]);
+    assert.equal(map.get(t1), 'first');  // completed → first
+    assert.equal(map.get(t2), 'middle'); // dayIndex=2, N=5 → middle
+    assert.equal(map.get(t3), 'middle'); // dayIndex=3, N=5 → middle
+    assert.equal(map.get(t4), 'middle'); // dayIndex=4, N=5 → middle
+    assert.equal(map.get(t5), 'first');  // completed → first
+  });
+
+  it('does NOT promote Level 2/3 pending tasks to Level 1', () => {
+    // Day with 3 tasks, first completed
+    const t1 = makeTask(1, 1, 1, 3);
+    const t2 = makeTask(1, 1, 2, 3);
+    const t3 = makeTask(1, 1, 3, 3);
+
+    t1.completedTasks.add('0');
+
+    const map = buildEffectiveTaskLevelMap([t1, t2, t3]);
+    // t2 and t3 must NOT be "first"
+    assert.notEqual(map.get(t2), 'first');
+    assert.notEqual(map.get(t3), 'first');
+    assert.equal(map.get(t2), 'middle');
+    assert.equal(map.get(t3), 'last');
   });
 });
